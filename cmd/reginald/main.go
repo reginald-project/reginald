@@ -1,5 +1,11 @@
+// Package main is the entry point for Reginald, the personal workstation valet.
 package main
 
+import (
+	"fmt"
+	"os"
+)
+
 func main() {
-	print("Hello, world!\n")
+	fmt.Fprintln(os.Stdout, "Hello, world!")
 }
