@@ -1,0 +1,11 @@
+version: "2"
+
+linters:
+  default: all
+  settings:
+    errcheck:
+      disable-default-exclusions: false
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
