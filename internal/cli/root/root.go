@@ -9,12 +9,14 @@ const name = "reginald"
 // New returns the root command for the command-line interface. It adds all of
 // the necessary global options to the command and creates the subcommands and
 // registers them to the root commands.
-func New() *cli.Command {
-	c := &cli.Command{
-		UsageLine: name,
+func New(version string) *cli.RootCommand {
+	c := &cli.RootCommand{
+		Command: cli.Command{UsageLine: name},
+		Version: version,
 	}
 
-	c.GlobalFlags().Bool("version", false, "print the version information and exit")
+	c.StandardFlags().Bool("version", false, "print the version information and exit")
+	c.StandardFlags().BoolP("help", "h", false, "show the help message and exit")
 
 	return c
 }

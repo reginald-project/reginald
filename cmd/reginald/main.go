@@ -7,9 +7,16 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/anttikivi/reginald/internal/cli"
+	"github.com/anttikivi/reginald/internal/cli/root"
 	"github.com/anttikivi/reginald/internal/version"
 )
 
 func main() {
-	fmt.Fprintln(os.Stdout, "Hello, world!", version.Version)
+	rootCmd := root.New(version.Version)
+
+	if err := cli.Run(rootCmd); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
 }
