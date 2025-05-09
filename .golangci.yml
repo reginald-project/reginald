@@ -3,6 +3,13 @@ version: "2"
 linters:
   default: all
   settings:
+    depguard:
+      rules:
+        main:
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/anttikivi/reginald
     errcheck:
       disable-default-exclusions: false
       exclude-functions:
