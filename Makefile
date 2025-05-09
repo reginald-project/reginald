@@ -1,3 +1,5 @@
+.DEFAULT_GOAL := build
+
 GOLANGCI_LINT_VERSION ?= 2.1.6
 
 GOPATH = $(shell go env GOPATH)
@@ -6,7 +8,7 @@ GOPATH = $(shell go env GOPATH)
 build:
 	go build -o reginald ./cmd/reginald
 
-# Linting tasks
+# Linting
 
 .PHONY: lint
 lint: install-golangci-lint
