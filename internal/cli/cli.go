@@ -24,17 +24,6 @@ func Run(cmd *RootCommand) error {
 	// the subcommands.
 	_ = cmd.StandardFlags().Parse(args)
 
-	version, err := cmd.StandardFlags().GetBool("version")
-	if err != nil {
-		return fmt.Errorf("failed to get the value for command-line option '--version': %w", err)
-	}
-
-	if version {
-		fmt.Fprintf(os.Stdout, "%s %s\n", programName, cmd.Version)
-
-		return nil
-	}
-
 	help, err := cmd.StandardFlags().GetBool("help")
 	if err != nil {
 		return fmt.Errorf("failed to get the value for command-line option '--help': %w", err)
@@ -42,6 +31,17 @@ func Run(cmd *RootCommand) error {
 
 	if help {
 		fmt.Fprintln(os.Stdout, "HELP")
+
+		return nil
+	}
+
+	version, err := cmd.StandardFlags().GetBool("version")
+	if err != nil {
+		return fmt.Errorf("failed to get the value for command-line option '--version': %w", err)
+	}
+
+	if version {
+		fmt.Fprintf(os.Stdout, "%s %s\n", programName, cmd.Version)
 
 		return nil
 	}
