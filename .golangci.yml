@@ -18,6 +18,8 @@ linters:
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
+    varnamelen:
+      max-distance: 30
 
 formatters:
   enable:
