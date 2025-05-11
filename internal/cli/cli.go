@@ -99,6 +99,10 @@ func findSubcommand(cmd *Command, args []string) (*Command, []string, []string) 
 		}
 	}
 
+	if args[0] == c.Name() {
+		args = args[1:]
+	}
+
 	slog.Debug("found subcommand", "cmd", c.Name(), "args", args, "flags", flags)
 
 	return c, args, flags
