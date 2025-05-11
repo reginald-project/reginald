@@ -16,8 +16,8 @@ jobs:
         include:
           - { goos: "linux", goarch: "386", os: "ubuntu-latest" }
           - { goos: "linux", goarch: "amd64", os: "ubuntu-latest" }
-          - { goos: "windows", goarch: "386", os: "ubuntu-latest" }
-          - { goos: "windows", goarch: "amd64", os: "ubuntu-latest" }
+          - { goos: "windows", goarch: "386", os: "windows-latest" }
+          - { goos: "windows", goarch: "amd64", os: "windows-latest" }
           - { goos: "darwin", goarch: "amd64", os: "macos-latest" }
           - { goos: "darwin", goarch: "arm64", os: "macos-latest" }
       fail-fast: false
