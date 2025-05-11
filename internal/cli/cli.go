@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/anttikivi/go-semver"
 	"github.com/spf13/pflag"
 )
 
@@ -56,7 +57,7 @@ func Run(cmd *RootCommand) error {
 	}
 
 	if version {
-		fmt.Fprintf(os.Stdout, "%s %s\n", programName, cmd.Version)
+		fmt.Fprintf(os.Stdout, "%s %s\n", programName, semver.MustParse(cmd.Version))
 
 		return nil
 	}
@@ -99,7 +100,7 @@ func findSubcommand(cmd *Command, args []string) (*Command, []string, []string) 
 		}
 	}
 
-	if args[0] == c.Name() {
+	if len(args) > 0 && args[0] == c.Name() {
 		args = args[1:]
 	}
 

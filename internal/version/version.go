@@ -6,8 +6,8 @@ package version
 // The default values for the version info variables that should be set during
 // build.
 const (
-	defaultVersion   = "DEV"
-	defaultCommitSHA = "invalid"
+	defaultVersion = "invalid"
+	defaultCommitSHA
 	defaultBuildTime
 )
 

@@ -14,6 +14,7 @@ linters:
           allow:
             - $gostd
             - github.com/anttikivi/reginald
+            - github.com/anttikivi/go-semver
             - github.com/spf13/pflag
     errcheck:
       disable-default-exclusions: false

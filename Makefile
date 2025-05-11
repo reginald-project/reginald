@@ -7,9 +7,21 @@ GOLINES_VERSION ?= 0.12.2
 
 GOPATH = $(shell go env GOPATH)
 
+COMMIT_HASH = $(shell git describe --always --dirty --abbrev=40)
+BUILD_DATE = $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+BASE_VERSION ?= $(shell cat VERSION)
+PRERELEASE ?= 0.dev.$(shell date -u +"%Y%m%d%H%M%S")
+BUILD_METADATA ?= $(COMMIT_HASH)
+VERSION ?= $(BASE_VERSION)-$(PRERELEASE)+$(BUILD_METADATA)
+
+LDFLAGS := -X github.com/anttikivi/reginald/internal/version.Version=$(VERSION)
+LDFLAGS += -X github.com/anttikivi/reginald/internal/version.Commit=$(COMMIT_HASH)
+LDFLAGS += -X github.com/anttikivi/reginald/internal/version.BuildDate=$(BUILD_DATE)
+
 .PHONY: build
 build:
-	go build -o reginald ./cmd/reginald
+	go build -ldflags "$(LDFLAGS)" -o reginald ./cmd/reginald
 
 # Linting and formatting
 
