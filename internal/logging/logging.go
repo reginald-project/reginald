@@ -43,8 +43,9 @@ func InitBootstrap() error {
 		return fmt.Errorf("failed to create the bootstrap logger: %w", errInvalidOutput)
 	}
 
-	handler := slog.NewTextHandler(output, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
+	handler := slog.NewTextHandler(output, &slog.HandlerOptions{ //nolint:exhaustruct
+		AddSource: true,
+		Level:     slog.LevelDebug,
 	})
 	logger := slog.New(handler)
 
