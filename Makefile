@@ -20,9 +20,11 @@ lint: install-golangci-lint
 .PHONY: install-golangci-lint
 install-golangci-lint:
 ifeq (, $(shell which golangci-lint))
+	@echo "golangci-lint not found, installing..."
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(GOPATH)/bin v$(GOLANGCI_LINT_VERSION)
 else
-ifeq ($(GOLANGCI_LINT_VERSION), $(shell golangci-lint --version | awk '{print $4}'))
+ifneq ($(GOLANGCI_LINT_VERSION), $(shell golangci-lint --version | awk '{print $$4}'))
+	@echo "found version $(shell golangci-lint --version | awk '{print $$4}') of golangci-lint, installing version $(GOLANGCI_LINT_VERSION)"
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(GOPATH)/bin v$(GOLANGCI_LINT_VERSION)
 endif
 endif
