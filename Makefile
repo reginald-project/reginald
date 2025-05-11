@@ -1,6 +1,7 @@
 .DEFAULT_GOAL := build
 
 GCI_VERSION ?= 0.13.0
+GOFUMPT_VERSION ?= 0.8.0
 GOLANGCI_LINT_VERSION ?= 2.1.6
 GOLINES_VERSION ?= 0.12.2
 
@@ -13,10 +14,11 @@ build:
 # Linting and formatting
 
 .PHONY: fmt
-fmt: install-gci install-golines
+fmt: install-gci install-gofumpt install-golines
 	go mod tidy
 	gci write .
 	golines --no-chain-split-dots -w .
+	gofumpt -extra -l -w .
 
 .PHONY: lint
 lint: install-golangci-lint
@@ -33,6 +35,17 @@ endif
 ifneq ($(GCI_VERSION), $(shell gci --version | awk '{print $$3}'))
 	@echo "found gci version $(shell gci --version | awk '{print $$3}'), installing version $(GCI_VERSION)..."
 	go install github.com/daixiang0/gci@v$(GCI_VERSION)
+endif
+
+.PHONY: install-gofumpt
+install-gofumpt:
+ifeq (, $(shell which gofumpt))
+	@echo "gofumpt not found, installing..."
+	go install mvdan.cc/gofumpt@v$(GOFUMPT_VERSION)
+endif
+ifneq ($(GOFUMPT_VERSION), $(shell gofumpt --version | awk '{print $$1}' | cut -c 2-))
+	@echo "found gofumpt version $(shell gofumpt --version | awk '{print $$1}' | cut -c 2-), installing version $(GOFUMPT_VERSION)..."
+	go install mvdan.cc/gofumpt@v$(GOFUMPT_VERSION)
 endif
 
 .PHONY: install-golangci-lint
