@@ -43,23 +43,25 @@ jobs:
         run: make build BUILD_FLAGS="-v" PRERELEASE="0.canary.${{ github.run_number }}"
 
       - name: Run the version command
-        if: ${{ runner.os != 'Windows' && ((matrix.goos == 'linux' &&
-          (matrix.goarch == '386' || matrix.goarch == 'amd64')) || (matrix.goos
-          == 'darwin' && (matrix.goarch == 'arm64' || matrix.goarch ==
-          'amd64'))) }}
+        if: ${{ runner.os != 'Windows' }}
         run: ./reginald --version
 
       - name: Run the version command on Windows
-        if:
-          ${{ runner.os == 'Windows' && (matrix.goarch == '386' || matrix.goarch
-          == 'amd64') }}
+        if: ${{ runner.os == 'Windows' }}
         run: .\reginald.exe --version
 
       - name: Get Reginald version
-        id: get-version
+        if: ${{ runner.os != 'Windows' }}
         shell: bash
         run: |
           version="$(./reginald --version | awk '{print $2}')"
+          echo "VERSION=${version}" >> "${GITHUB_ENV}"
+
+      - name: Get Reginald version on Windows
+        if: ${{ runner.os == 'Windows' }}
+        shell: bash
+        run: |
+          version="$(.\reginald.exe --version | awk '{print $2}')"
           echo "VERSION=${version}" >> "${GITHUB_ENV}"
 
       - name: Determine the artifact name
@@ -67,7 +69,16 @@ jobs:
 
       - name: Upload the build artifact
         uses: actions/upload-artifact@v4.6.2
+        if: ${{ runner.os != 'Windows' }}
         with:
           name: ${{ env.ARTIFACT_NAME }}
           path: reginald
+          if-no-files-found: error
+
+      - name: Upload the build artifact on Windows
+        uses: actions/upload-artifact@v4.6.2
+        if: ${{ runner.os == 'Windows' }}
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: reginald.exe
           if-no-files-found: error
