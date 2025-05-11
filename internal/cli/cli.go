@@ -26,16 +26,13 @@ func Run(cmd *RootCommand) error {
 
 	slog.Debug("starting to parse the command-line arguments", "args", args)
 
-	c, args, flags, err := findSubcommand(&cmd.Command, args)
-	if err != nil {
-		return fmt.Errorf("%w", err)
-	}
+	c, args, flags := findSubcommand(&cmd.Command, args)
 
 	args = append(args, flags...)
 
 	c.mergeFlags()
 
-	if err = c.Flags().Parse(args); err != nil {
+	if err := c.Flags().Parse(args); err != nil {
 		return fmt.Errorf("failed to parse command-line arguments: %w", err)
 	}
 
@@ -66,11 +63,10 @@ func Run(cmd *RootCommand) error {
 
 // findSubcommand finds the subcommand to run from the tree starting at cmd. It
 // returns the final subcommand, the arguments without the subcommands and flags
-// (positional command-line arguments), command-line flags, and any errors it
-// encountered.
-func findSubcommand(cmd *Command, args []string) (*Command, []string, []string, error) {
+// (positional command-line arguments), and command-line flags.
+func findSubcommand(cmd *Command, args []string) (*Command, []string, []string) {
 	if len(args) <= 1 {
-		return cmd, args, []string{}, nil
+		return cmd, args, []string{}
 	}
 
 	flags := []string{}
@@ -94,7 +90,7 @@ func findSubcommand(cmd *Command, args []string) (*Command, []string, []string, 
 
 	slog.Debug("found subcommand", "cmd", c.Name(), "args", args, "flags", flags)
 
-	return c, args, flags, nil
+	return c, args, flags
 }
 
 // collectFlags removes all of the known flags from the arguments list and
