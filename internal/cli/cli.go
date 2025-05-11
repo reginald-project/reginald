@@ -61,6 +61,8 @@ func Run(cmd *RootCommand) error {
 		return nil
 	}
 
+	// setupCmd
+
 	return nil
 }
 
@@ -139,7 +141,7 @@ Loop:
 		case strings.HasPrefix(s, "--") && !hasNoOptDefVal(s[2:], fs):
 			// The '--flag arg' case.
 			fallthrough
-		case strings.HasPrefix(s, "-") && !shortHasNoOptDefVal(s[len(s)-1:], fs):
+		case strings.HasPrefix(s, "-") && !strings.HasPrefix(s, "--") && !shortHasNoOptDefVal(s[len(s)-1:], fs):
 			// The '-f arg' and '-abcf arg' cases. Only the last flag in can
 			// have a argument, so other ones aren't checked for the default
 			// value.

@@ -28,7 +28,8 @@ var (
 func InitBootstrap() error {
 	outputName := os.Getenv("REGINALD_BOOTSTRAP_OUTPUT")
 	if outputName == "" {
-		// TODO: The default should be file, but let's implement that later.
+		// TODO: The default should be file or disabled, but let's implement
+		// that later.
 		outputName = "stderr"
 	}
 
