@@ -2,8 +2,6 @@
 package root
 
 import (
-	"fmt"
-
 	"github.com/anttikivi/reginald/internal/cli"
 	"github.com/anttikivi/reginald/internal/cli/apply"
 )
@@ -17,7 +15,7 @@ const name = "reginald"
 func New(version string) *cli.RootCommand {
 	c := &cli.RootCommand{
 		Command: cli.Command{
-			UsageLine: fmt.Sprintf("%s [--version] [-h | --help] <command> [<args>]", name),
+			UsageLine: name + " [--version] [-h | --help] <command> [<args>]",
 		},
 		Version: version,
 	}
