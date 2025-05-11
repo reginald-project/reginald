@@ -14,18 +14,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - { goos: "freebsd", goarch: "386", os: "ubuntu-latest" }
-          - { goos: "freebsd", goarch: "amd64", os: "ubuntu-latest" }
-          - { goos: "freebsd", goarch: "arm", os: "ubuntu-latest" }
           - { goos: "linux", goarch: "386", os: "ubuntu-latest" }
           - { goos: "linux", goarch: "amd64", os: "ubuntu-latest" }
-          - { goos: "linux", goarch: "arm", os: "ubuntu-latest" }
-          - { goos: "linux", goarch: "arm64", os: "ubuntu-latest" }
-          - { goos: "openbsd", goarch: "386", os: "ubuntu-latest" }
-          - { goos: "openbsd", goarch: "amd64", os: "ubuntu-latest" }
-          - { goos: "solaris", goarch: "amd64", os: "ubuntu-latest" }
-          - { goos: "windows", goarch: "386", os: "windows-latest" }
-          - { goos: "windows", goarch: "amd64", os: "windows-latest" }
+          - { goos: "windows", goarch: "386", os: "ubuntu-latest" }
+          - { goos: "windows", goarch: "amd64", os: "ubuntu-latest" }
           - { goos: "darwin", goarch: "amd64", os: "macos-latest" }
           - { goos: "darwin", goarch: "arm64", os: "macos-latest" }
       fail-fast: false
