@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ -z "$1" ]]; then
+  echo "No version given as an argument" >&2
+  exit 1
+fi
+
+GOLINES_VERSION="$1"
+CHECKSUM_FILE="golines_${GOLINES_VERSION}_checksums.txt"
+ARCHIVE_FILE="golines_${GOLINES_VERSION}_$(uname | tr '[:upper:]' '[:lower:]')_$(uname -m).tar.gz"
+
+if [[ "$(uname)" == "Darwin" ]]; then
+  ARCHIVE_FILE="golines_${GOLINES_VERSION}_darwin_all.tar.gz"
+fi
+
+DESTINATION="${GOPATH}/bin/golines"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+
+cd "${SCRIPT_DIR}/.."
+
+mkdir tmp
+
+cd tmp
+
+curl -sSfLO "https://github.com/segmentio/golines/releases/download/v${GOLINES_VERSION}/${CHECKSUM_FILE}"
+curl -sSfLO "https://github.com/segmentio/golines/releases/download/v${GOLINES_VERSION}/${ARCHIVE_FILE}" -o ./tmp/golines.tar.gz
+sha256sum -c --ignore-missing "${CHECKSUM_FILE}"
+
+if [[ -f "${DESTINATION}" ]]; then
+  rm "${DESTINATION}"
+fi
+
+if [[ ! -d "$(dirname "${DESTINATION}")" ]]; then
+  mkdir -p "$(dirname "${DESTINATION}")"
+fi
+
+tar --strip-components=1 -C "$(dirname "${DESTINATION}")" -xf "${ARCHIVE_FILE}" "$(basename "${ARCHIVE_FILE}" ".tar.gz")/golines"
+
+cd ..
+
+rm -rf tmp

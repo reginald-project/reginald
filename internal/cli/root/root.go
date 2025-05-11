@@ -16,7 +16,9 @@ const name = "reginald"
 // registers them to the root commands.
 func New(version string) *cli.RootCommand {
 	c := &cli.RootCommand{
-		Command: cli.Command{UsageLine: fmt.Sprintf("%s [--version] [-h | --help] <command> [<args>]", name)},
+		Command: cli.Command{
+			UsageLine: fmt.Sprintf("%s [--version] [-h | --help] <command> [<args>]", name),
+		},
 		Version: version,
 	}
 

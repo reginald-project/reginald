@@ -1,6 +1,8 @@
 .DEFAULT_GOAL := build
 
+GCI_VERSION ?= 0.13.0
 GOLANGCI_LINT_VERSION ?= 2.1.6
+GOLINES_VERSION ?= 0.12.2
 
 GOPATH = $(shell go env GOPATH)
 
@@ -8,7 +10,13 @@ GOPATH = $(shell go env GOPATH)
 build:
 	go build -o reginald ./cmd/reginald
 
-# Linting
+# Linting and formatting
+
+.PHONY: fmt
+fmt: install-gci install-golines
+	go mod tidy
+	gci write .
+	golines --no-chain-split-dots -w .
 
 .PHONY: lint
 lint: install-golangci-lint
@@ -16,15 +24,35 @@ lint: install-golangci-lint
 
 # Tools
 
-# There is probably a better way to do this...
+.PHONY: install-gci
+install-gci:
+ifeq (, $(shell which gci))
+	@echo "gci not found, installing..."
+	go install github.com/daixiang0/gci@v$(GCI_VERSION)
+endif
+ifneq ($(GCI_VERSION), $(shell gci --version | awk '{print $$3}'))
+	@echo "found gci version $(shell gci --version | awk '{print $$3}'), installing version $(GCI_VERSION)..."
+	go install github.com/daixiang0/gci@v$(GCI_VERSION)
+endif
+
 .PHONY: install-golangci-lint
 install-golangci-lint:
 ifeq (, $(shell which golangci-lint))
 	@echo "golangci-lint not found, installing..."
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(GOPATH)/bin v$(GOLANGCI_LINT_VERSION)
-else
+endif
 ifneq ($(GOLANGCI_LINT_VERSION), $(shell golangci-lint --version | awk '{print $$4}'))
-	@echo "found version $(shell golangci-lint --version | awk '{print $$4}') of golangci-lint, installing version $(GOLANGCI_LINT_VERSION)"
+	@echo "found golangci-lint version $(shell golangci-lint --version | awk '{print $$4}'), installing version $(GOLANGCI_LINT_VERSION)..."
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(GOPATH)/bin v$(GOLANGCI_LINT_VERSION)
 endif
+
+.PHONY: install-golines
+install-golines:
+ifeq (, $(shell which golines))
+	@echo "golines not found, installing..."
+	./scripts/install_golines "$(GOLINES_VERSION)"
+endif
+ifneq ($(GOLINES_VERSION), $(shell golines --version | head -1 | awk '{print $$2}' | cut -c 2-))
+	@echo "found golines version $(shell golines --version | head -1 | awk '{print $$2}' | cut -c 2-), installing version $(GOLINES_VERSION)..."
+	./scripts/install_golines "$(GOLINES_VERSION)"
 endif
