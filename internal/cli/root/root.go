@@ -1,7 +1,12 @@
 // Package root defines the root command for Reginald.
 package root
 
-import "github.com/anttikivi/reginald/internal/cli"
+import (
+	"fmt"
+
+	"github.com/anttikivi/reginald/internal/cli"
+	"github.com/anttikivi/reginald/internal/cli/apply"
+)
 
 // The name of command-line tool.
 const name = "reginald"
@@ -11,12 +16,14 @@ const name = "reginald"
 // registers them to the root commands.
 func New(version string) *cli.RootCommand {
 	c := &cli.RootCommand{
-		Command: cli.Command{UsageLine: name},
+		Command: cli.Command{UsageLine: fmt.Sprintf("%s [--version] [-h | --help] <command> [<args>]", name)},
 		Version: version,
 	}
 
-	c.StandardFlags().Bool("version", false, "print the version information and exit")
-	c.StandardFlags().BoolP("help", "h", false, "show the help message and exit")
+	c.GlobalFlags().Bool("version", false, "print the version information and exit")
+	c.GlobalFlags().BoolP("help", "h", false, "show the help message and exit")
+
+	c.Add(apply.New())
 
 	return c
 }

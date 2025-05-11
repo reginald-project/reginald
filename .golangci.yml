@@ -5,6 +5,8 @@ linters:
   disable:
     - godox
   settings:
+    cyclop:
+      max-complexity: 20
     depguard:
       rules:
         main:
@@ -20,7 +22,7 @@ linters:
         - fmt.Fprintf
         - fmt.Fprintln
     varnamelen:
-      max-distance: 30
+      max-distance: 50
 
 formatters:
   enable:

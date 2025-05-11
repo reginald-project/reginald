@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/spf13/pflag"
@@ -14,22 +15,44 @@ type Command struct {
 	// with the command name without including the parent commands.
 	UsageLine string
 
+	commands    []*Command     // list of subcommands
 	flags       *pflag.FlagSet // all of the command-line options
 	globalFlags *pflag.FlagSet // options that are inherited by the subcommands
-	parent      *Command       // parent command for this command
+	parent      *Command       // parent command of this command if it is a subcommand
 }
 
 // A RootCommand is a special command that is reserved to be used as the root
 // command of the program. It includes some additional information, e.g. the
-// version number of the program and the standard options like '--version' and
-// '--help'.
+// version number of the program.
 type RootCommand struct {
 	Command
 
 	// Version is the version number of the command. It
 	Version string
+}
 
-	standardFlags *pflag.FlagSet // standard options in the root command
+// Add adds the given command to the list of subcommands of c and marks c as the
+// parent command of cmd.
+func (c *Command) Add(cmd *Command) {
+	if c == cmd {
+		panic(fmt.Sprintf("failed to add the command %s as a subcommand of itself", cmd.Name()))
+	}
+
+	cmd.parent = c
+	c.commands = append(c.commands, cmd)
+}
+
+// Lookup returns the subcommand for this command for the given name, if any.
+// Otherwise it returns nil.
+func (c *Command) Lookup(name string) *Command {
+	for _, cmd := range c.commands {
+		// TODO: Check for aliases.
+		if cmd.Name() == name {
+			return cmd
+		}
+	}
+
+	return nil
 }
 
 // Name returns the commands name.
@@ -84,21 +107,6 @@ func (c *Command) VisitParents(fn func(*Command)) {
 		fn(c.parent)
 		c.parent.VisitParents(fn)
 	}
-}
-
-// StandardFlags returns the set of standard command-line options of this
-// program. It can only be used by the root command, and it should contain the
-// '--help' and '--version' options.
-func (c *RootCommand) StandardFlags() *pflag.FlagSet {
-	if c.HasParent() {
-		panic("standard flags cannot be used on commands other than the root command")
-	}
-
-	if c.standardFlags == nil {
-		c.standardFlags = c.flagSet()
-	}
-
-	return c.standardFlags
 }
 
 // flagSet returns a new flag set suitable to be used with Command.
