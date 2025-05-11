@@ -19,9 +19,21 @@ LDFLAGS := -X github.com/anttikivi/reginald/internal/version.Version=$(VERSION)
 LDFLAGS += -X github.com/anttikivi/reginald/internal/version.Commit=$(COMMIT_HASH)
 LDFLAGS += -X github.com/anttikivi/reginald/internal/version.BuildDate=$(BUILD_DATE)
 
+BUILD_FLAGS ?=
+
+EXE =
+ifeq ($(shell go env GOOS),windows)
+EXE = .exe
+endif
+BUILD_OUTPUT ?= reginald$(EXE)
+
 .PHONY: build
 build:
-	go build -ldflags "$(LDFLAGS)" -o reginald ./cmd/reginald
+ifneq (, $(BUILD_FLAGS))
+	go build $(BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(BUILD_OUTPUT) ./cmd/reginald
+else
+	go build -ldflags "$(LDFLAGS)" -o $(BUILD_OUTPUT) ./cmd/reginald
+endif
 
 # Linting and formatting
 

@@ -1,0 +1,81 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build for ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - { goos: "freebsd", goarch: "386", os: "ubuntu-latest" }
+          - { goos: "freebsd", goarch: "amd64", os: "ubuntu-latest" }
+          - { goos: "freebsd", goarch: "arm", os: "ubuntu-latest" }
+          - { goos: "linux", goarch: "386", os: "ubuntu-latest" }
+          - { goos: "linux", goarch: "amd64", os: "ubuntu-latest" }
+          - { goos: "linux", goarch: "arm", os: "ubuntu-latest" }
+          - { goos: "linux", goarch: "arm64", os: "ubuntu-latest" }
+          - { goos: "openbsd", goarch: "386", os: "ubuntu-latest" }
+          - { goos: "openbsd", goarch: "amd64", os: "ubuntu-latest" }
+          - { goos: "solaris", goarch: "amd64", os: "ubuntu-latest" }
+          - { goos: "windows", goarch: "386", os: "windows-latest" }
+          - { goos: "windows", goarch: "amd64", os: "windows-latest" }
+          - { goos: "darwin", goarch: "amd64", os: "macos-latest" }
+          - { goos: "darwin", goarch: "arm64", os: "macos-latest" }
+      fail-fast: false
+
+    steps:
+      - name: Clone the source code
+        uses: actions/checkout@v4.2.2
+
+      - name: Install the Go toolchain
+        uses: actions/setup-go@v5.5.0
+        with:
+          go-version-file: go.mod
+
+      - name: Verify and download dependencies
+        run: |
+          go mod verify
+          go mod download
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: make build BUILD_FLAGS="-v" PRERELEASE="0.canary.${{ github.run_number }}"
+
+      - name: Run the version command
+        if: ${{ runner.os != 'Windows' && ((matrix.goos == 'linux' &&
+          (matrix.goarch == '386' || matrix.goarch == 'amd64')) || (matrix.goos
+          == 'darwin' && (matrix.goarch == 'arm64' || matrix.goarch ==
+          'amd64'))) }}
+        run: ./reginald --version
+
+      - name: Run the version command on Windows
+        if:
+          ${{ runner.os == 'Windows' && (matrix.goarch == '386' || matrix.goarch
+          == 'amd64') }}
+        run: .\reginald.exe --version
+
+      - name: Get Reginald version
+        id: get-version
+        shell: bash
+        run: |
+          version="$(./reginald --version | awk '{print $2}')"
+          echo "VERSION=${version}" >> "${GITHUB_ENV}"
+
+      - name: Determine the artifact name
+        run: echo "ARTIFACT_NAME=reginald-${{ env.VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}" >> "${GITHUB_ENV}"
+
+      - name: Upload the build artifact
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: reginald
+          if-no-files-found: error
