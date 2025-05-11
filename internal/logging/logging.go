@@ -30,12 +30,14 @@ func InitBootstrap() error {
 	if outputName == "" {
 		// TODO: The default should be file or disabled, but let's implement
 		// that later.
-		outputName = "stderr"
+		outputName = "/dev/null"
 	}
 
 	var output io.Writer
 
 	switch strings.ToLower(outputName) {
+	case "/dev/null":
+		output = io.Discard
 	case "stderr":
 		output = os.Stderr
 	case "stdout":
@@ -48,6 +50,7 @@ func InitBootstrap() error {
 		AddSource: true,
 		Level:     slog.LevelDebug,
 	})
+
 	logger := slog.New(handler)
 
 	slog.SetDefault(logger)
