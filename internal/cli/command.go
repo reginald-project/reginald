@@ -15,6 +15,16 @@ type Command struct {
 	// with the command name without including the parent commands.
 	UsageLine string
 
+	// Setup runs the setup required for the Command. For example, the
+	// configuration should be parsed in Setup. If Command is a subcommand, the
+	// setup functions for the parent commands are run first, starting from the
+	// root command.
+	Setup func(cmd *Command, args []string) error
+
+	// Runs runs the command. Before running the command, Setup functions for
+	// the command and its parent commands are run.
+	Run func(cmd *Command, args []string) error
+
 	commands    []*Command     // list of subcommands
 	flags       *pflag.FlagSet // all of the command-line options
 	globalFlags *pflag.FlagSet // options that are inherited by the subcommands

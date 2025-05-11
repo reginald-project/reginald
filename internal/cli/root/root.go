@@ -2,6 +2,10 @@
 package root
 
 import (
+	"fmt"
+	"log/slog"
+	"os"
+
 	"github.com/anttikivi/reginald/internal/cli"
 	"github.com/anttikivi/reginald/internal/cli/apply"
 )
@@ -16,6 +20,8 @@ func New(version string) *cli.RootCommand {
 	c := &cli.RootCommand{
 		Command: cli.Command{
 			UsageLine: name + " [--version] [-h | --help] <command> [<args>]",
+			Setup:     setup,
+			Run:       run,
 		},
 		Version: version,
 	}
@@ -26,4 +32,16 @@ func New(version string) *cli.RootCommand {
 	c.Add(apply.New())
 
 	return c
+}
+
+func setup(cmd *cli.Command, _ []string) error {
+	slog.Info("running setup", "cmd", cmd.Name())
+
+	return nil
+}
+
+func run(_ *cli.Command, _ []string) error {
+	fmt.Fprintln(os.Stdout, "HELP MESSAGE")
+
+	return nil
 }

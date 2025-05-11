@@ -61,7 +61,13 @@ func Run(cmd *RootCommand) error {
 		return nil
 	}
 
-	// setupCmd
+	if err = setup(c, args); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	if err = c.Run(c, args); err != nil {
+		return fmt.Errorf("%w", err)
+	}
 
 	return nil
 }
@@ -229,4 +235,20 @@ func shortHasNoOptDefVal(name string, fs *pflag.FlagSet) bool {
 	}
 
 	return f.NoOptDefVal != ""
+}
+
+// setup runs [Command.Setup] for all of the commands, starting from the root
+// command. It exits on the first error it encounters.
+func setup(c *Command, args []string) error {
+	if c.HasParent() {
+		if err := setup(c.parent, args); err != nil {
+			return fmt.Errorf("%w", err)
+		}
+	}
+
+	if err := c.Setup(c, args); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	return nil
 }
