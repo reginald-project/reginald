@@ -61,7 +61,7 @@ jobs:
         if: ${{ runner.os == 'Windows' }}
         shell: bash
         run: |
-          version="$(.\reginald.exe --version | awk '{print $2}')"
+          version="$(.\\reginald.exe --version | awk '{print $2}')"
           echo "VERSION=${version}" >> "${GITHUB_ENV}"
 
       - name: Determine the artifact name
