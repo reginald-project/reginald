@@ -27,7 +27,7 @@ type Command struct {
 type RootCommand struct {
 	Command
 
-	// Version is the version number of the command. It
+	// Version is the version number of the program.
 	Version string
 }
 

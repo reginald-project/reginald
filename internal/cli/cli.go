@@ -32,6 +32,9 @@ func Run(cmd *RootCommand) error {
 
 	c.mergeFlags()
 
+	// TODO: Move checking the errors to a later time when the plugin system is
+	// in place. It should be possible to define subcommands and flags for them
+	// using the plugins.
 	if err := c.Flags().Parse(args); err != nil {
 		return fmt.Errorf("failed to parse command-line arguments: %w", err)
 	}
