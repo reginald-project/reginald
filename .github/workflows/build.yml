@@ -65,6 +65,7 @@ jobs:
           echo "VERSION=${version}" >> "${GITHUB_ENV}"
 
       - name: Determine the artifact name
+        shell: bash
         run: echo "ARTIFACT_NAME=reginald-${{ env.VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}" >> "${GITHUB_ENV}"
 
       - name: Upload the build artifact
