@@ -14,11 +14,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - { goos: "linux", goarch: "386", os: "ubuntu-latest" }
           - { goos: "linux", goarch: "amd64", os: "ubuntu-latest" }
-          - { goos: "windows", goarch: "386", os: "windows-latest" }
+          - { goos: "linux", goarch: "arm64", os: "ubuntu-24.04-arm" }
           - { goos: "windows", goarch: "amd64", os: "windows-latest" }
-          - { goos: "darwin", goarch: "amd64", os: "macos-latest" }
+          - { goos: "windows", goarch: "arm64", os: "windows-11-arm" }
+          - { goos: "darwin", goarch: "amd64", os: "macos-13" }
           - { goos: "darwin", goarch: "arm64", os: "macos-latest" }
       fail-fast: false
 
