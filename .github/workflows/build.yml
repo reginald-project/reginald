@@ -40,7 +40,9 @@ jobs:
       - name: Resolve the version number
         shell: bash
         run: |
-          VERSION="$(cat VERSION)-0.canary.${{ github.run_number }}+${{ github.sha }}.$(date -u +"%Y%m%d%H%M%S")"
+          ARTIFACT_VERSION="$(cat VERSION)-0.canary.${{ github.run_number }}"
+          VERSION="${ARTIFACT_VERSION}+${{ github.sha }}.$(date -u +"%Y%m%d%H%M%S")"
+          echo "ARTIFACT_VERSION=${ARTIFACT_VERSION}" >> "${GITHUB_ENV}"
           echo "VERSION=${VERSION}" >> "${GITHUB_ENV}"
 
       - name: Resolve the build output
@@ -73,7 +75,7 @@ jobs:
 
       - name: Determine the artifact name
         shell: bash
-        run: echo "ARTIFACT_NAME=reginald-${{ env.VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}" >> "${GITHUB_ENV}"
+        run: echo "ARTIFACT_NAME=reginald-${{ env.ARTIFACT_VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}" >> "${GITHUB_ENV}"
 
       - name: Upload the build artifact
         uses: actions/upload-artifact@v4.6.2
