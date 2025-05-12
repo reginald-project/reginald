@@ -20,7 +20,7 @@ func New() *cli.Command {
 	return c
 }
 
-func setup(cmd *cli.Command, _ []string) error {
+func setup(cmd, _ *cli.Command, _ []string) error {
 	slog.Info("running setup", "cmd", cmd.Name())
 
 	return nil

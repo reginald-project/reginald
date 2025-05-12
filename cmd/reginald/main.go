@@ -23,7 +23,11 @@ func main() {
 	slog.Debug("bootstrap logger initialized")
 	slog.Info("bootstrapping Reginald", "version", version.Version)
 
-	rootCmd := root.New(version.Version)
+	rootCmd, err := root.New(version.Version)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
 
 	if err := cli.Run(rootCmd); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

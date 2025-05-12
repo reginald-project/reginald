@@ -15,11 +15,16 @@ type Command struct {
 	// with the command name without including the parent commands.
 	UsageLine string
 
-	// Setup runs the setup required for the Command. For example, the
-	// configuration should be parsed in Setup. If Command is a subcommand, the
-	// setup functions for the parent commands are run first, starting from the
-	// root command.
-	Setup func(cmd *Command, args []string) error
+	// Setup runs the setup required for the Command. The function receives
+	// pointer cmd to the Command that it is currently run on and pointer subcmd
+	// to the final subcommand that will be run. Any flags that need to be used
+	// should be acquired from subcmd as the flags are merged into its flags
+	// before Setup is called.
+	//
+	// For example, the configuration should be parsed in Setup. If Command is
+	// a subcommand, the setup functions for the parent commands are run first,
+	// starting from the root command.
+	Setup func(cmd, subcmd *Command, args []string) error
 
 	// Runs runs the command. Before running the command, Setup functions for
 	// the command and its parent commands are run.

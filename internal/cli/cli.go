@@ -11,8 +11,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// programName is the canonical name of this program.
-const programName = "Reginald"
+// ProgramName is the canonical name of this program.
+const ProgramName = "Reginald"
 
 // Run executes the given root command. It parses the command-line options,
 // finds the correct subcommand to run, and executes it. It returns any error
@@ -57,12 +57,12 @@ func Run(cmd *RootCommand) error {
 	}
 
 	if version {
-		fmt.Fprintf(os.Stdout, "%s %s\n", programName, semver.MustParse(cmd.Version))
+		fmt.Fprintf(os.Stdout, "%s %s\n", ProgramName, semver.MustParse(cmd.Version))
 
 		return nil
 	}
 
-	if err = setup(c, args); err != nil {
+	if err = setup(c, c, args); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
@@ -244,14 +244,14 @@ func shortHasNoOptDefVal(name string, fs *pflag.FlagSet) bool {
 
 // setup runs [Command.Setup] for all of the commands, starting from the root
 // command. It exits on the first error it encounters.
-func setup(c *Command, args []string) error {
+func setup(c, subcmd *Command, args []string) error {
 	if c.HasParent() {
-		if err := setup(c.parent, args); err != nil {
+		if err := setup(c.parent, subcmd, args); err != nil {
 			return fmt.Errorf("%w", err)
 		}
 	}
 
-	if err := c.Setup(c, args); err != nil {
+	if err := c.Setup(c, subcmd, args); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
