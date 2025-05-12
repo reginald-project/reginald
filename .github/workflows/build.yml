@@ -37,6 +37,21 @@ jobs:
           go env GOARCH
           go version
 
+      - name: Resolve the version number
+        shell: bash
+        run: |
+          VERSION="$(cat VERSION)-0.canary.${{ github.run_number }}+${{ github.sha }}.$(date -u +"%Y%m%d%H%M%S")"
+          echo "VERSION=${VERSION}" >> "${GITHUB_ENV}"
+
+      - name: Resolve the build output
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            echo "BUILD_OUTPUT=reginald.exe" >> "${GITHUB_ENV}"
+          else
+            echo "BUILD_OUTPUT=reginald" >> "${GITHUB_ENV}"
+          fi
+
       - name: Verify and download dependencies
         run: |
           go mod verify
@@ -46,7 +61,7 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-        run: make build BUILD_FLAGS="-v" PRERELEASE="0.canary.${{ github.run_number }}"
+        run: make build BUILD_FLAGS="-v" BUILD_OUTPUT="${{ env.BUILD_OUTPUT }}" VERSION="${{ env.VERSION }}"
 
       - name: Run the version command
         if: ${{ runner.os != 'Windows' }}
@@ -56,36 +71,13 @@ jobs:
         if: ${{ runner.os == 'Windows' }}
         run: .\reginald.exe --version
 
-      - name: Get Reginald version
-        if: ${{ runner.os != 'Windows' }}
-        shell: bash
-        run: |
-          version="$(./reginald --version | awk '{print $2}')"
-          echo "VERSION=${version}" >> "${GITHUB_ENV}"
-
-      - name: Get Reginald version on Windows
-        if: ${{ runner.os == 'Windows' }}
-        shell: bash
-        run: |
-          version="$(.\\reginald.exe --version | awk '{print $2}')"
-          echo "VERSION=${version}" >> "${GITHUB_ENV}"
-
       - name: Determine the artifact name
         shell: bash
         run: echo "ARTIFACT_NAME=reginald-${{ env.VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}" >> "${GITHUB_ENV}"
 
       - name: Upload the build artifact
         uses: actions/upload-artifact@v4.6.2
-        if: ${{ runner.os != 'Windows' }}
         with:
           name: ${{ env.ARTIFACT_NAME }}
-          path: reginald
-          if-no-files-found: error
-
-      - name: Upload the build artifact on Windows
-        uses: actions/upload-artifact@v4.6.2
-        if: ${{ runner.os == 'Windows' }}
-        with:
-          name: ${{ env.ARTIFACT_NAME }}
-          path: reginald.exe
+          path: ${{ env.BUILD_OUTPUT }}
           if-no-files-found: error
