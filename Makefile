@@ -15,11 +15,13 @@ PRERELEASE ?= 0.dev.$(shell date -u +"%Y%m%d%H%M%S")
 BUILD_METADATA ?= $(COMMIT_HASH)
 VERSION ?= $(BASE_VERSION)-$(PRERELEASE)+$(BUILD_METADATA)
 
-LDFLAGS := -X github.com/anttikivi/reginald/internal/version.Version=$(VERSION)
+LDFLAGS ?=
+LDFLAGS += -X github.com/anttikivi/reginald/internal/version.Version=$(VERSION)
 LDFLAGS += -X github.com/anttikivi/reginald/internal/version.Commit=$(COMMIT_HASH)
 LDFLAGS += -X github.com/anttikivi/reginald/internal/version.BuildDate=$(BUILD_DATE)
 
 BUILD_FLAGS ?=
+BUILD_FLAGS += -ldflags "$(LDFLAGS)"
 
 EXE =
 ifeq ($(shell go env GOOS),windows)
@@ -29,11 +31,7 @@ BUILD_OUTPUT ?= reginald$(EXE)
 
 .PHONY: build
 build:
-ifneq (, $(BUILD_FLAGS))
-	go build $(BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(BUILD_OUTPUT) ./cmd/reginald
-else
-	go build -ldflags "$(LDFLAGS)" -o $(BUILD_OUTPUT) ./cmd/reginald
-endif
+	go build $(BUILD_FLAGS) -o $(BUILD_OUTPUT) ./cmd/reginald
 
 # Linting and formatting
 
