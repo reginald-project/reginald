@@ -31,6 +31,12 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Display the platform information for Go
+        run: |
+          go env GOOS
+          go env GOARCH
+          go version
+
       - name: Verify and download dependencies
         run: |
           go mod verify
