@@ -13,25 +13,16 @@ BUILD_DATE = $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 BASE_VERSION ?= $(shell cat VERSION)
 PRERELEASE ?= 0.dev.$(shell date -u +"%Y%m%d%H%M%S")
 BUILD_METADATA ?= $(COMMIT_HASH)
-VERSION ?=
-
-ifeq (, $(VERSION))
-VERSION := $(BASE_VERSION)
-ifneq (, $(PRERELEASE))
-VERSION := $(VERSION)-$(PRERELEASE)
-endif
-ifneq (, $(BUILD_METADATA))
-VERSION := $(VERSION)+$(BUILD_METADATA)
-endif
-endif
+VERSION ?= $(BASE_VERSION)$(if $(PRERELEASE),-$(PRERELEASE))$(if $(BUILD_METADATA),+$(BUILD_METADATA))
 
 LDFLAGS ?=
-LDFLAGS += -X github.com/anttikivi/reginald/internal/version.Version=$(VERSION)
-LDFLAGS += -X github.com/anttikivi/reginald/internal/version.Commit=$(COMMIT_HASH)
-LDFLAGS += -X github.com/anttikivi/reginald/internal/version.BuildDate=$(BUILD_DATE)
+FULL_LDFLAGS = $(LDFLAGS)
+FULL_LDFLAGS += -X github.com/anttikivi/reginald/internal/version.Version=$(VERSION)
+FULL_LDFLAGS += -X github.com/anttikivi/reginald/internal/version.Commit=$(COMMIT_HASH)
+FULL_LDFLAGS += -X github.com/anttikivi/reginald/internal/version.BuildDate=$(BUILD_DATE)
 
 BUILD_FLAGS ?=
-BUILD_FLAGS += -ldflags "$(LDFLAGS)"
+FULL_BUILD_FLAGS = $(BUILD_FLAGS) -ldflags "$(FULL_LDFLAGS)"
 
 EXE =
 ifeq ($(shell go env GOOS),windows)
@@ -41,7 +32,8 @@ BUILD_OUTPUT ?= reginald$(EXE)
 
 .PHONY: build
 build:
-	go build $(BUILD_FLAGS) -o $(BUILD_OUTPUT) ./cmd/reginald
+	@echo "Building version $(VERSION)"
+	go build $(FULL_BUILD_FLAGS) -o $(BUILD_OUTPUT) ./cmd/reginald
 
 # Linting and formatting
 
