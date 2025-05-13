@@ -57,6 +57,21 @@ build:
 	echo "building Reginald version $${version}"; \
 	go build $${goflags} -ldflags "$${ldflags}" -o "$${output}" ./cmd/reginald
 
+clean:
+	@exe=""; \
+	\
+	case "$$(go env GOOS)" in \
+		windows) exe=".exe";; \
+	esac; \
+	\
+	output="$(OUTPUT)"; \
+	\
+	if [ -z "$${output}" ]; then \
+		output="reginald$${exe}"; \
+	fi; \
+	\
+	rm "$${output}"
+
 # Linting and formatting
 
 fmt: install-gci install-gofumpt install-golines
