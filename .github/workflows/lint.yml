@@ -6,11 +6,15 @@ on:
       - "**.go"
       - go.mod
       - go.sum
+      - Makefile
+      - .golangci.yml
   pull_request:
     paths:
       - "**.go"
       - go.mod
       - go.sum
+      - Makefile
+      - .golangci.yml
 
 permissions:
   contents: read
