@@ -1,95 +1,124 @@
-.DEFAULT_GOAL := build
+.POSIX:
+.SUFFIXES:
 
-GCI_VERSION ?= 0.13.0
-GOFUMPT_VERSION ?= 0.8.0
-GOLANGCI_LINT_VERSION ?= 2.1.6
-GOLINES_VERSION ?= 0.12.2
+GCI_VERSION = 0.13.0
+GOFUMPT_VERSION = 0.8.0
+GOLANGCI_LINT_VERSION = 2.1.6
+GOLINES_VERSION = 0.12.2
 
-GOPATH = $(shell go env GOPATH)
+all: build
 
-COMMIT_HASH ?= $(shell git describe --always --dirty --abbrev=40)
-BUILD_DATE = $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-BASE_VERSION ?= $(shell cat VERSION)
-PRERELEASE ?= 0.dev.$(shell date -u +"%Y%m%d%H%M%S")
-BUILD_METADATA ?= $(COMMIT_HASH)
-VERSION ?= $(BASE_VERSION)$(if $(PRERELEASE),-$(PRERELEASE))$(if $(BUILD_METADATA),+$(BUILD_METADATA))
-
-LDFLAGS ?=
-FULL_LDFLAGS = $(LDFLAGS)
-FULL_LDFLAGS += -X github.com/anttikivi/reginald/internal/version.Version=$(VERSION)
-FULL_LDFLAGS += -X github.com/anttikivi/reginald/internal/version.Commit=$(COMMIT_HASH)
-FULL_LDFLAGS += -X github.com/anttikivi/reginald/internal/version.BuildDate=$(BUILD_DATE)
-
-BUILD_FLAGS ?=
-FULL_BUILD_FLAGS = $(BUILD_FLAGS) -ldflags "$(FULL_LDFLAGS)"
-
-EXE =
-ifeq ($(shell go env GOOS),windows)
-EXE = .exe
-endif
-BUILD_OUTPUT ?= reginald$(EXE)
-
-.PHONY: build
 build:
-	@echo "Building version $(VERSION)"
-	go build $(FULL_BUILD_FLAGS) -o $(BUILD_OUTPUT) ./cmd/reginald
+	@commit_hash="$$(git describe --always --dirty --abbrev=40)"; \
+	build_date="$$(date -u +"%Y-%m-%dT%H:%M:%SZ")"; \
+	base_version="$$(cat VERSION)"; \
+	prerelease="$(PRERELEASE)"; \
+	build_metadata="$(BUILD_METADATA)"; \
+	\
+	if [ -z "$${prerelease}" ]; then \
+		prerelease="0.dev.$$(date -u +"%Y%m%d%H%M%S")"; \
+	fi; \
+	\
+	if [ -z "$${build_metadata}" ]; then \
+		build_metadata="$${commit_hash}"; \
+	fi; \
+	\
+	if [ -n "$(VERSION)" ]; then \
+		version="$(VERSION)"; \
+	else \
+		version="$${base_version}"; \
+		if [ -n "$${prerelease}" ]; then \
+			version="$${version}-$${prerelease}"; \
+		fi; \
+		if [ -n "$${build_metadata}" ]; then \
+			version="$${version}+$${build_metadata}"; \
+		fi; \
+	fi; \
+	\
+	ldflags="$(LDFLAGS)"; \
+	ldflags="$${ldflags} -X github.com/anttikivi/reginald/internal/version.Version=$${version}"; \
+	ldflags="$${ldflags} -X github.com/anttikivi/reginald/internal/version.Commit=$${commit_hash}"; \
+	ldflags="$${ldflags} -X github.com/anttikivi/reginald/internal/version.BuildDate=$${build_date}"; \
+	\
+	goflags="$(GOFLAGS)"; \
+	\
+	exe=""; \
+	\
+	case "$$(go env GOOS)" in \
+		windows) exe=".exe";; \
+	esac; \
+	\
+	output="$(OUTPUT)"; \
+	\
+	if [ -z "$${output}" ]; then \
+		output="reginald$${exe}"; \
+	fi; \
+	\
+	echo "building Reginald version $${version}"; \
+	go build $${goflags} -ldflags "$${ldflags}" -o "$${output}" ./cmd/reginald
 
 # Linting and formatting
 
-.PHONY: fmt
 fmt: install-gci install-gofumpt install-golines
 	go mod tidy
 	gci write .
 	golines --no-chain-split-dots -w .
 	gofumpt -extra -l -w .
 
-.PHONY: lint
 lint: install-golangci-lint
 	golangci-lint run
 
 # Tools
 
-.PHONY: install-gci
 install-gci:
-ifeq (, $(shell which gci))
-	@echo "gci not found, installing..."
-	go install github.com/daixiang0/gci@v$(GCI_VERSION)
-endif
-ifneq ($(GCI_VERSION), $(shell gci --version | awk '{print $$3}'))
-	@echo "found gci version $(shell gci --version | awk '{print $$3}'), installing version $(GCI_VERSION)..."
-	go install github.com/daixiang0/gci@v$(GCI_VERSION)
-endif
+	@PATH="$${PATH}:$$(go env GOPATH)/bin"; \
+	if ! command -v gci >/dev/null 2>&1; then \
+		echo "gci not found, installing..."; \
+		go install github.com/daixiang0/gci@v$(GCI_VERSION); \
+		exit 0; \
+	fi; \
+	CURRENT_VERSION="$$(gci --version 2>/dev/null | awk '{print $$3}')"; \
+	if [ "$${CURRENT_VERSION}" != "$(GCI_VERSION)" ]; then \
+		echo "found gci version $${CURRENT_VERSION}, installing version $(GCI_VERSION)..."; \
+		go install github.com/daixiang0/gci@v$(GCI_VERSION); \
+	fi
 
-.PHONY: install-gofumpt
 install-gofumpt:
-ifeq (, $(shell which gofumpt))
-	@echo "gofumpt not found, installing..."
-	go install mvdan.cc/gofumpt@v$(GOFUMPT_VERSION)
-endif
-ifneq ($(GOFUMPT_VERSION), $(shell gofumpt --version | awk '{print $$1}' | cut -c 2-))
-	@echo "found gofumpt version $(shell gofumpt --version | awk '{print $$1}' | cut -c 2-), installing version $(GOFUMPT_VERSION)..."
-	go install mvdan.cc/gofumpt@v$(GOFUMPT_VERSION)
-endif
+	@PATH="$${PATH}:$$(go env GOPATH)/bin"; \
+	if ! command -v gofumpt >/dev/null 2>&1; then \
+		echo "gofumpt not found, installing..."; \
+		go install mvdan.cc/gofumpt@v$(GOFUMPT_VERSION); \
+		exit 0; \
+	fi; \
+	CURRENT_VERSION="$$(gofumpt --version | awk '{print $$1}' | cut -c 2-)"; \
+	if [ "$${CURRENT_VERSION}" != "$(GOFUMPT_VERSION)" ]; then \
+		echo "found gofumpt version $${CURRENT_VERSION}, installing version $(GOFUMPT_VERSION)..."; \
+		go install mvdan.cc/gofumpt@v$(GOFUMPT_VERSION); \
+	fi
 
-.PHONY: install-golangci-lint
 install-golangci-lint:
-ifeq (, $(shell which golangci-lint))
-	@echo "golangci-lint not found, installing..."
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(GOPATH)/bin v$(GOLANGCI_LINT_VERSION)
-endif
-ifneq ($(GOLANGCI_LINT_VERSION), $(shell golangci-lint --version | awk '{print $$4}'))
-	@echo "found golangci-lint version $(shell golangci-lint --version | awk '{print $$4}'), installing version $(GOLANGCI_LINT_VERSION)..."
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(GOPATH)/bin v$(GOLANGCI_LINT_VERSION)
-endif
+	@GOPATH="$$(go env GOPATH)"; \
+	PATH="$${PATH}:$${GOPATH}/bin"; \
+	if ! command -v golangci-lint >/dev/null 2>&1; then \
+		echo "golangci-lint not found, installing..."; \
+		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "${GOPATH}/bin" v$(GOLANGCI_LINT_VERSION); \
+		exit 0; \
+	fi; \
+	CURRENT_VERSION=$$(golangci-lint --version 2>/dev/null | awk '{print $$4}'); \
+	if [ "$${CURRENT_VERSION}" != "$(GOLANGCI_LINT_VERSION)" ]; then \
+		echo "found golangci-lint version $${CURRENT_VERSION}, installing version $(GOLANGCI_LINT_VERSION)..."; \
+		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "${GOPATH}/bin" v$(GOLANGCI_LINT_VERSION); \
+	fi
 
-.PHONY: install-golines
 install-golines:
-ifeq (, $(shell which golines))
-	@echo "golines not found, installing..."
-	./scripts/install_golines "$(GOLINES_VERSION)"
-endif
-ifneq ($(GOLINES_VERSION), $(shell golines --version | head -1 | awk '{print $$2}' | cut -c 2-))
-	@echo "found golines version $(shell golines --version | head -1 | awk '{print $$2}' | cut -c 2-), installing version $(GOLINES_VERSION)..."
-	./scripts/install_golines "$(GOLINES_VERSION)"
-endif
+	@PATH="$${PATH}:$$(go env GOPATH)/bin"; \
+	if ! command -v golines >/dev/null 2>&1; then \
+		echo "golines not found, installing..."; \
+		./scripts/install_golines "$(GOLINES_VERSION)"; \
+		exit 0; \
+	fi; \
+	CURRENT_VERSION="$$(golines --version | head -1 | awk '{print $$2}' | cut -c 2-)"; \
+	if [ "$${CURRENT_VERSION}" != "$(GOLINES_VERSION)" ]; then \
+		echo "found golines version $${CURRENT_VERSION}, installing version $(GOLINES_VERSION)..."; \
+		./scripts/install_golines "$(GOLINES_VERSION)"; \
+	fi

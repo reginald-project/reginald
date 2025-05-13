@@ -63,7 +63,7 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-        run: make build BUILD_FLAGS="-v" BUILD_OUTPUT="${{ env.BUILD_OUTPUT }}" VERSION="${{ env.VERSION }}"
+        run: make build GOFLAGS="-v" OUTPUT="${{ env.BUILD_OUTPUT }}" VERSION="${{ env.VERSION }}"
 
       - name: Run the version command
         if: ${{ runner.os != 'Windows' }}
