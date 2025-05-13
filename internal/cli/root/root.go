@@ -65,7 +65,7 @@ func setup(cmd, subcmd *cli.Command, _ []string) error {
 		return fmt.Errorf("failed to parse the config: %w", err)
 	}
 
-	fmt.Println(cfg)
+	slog.Info("config parsed", "config", cfg)
 
 	return nil
 }
