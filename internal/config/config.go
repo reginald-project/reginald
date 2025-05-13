@@ -4,12 +4,14 @@
 package config
 
 import (
+	"encoding"
 	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"github.com/anttikivi/reginald/internal/cli"
@@ -31,8 +33,17 @@ type LoggingConfig struct {
 	Output  string     // destination of the logs
 }
 
-// errConfigFileNotFound is returned when a configuration file is not found.
-var errConfigFileNotFound = errors.New("config file not found")
+// Errors returned from the configuration parser.
+var (
+	errConfigFileNotFound = errors.New("config file not found")
+	errInvalidEnvVar      = errors.New("invalid config value in environment variable")
+)
+
+// textUnmarshalerType is a helper variable for checking if types of fields in
+// Config implement [encoding.TextUnmarshaler].
+//
+//nolint:gochecknoglobals
+var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
 
 // Parse parses the configuration according to the configuration given with fs.
 // The FlagSet fs should be a flag set that contains all of the flags for the
@@ -73,6 +84,10 @@ func Parse(fs *pflag.FlagSet) (*Config, error) {
 	config := defaultConfig()
 	if err = toml.Unmarshal(data, config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal the config file: %w", err)
+	}
+
+	if err = applyEnv(config); err != nil {
+		return nil, fmt.Errorf("failed to read environment variables for config: %w", err)
 	}
 
 	return config, nil
@@ -163,4 +178,122 @@ func defaultConfig() *Config {
 			Output:  "stdout",
 		},
 	}
+}
+
+// applyEnv applies the overrides of the configuration values from environment
+// variables to cfg. It modifies the pointed cfg.
+func applyEnv(cfg *Config) error {
+	v := reflect.ValueOf(cfg).Elem()
+
+	if err := unmarshalEnv(v, cli.ProgramName); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	return nil
+}
+
+// unmarshalEnv is the implementation for applying the environment variables
+// into the configuration struct. It reads the struct fields from v and checks
+// if there is an environment variable with the name <PREFIX>_<FIELD NAME> (all
+// upper case). If a variable with that name is set, the function tries to set
+// the struct value accordingly. It prioritizes [encoding.TextUnmarshaler] if
+// the type implements that; otherwise it tries to manually find the correct
+// value. This function may panic. It returns an error when the user has given
+// an invalid value for the variable.
+//
+// TODO: Allow using struct tags for specifying the name of the variable.
+func unmarshalEnv(v reflect.Value, prefix string) error {
+	for i := range v.NumField() {
+		fieldValue := v.Field(i)
+		structField := v.Type().Field(i)
+
+		if !fieldValue.CanSet() {
+			continue
+		}
+
+		slog.Debug("checking config field", "field", structField.Name)
+
+		env := strings.ToUpper(fmt.Sprintf("%s_%s", prefix, structField.Name))
+
+		if fieldValue.Kind() == reflect.Struct {
+			if err := unmarshalEnv(fieldValue, env); err != nil {
+				return fmt.Errorf("%w", err)
+			}
+
+			continue
+		}
+
+		slog.Debug("reading config value from env", "var", env)
+
+		if val := os.Getenv(env); val != "" {
+			ok, err := tryUnmarshalText(fieldValue, structField, val)
+			if ok {
+				continue
+			}
+
+			if err != nil {
+				return fmt.Errorf("failed to unmarshal text from %s=%q: %w", env, val, err)
+			}
+
+			// TODO: Implement the types as they are needed.
+			switch fieldValue.Kind() { //nolint:exhaustive
+			case reflect.Bool:
+				switch strings.ToLower(strings.TrimSpace(val)) {
+				case "true", "1":
+					fieldValue.SetBool(true)
+				case "false", "0":
+					fieldValue.SetBool(false)
+				default:
+					return fmt.Errorf("%w: %s=%q", errInvalidEnvVar, env, val)
+				}
+			case reflect.String:
+				fieldValue.SetString(val)
+			case reflect.Struct:
+				panic(
+					fmt.Sprintf(
+						"reached the struct check when converting environment variable to config value in %s: %s",
+						structField.Name,
+						fieldValue.Kind(),
+					),
+				)
+			default:
+				panic(
+					fmt.Sprintf(
+						"unsupported config field type for %s: %s",
+						structField.Name,
+						fieldValue.Kind(),
+					),
+				)
+			}
+		}
+	}
+
+	return nil
+}
+
+// tryUnmarshalText checks if it can use [encoding.TextUnmarshaler] to unmarshal
+// the given value and set it to the field. The first return value tells whether
+// this was successful and the second is error.
+func tryUnmarshalText(fv reflect.Value, sf reflect.StructField, val string) (bool, error) {
+	if reflect.PointerTo(fv.Type()).Implements(textUnmarshalerType) {
+		slog.Debug("pointer to field implements TextUnmarshaler", "field", sf.Name)
+
+		unmarshaler, ok := fv.Addr().Interface().(encoding.TextUnmarshaler)
+		if !ok {
+			panic(
+				fmt.Sprintf(
+					"failed to cast field %q to encoding.TextUnmarshaler",
+					sf.Name,
+				),
+			)
+		}
+
+		if err := unmarshaler.UnmarshalText([]byte(val)); err != nil {
+			return false, fmt.Errorf("%w", err)
+		}
+
+		return true, nil
+	}
+
+	return false, nil
 }
