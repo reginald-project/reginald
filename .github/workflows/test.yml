@@ -88,6 +88,6 @@ jobs:
           go mod download
 
       - name: Run the tests
-        run: make test GOFLAGS="-race"
+        run: make test GOFLAGS="-race -v"
 
   # TODO: Create the integration tests.
