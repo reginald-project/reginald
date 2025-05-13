@@ -32,6 +32,11 @@ linters:
     funlen:
       lines: 100
       ignore-comments: true
+    goconst:
+      find-duplicates: true
+      ignore-string-values:
+        - "^stderr$" # TODO: check this again later, maybe the ignore should be removed
+      min-occurrences: 3
     varnamelen:
       max-distance: 50
 
