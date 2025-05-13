@@ -7,36 +7,37 @@ if [[ -z "$1" ]]; then
   exit 1
 fi
 
-GOLINES_VERSION="$1"
-CHECKSUM_FILE="golines_${GOLINES_VERSION}_checksums.txt"
-ARCHIVE_FILE="golines_${GOLINES_VERSION}_$(uname | tr '[:upper:]' '[:lower:]')_$(uname -m).tar.gz"
+golines_version="$1"
+checksum_file="golines_${golines_version}_checksums.txt"
+archive_file="golines_${golines_version}_$(uname | tr '[:upper:]' '[:lower:]')_$(uname -m).tar.gz"
 
 if [[ "$(uname)" == "Darwin" ]]; then
-  ARCHIVE_FILE="golines_${GOLINES_VERSION}_darwin_all.tar.gz"
+  archive_file="golines_${golines_version}_darwin_all.tar.gz"
 fi
 
-DESTINATION="${GOPATH}/bin/golines"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+# TODO: Do we need to check the Go path?
+destination="${GOPATH}/bin/golines"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 
-cd "${SCRIPT_DIR}/.."
+cd "${script_dir}/.."
 
 mkdir tmp
 
 cd tmp
 
-curl -sSfLO "https://github.com/segmentio/golines/releases/download/v${GOLINES_VERSION}/${CHECKSUM_FILE}"
-curl -sSfLO "https://github.com/segmentio/golines/releases/download/v${GOLINES_VERSION}/${ARCHIVE_FILE}" -o ./tmp/golines.tar.gz
-sha256sum -c --ignore-missing "${CHECKSUM_FILE}"
+curl -sSfLO "https://github.com/segmentio/golines/releases/download/v${golines_version}/${checksum_file}"
+curl -sSfLO "https://github.com/segmentio/golines/releases/download/v${golines_version}/${archive_file}" -o ./tmp/golines.tar.gz
+sha256sum -c --ignore-missing "${checksum_file}"
 
-if [[ -f "${DESTINATION}" ]]; then
-  rm "${DESTINATION}"
+if [[ -f "${destination}" ]]; then
+  rm "${destination}"
 fi
 
-if [[ ! -d "$(dirname "${DESTINATION}")" ]]; then
-  mkdir -p "$(dirname "${DESTINATION}")"
+if [[ ! -d "$(dirname "${destination}")" ]]; then
+  mkdir -p "$(dirname "${destination}")"
 fi
 
-tar --strip-components=1 -C "$(dirname "${DESTINATION}")" -xf "${ARCHIVE_FILE}" "$(basename "${ARCHIVE_FILE}" ".tar.gz")/golines"
+tar --strip-components=1 -C "$(dirname "${destination}")" -xf "${archive_file}" "$(basename "${archive_file}" ".tar.gz")/golines"
 
 cd ..
 

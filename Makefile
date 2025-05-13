@@ -92,9 +92,9 @@ install-gci:
 		go install github.com/daixiang0/gci@v$(GCI_VERSION); \
 		exit 0; \
 	fi; \
-	CURRENT_VERSION="$$(gci --version 2>/dev/null | awk '{print $$3}')"; \
-	if [ "$${CURRENT_VERSION}" != "$(GCI_VERSION)" ]; then \
-		echo "found gci version $${CURRENT_VERSION}, installing version $(GCI_VERSION)..."; \
+	current_version="$$(gci --version 2>/dev/null | awk '{print $$3}')"; \
+	if [ "$${current_version}" != "$(GCI_VERSION)" ]; then \
+		echo "found gci version $${current_version}, installing version $(GCI_VERSION)..."; \
 		go install github.com/daixiang0/gci@v$(GCI_VERSION); \
 	fi
 
@@ -105,9 +105,9 @@ install-gofumpt:
 		go install mvdan.cc/gofumpt@v$(GOFUMPT_VERSION); \
 		exit 0; \
 	fi; \
-	CURRENT_VERSION="$$(gofumpt --version | awk '{print $$1}' | cut -c 2-)"; \
-	if [ "$${CURRENT_VERSION}" != "$(GOFUMPT_VERSION)" ]; then \
-		echo "found gofumpt version $${CURRENT_VERSION}, installing version $(GOFUMPT_VERSION)..."; \
+	current_version="$$(gofumpt --version | awk '{print $$1}' | cut -c 2-)"; \
+	if [ "$${current_version}" != "$(GOFUMPT_VERSION)" ]; then \
+		echo "found gofumpt version $${current_version}, installing version $(GOFUMPT_VERSION)..."; \
 		go install mvdan.cc/gofumpt@v$(GOFUMPT_VERSION); \
 	fi
 
@@ -119,9 +119,9 @@ install-golangci-lint:
 		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "${GOPATH}/bin" v$(GOLANGCI_LINT_VERSION); \
 		exit 0; \
 	fi; \
-	CURRENT_VERSION=$$(golangci-lint --version 2>/dev/null | awk '{print $$4}'); \
-	if [ "$${CURRENT_VERSION}" != "$(GOLANGCI_LINT_VERSION)" ]; then \
-		echo "found golangci-lint version $${CURRENT_VERSION}, installing version $(GOLANGCI_LINT_VERSION)..."; \
+	current_version=$$(golangci-lint --version 2>/dev/null | awk '{print $$4}'); \
+	if [ "$${current_version}" != "$(GOLANGCI_LINT_VERSION)" ]; then \
+		echo "found golangci-lint version $${current_version}, installing version $(GOLANGCI_LINT_VERSION)..."; \
 		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "${GOPATH}/bin" v$(GOLANGCI_LINT_VERSION); \
 	fi
 
@@ -132,8 +132,8 @@ install-golines:
 		./scripts/install_golines "$(GOLINES_VERSION)"; \
 		exit 0; \
 	fi; \
-	CURRENT_VERSION="$$(golines --version | head -1 | awk '{print $$2}' | cut -c 2-)"; \
-	if [ "$${CURRENT_VERSION}" != "$(GOLINES_VERSION)" ]; then \
-		echo "found golines version $${CURRENT_VERSION}, installing version $(GOLINES_VERSION)..."; \
+	current_version="$$(golines --version | head -1 | awk '{print $$2}' | cut -c 2-)"; \
+	if [ "$${current_version}" != "$(GOLINES_VERSION)" ]; then \
+		echo "found golines version $${current_version}, installing version $(GOLINES_VERSION)..."; \
 		./scripts/install_golines "$(GOLINES_VERSION)"; \
 	fi
