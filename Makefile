@@ -58,7 +58,7 @@ build:
 	go build $${goflags} -ldflags "$${ldflags}" -o "$${output}" ./cmd/reginald
 
 test:
-	go test ./...
+	go test $(GOFLAGS) ./...
 
 clean:
 	@exe=""; \
