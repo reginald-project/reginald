@@ -65,13 +65,12 @@ func Parse(fs *pflag.FlagSet) (*Config, error) {
 		return nil, fmt.Errorf("searching for config file failed: %w", err)
 	}
 
-	data, err := os.ReadFile(configFile)
+	data, err := os.ReadFile(filepath.Clean(configFile))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
 	config := defaultConfig()
-
 	if err = toml.Unmarshal(data, config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal the config file: %w", err)
 	}
@@ -117,7 +116,7 @@ func resolveFile(wd, f string) (string, error) {
 	}
 	configNames := []string{
 		strings.ToLower(cli.ProgramName),
-		fmt.Sprintf(".%s", strings.ToLower(cli.ProgramName)),
+		"." + strings.ToLower(cli.ProgramName),
 	}
 	extensions := []string{
 		"toml",
