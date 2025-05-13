@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -12,6 +13,10 @@ import (
 
 // ProgramName is the canonical name of this program.
 const ProgramName = "Reginald"
+
+// errMutuallyExclusive is returned when the user sets two mutually exclusive
+// flags from the same group at the same time.
+var errMutuallyExclusive = errors.New("two mutually exclusive flags set at the same time")
 
 // Run executes the given root command. It parses the command-line options,
 // finds the correct subcommand to run, and executes it. It returns any error
@@ -59,6 +64,10 @@ func Run(cmd *RootCommand) error {
 		fmt.Fprintf(os.Stdout, "%s %v\n", ProgramName, cmd.Version)
 
 		return nil
+	}
+
+	if err = checkMutuallyExclusiveFlags(c); err != nil {
+		return fmt.Errorf("%w", err)
 	}
 
 	if err = setup(c, c, args); err != nil {
@@ -252,6 +261,41 @@ func setup(c, subcmd *Command, args []string) error {
 
 	if err := c.Setup(c, subcmd, args); err != nil {
 		return fmt.Errorf("%w", err)
+	}
+
+	return nil
+}
+
+// checkMutuallyExclusiveFlags checks if two flags marked as mutually exclusive
+// are set at the same time by the user. The function returns an error if two
+// mutually exclusive flags are set.
+func checkMutuallyExclusiveFlags(c *Command) error {
+	if !c.Flags().Parsed() {
+		panic("checkMutuallyExclusiveFlags called before the flags were parsed")
+	}
+
+	for _, a := range c.mutuallyExclusiveFlags {
+		var set string
+
+		for _, s := range a {
+			f := c.Flags().Lookup(s)
+			if f == nil {
+				panic(fmt.Sprintf("nil flag in the set of mutually exclusive flags: %s", s))
+			}
+
+			if f.Changed {
+				if set != "" {
+					return fmt.Errorf(
+						"%w: --%s and --%s (or their shorthands)",
+						errMutuallyExclusive,
+						set,
+						s,
+					)
+				}
+
+				set = s
+			}
+		}
 	}
 
 	return nil

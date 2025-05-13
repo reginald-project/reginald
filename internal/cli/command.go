@@ -31,10 +31,11 @@ type Command struct {
 	// the command and its parent commands are run.
 	Run func(cmd *Command, args []string) error
 
-	commands    []*Command     // list of subcommands
-	flags       *pflag.FlagSet // all of the command-line options
-	globalFlags *pflag.FlagSet // options that are inherited by the subcommands
-	parent      *Command       // parent command of this command if it is a subcommand
+	commands               []*Command     // list of subcommands
+	flags                  *pflag.FlagSet // all of the command-line options
+	globalFlags            *pflag.FlagSet // options that are inherited by the subcommands
+	mutuallyExclusiveFlags [][]string     // list of flag names that are marked as mutually exclusive
+	parent                 *Command       // parent command of this command if it is a subcommand
 }
 
 // A RootCommand is a special command that is reserved to be used as the root
@@ -55,6 +56,15 @@ func (c *Command) Add(cmd *Command) {
 	}
 
 	cmd.parent = c
+
+	if c.mutuallyExclusiveFlags != nil {
+		if cmd.mutuallyExclusiveFlags == nil {
+			cmd.mutuallyExclusiveFlags = [][]string{}
+		}
+
+		cmd.mutuallyExclusiveFlags = append(cmd.mutuallyExclusiveFlags, c.mutuallyExclusiveFlags...)
+	}
+
 	c.commands = append(c.commands, cmd)
 }
 
@@ -69,6 +79,29 @@ func (c *Command) Lookup(name string) *Command {
 	}
 
 	return nil
+}
+
+// MarkFlagsMutuallyExclusive marks two or more flags as mutually exclusive so
+// that the program returns an error if the user tries to set them at the same
+// time.
+func (c *Command) MarkFlagsMutuallyExclusive(a ...string) {
+	c.mergeFlags()
+
+	if len(a) < 2 { //nolint:mnd
+		panic("only one flag cannot be marked as mutually exclusive")
+	}
+
+	for _, s := range a {
+		if f := c.Flags().Lookup(s); f == nil {
+			panic(fmt.Sprintf("failed to find flag %q while marking it as mutually exclusive", s))
+		}
+	}
+
+	if c.mutuallyExclusiveFlags == nil {
+		c.mutuallyExclusiveFlags = [][]string{}
+	}
+
+	c.mutuallyExclusiveFlags = append(c.mutuallyExclusiveFlags, a)
 }
 
 // Name returns the commands name.
