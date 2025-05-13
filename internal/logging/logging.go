@@ -41,7 +41,8 @@ func InitBootstrap() error {
 	if outputName == "" {
 		// TODO: The default should be file or disabled, but let's implement
 		// that later.
-		outputName = "/dev/null"
+		// outputName = "/dev/null"
+		outputName = "stderr"
 	}
 
 	var output io.Writer

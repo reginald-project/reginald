@@ -23,6 +23,8 @@ import (
 // effective Config per run.
 type Config struct {
 	Logging LoggingConfig // logging config values
+	Quiet   bool          // whether only errors are output
+	Verbose bool          // whether verbose output is enabled
 }
 
 // LoggingConfig is type of the logging configuration in Config.
@@ -36,7 +38,10 @@ type LoggingConfig struct {
 // Errors returned from the configuration parser.
 var (
 	errConfigFileNotFound = errors.New("config file not found")
-	errInvalidEnvVar      = errors.New("invalid config value in environment variable")
+	errInvalidConfig      = errors.New(
+		"invalid configuration",
+	) // if there is an invalid combination of config values
+	errInvalidEnvVar = errors.New("invalid config value in environment variable")
 )
 
 // textUnmarshalerType is a helper variable for checking if types of fields in
@@ -88,6 +93,12 @@ func Parse(fs *pflag.FlagSet) (*Config, error) {
 
 	if err = applyEnv(config); err != nil {
 		return nil, fmt.Errorf("failed to read environment variables for config: %w", err)
+	}
+
+	applyFlags(config, fs)
+
+	if err = validate(config); err != nil {
+		return nil, fmt.Errorf("%w", err)
 	}
 
 	return config, nil
@@ -177,6 +188,65 @@ func defaultConfig() *Config {
 			Level:   slog.LevelDebug,
 			Output:  "stdout",
 		},
+		Quiet:   false,
+		Verbose: false,
+	}
+}
+
+// normalize normalizes the configuration values so that they have a predictable
+// format for use later in the program. For example, this includes making paths
+// absolute.
+func normalize(_ *Config) error { //nolint:unused
+	return nil
+}
+
+// validate checks the configuration values and an error if there is an invalid
+// combination of configuration values.
+func validate(c *Config) error {
+	if c.Quiet || c.Verbose {
+		return fmt.Errorf("%w: both quiet and verbose are set", errInvalidConfig)
+	}
+
+	return nil
+}
+
+// applyFlags applies the overrides of the configuration values from
+// command-line flags. It modifies cfg.
+func applyFlags(c *Config, fs *pflag.FlagSet) {
+	if fs.Changed("logging") {
+		b, err := fs.GetBool("logging")
+		if err != nil {
+			panic("failed to get the value for --logging")
+		}
+
+		c.Logging.Enabled = b
+	}
+
+	if fs.Changed("no-logging") {
+		b, err := fs.GetBool("no-logging")
+		if err != nil {
+			panic("failed to get the value for --no-logging")
+		}
+
+		c.Logging.Enabled = !b
+	}
+
+	if fs.Changed("quiet") {
+		b, err := fs.GetBool("quiet")
+		if err != nil {
+			panic("failed to get the value for --quiet")
+		}
+
+		c.Quiet = b
+	}
+
+	if fs.Changed("verbose") {
+		b, err := fs.GetBool("verbose")
+		if err != nil {
+			panic("failed to get the value for --verbose")
+		}
+
+		c.Quiet = b
 	}
 }
 

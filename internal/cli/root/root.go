@@ -20,7 +20,7 @@ const name = "reginald"
 // the necessary global options to the command and creates the subcommands and
 // registers them to the root commands.
 func New(version string) (*cli.RootCommand, error) {
-	c := &cli.RootCommand{
+	c := &cli.RootCommand{ //nolint:varnamelen
 		Command: cli.Command{
 			UsageLine: name + " [--version] [-h | --help] <command> [<args>]",
 			Setup:     setup,
@@ -52,6 +52,28 @@ func New(version string) (*cli.RootCommand, error) {
 		"",
 		"use `<path>` as the configuration file instead of resolving it from the standard locations",
 	)
+
+	c.GlobalFlags().BoolP(
+		"verbose",
+		"v",
+		false,
+		"make "+cli.ProgramName+" print more output during the run",
+	)
+	c.GlobalFlags().BoolP(
+		"quiet",
+		"q",
+		false,
+		"make "+cli.ProgramName+" print only error messages during the run",
+	)
+	c.MarkFlagsMutuallyExclusive("quiet", "verbose")
+
+	c.GlobalFlags().Bool("logging", false, "enable logging")
+	c.GlobalFlags().Bool("no-logging", false, "disable logging")
+	c.MarkFlagsMutuallyExclusive("logging", "no-logging")
+
+	if err := c.GlobalFlags().MarkHidden("no-logging"); err != nil {
+		panic(fmt.Sprintf("failed to mark --no-logging hidden: %v", err))
+	}
 
 	c.Add(apply.New())
 
