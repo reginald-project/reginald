@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/anttikivi/go-semver"
 	"github.com/anttikivi/reginald/internal/cli"
 	"github.com/anttikivi/reginald/internal/cli/apply"
 	"github.com/anttikivi/reginald/internal/config"
@@ -24,7 +25,7 @@ func New(version string) (*cli.RootCommand, error) {
 			Setup:     setup,
 			Run:       run,
 		},
-		Version: version,
+		Version: semver.MustParse(version),
 	}
 
 	c.GlobalFlags().Bool("version", false, "print the version information and exit")

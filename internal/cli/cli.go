@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/anttikivi/go-semver"
 	"github.com/spf13/pflag"
 )
 
@@ -57,7 +56,7 @@ func Run(cmd *RootCommand) error {
 	}
 
 	if version {
-		fmt.Fprintf(os.Stdout, "%s %s\n", ProgramName, semver.MustParse(cmd.Version))
+		fmt.Fprintf(os.Stdout, "%s %v\n", ProgramName, cmd.Version)
 
 		return nil
 	}

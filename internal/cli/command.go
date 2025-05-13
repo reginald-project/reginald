@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/anttikivi/go-semver"
 	"github.com/spf13/pflag"
 )
 
@@ -43,7 +44,7 @@ type RootCommand struct {
 	Command
 
 	// Version is the version number of the program.
-	Version string
+	Version *semver.Version
 }
 
 // Add adds the given command to the list of subcommands of c and marks c as the
