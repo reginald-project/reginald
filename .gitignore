@@ -1,2 +1,3 @@
+*.log
 /reginald
 reginald.toml
