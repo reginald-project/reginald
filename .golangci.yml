@@ -23,6 +23,9 @@ linters:
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
+    funlen:
+      lines: 100
+      ignore-comments: true
     varnamelen:
       max-distance: 50
 
