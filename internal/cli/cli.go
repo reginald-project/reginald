@@ -280,7 +280,7 @@ func checkMutuallyExclusiveFlags(c *Command) error {
 		for _, s := range a {
 			f := c.Flags().Lookup(s)
 			if f == nil {
-				panic(fmt.Sprintf("nil flag in the set of mutually exclusive flags: %s", s))
+				panic("nil flag in the set of mutually exclusive flags: " + s)
 			}
 
 			if f.Changed {
