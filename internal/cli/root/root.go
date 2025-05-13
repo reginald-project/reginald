@@ -10,6 +10,7 @@ import (
 	"github.com/anttikivi/reginald/internal/cli"
 	"github.com/anttikivi/reginald/internal/cli/apply"
 	"github.com/anttikivi/reginald/internal/config"
+	"github.com/anttikivi/reginald/internal/logging"
 )
 
 // The name of command-line tool.
@@ -66,6 +67,12 @@ func setup(cmd, subcmd *cli.Command, _ []string) error {
 	}
 
 	slog.Info("config parsed", "config", cfg)
+
+	if err := logging.Init(cfg.Logging); err != nil {
+		return fmt.Errorf("failed to init the logger: %w", err)
+	}
+
+	slog.Debug("logging initialized")
 
 	return nil
 }
