@@ -57,6 +57,9 @@ build:
 	echo "building Reginald version $${version}"; \
 	go build $${goflags} -ldflags "$${ldflags}" -o "$${output}" ./cmd/reginald
 
+test:
+	go test ./...
+
 clean:
 	@exe=""; \
 	\
