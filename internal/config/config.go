@@ -12,11 +12,12 @@ import (
 // Config the parsed configuration of the program run. There should be only one
 // effective Config per run.
 type Config struct {
-	ConfigFile string        // path to the config file
-	Directory  string        // path to the directory passed in with '-C'
-	Logging    LoggingConfig // logging config values
-	Quiet      bool          // whether only errors are output
-	Verbose    bool          // whether verbose output is enabled
+	ConfigFile string           // path to the config file
+	Directory  string           // path to the directory passed in with '-C'
+	Logging    LoggingConfig    // logging config values
+	Quiet      bool             // whether only errors are output
+	Tasks      []map[string]any // tasks configs
+	Verbose    bool             // whether verbose output is enabled
 }
 
 // LoggingConfig is type of the logging configuration in Config.
@@ -31,9 +32,12 @@ type LoggingConfig struct {
 // file. It is a subset of [Config]. Some of the configuration values may not
 // be set using the file so the file is first unmarshaled into a File and the
 // values are read into [Config].
+//
+// See the documentation for each field in [Config].
 type File struct {
 	Logging LoggingConfig
 	Quiet   bool
+	Tasks   []map[string]any
 	Verbose bool
 }
 
@@ -52,9 +56,22 @@ func (c *Config) Equal(d *Config) bool {
 		return c == nil
 	}
 
-	// TODO: This must be fixed if the struct contains fields that are not
-	// comparable.
-	return *c == *d
+	if len(c.Tasks) != len(d.Tasks) {
+		return false
+	}
+
+	for i, t := range c.Tasks {
+		u := d.Tasks[i]
+		for k, a := range t {
+			if b, ok := u[k]; !ok || a != b {
+				return false
+			}
+		}
+	}
+
+	return c.ConfigFile == d.ConfigFile && c.Directory == d.ConfigFile && c.Logging == d.Logging &&
+		c.Quiet == d.Quiet &&
+		c.Verbose == d.Verbose
 }
 
 // from creates a new [Config] by creating one with default values and then

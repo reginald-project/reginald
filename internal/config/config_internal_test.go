@@ -25,6 +25,7 @@ func Test_from(t *testing.T) {
 					Output:  defaultLogOutput,
 				},
 				Quiet:   false,
+				Tasks:   []map[string]any{},
 				Verbose: false,
 			},
 			reverse: false,
@@ -46,6 +47,7 @@ func Test_from(t *testing.T) {
 					Output:  defaultLogOutput,
 				},
 				Quiet:   false,
+				Tasks:   []map[string]any{},
 				Verbose: false,
 			},
 			reverse: false,
@@ -67,6 +69,7 @@ func Test_from(t *testing.T) {
 					Output:  defaultLogOutput,
 				},
 				Quiet:   false,
+				Tasks:   []map[string]any{},
 				Verbose: false,
 			},
 			reverse: false,
@@ -88,6 +91,7 @@ func Test_from(t *testing.T) {
 					Output:  defaultLogOutput,
 				},
 				Quiet:   false,
+				Tasks:   []map[string]any{},
 				Verbose: false,
 			},
 			reverse: false,
@@ -109,6 +113,7 @@ func Test_from(t *testing.T) {
 					Output:  defaultLogOutput,
 				},
 				Quiet:   false,
+				Tasks:   []map[string]any{},
 				Verbose: false,
 			},
 			reverse: false,
@@ -130,6 +135,7 @@ func Test_from(t *testing.T) {
 					Output:  defaultLogOutput,
 				},
 				Quiet:   false,
+				Tasks:   []map[string]any{},
 				Verbose: false,
 			},
 			reverse: false,
@@ -152,6 +158,7 @@ func Test_from(t *testing.T) {
 					Output:  "stderr",
 				},
 				Quiet:   false,
+				Tasks:   []map[string]any{},
 				Verbose: false,
 			},
 			reverse: false,
@@ -168,6 +175,91 @@ func Test_from(t *testing.T) {
 					Output:  "stderr",
 				},
 				Quiet:   true,
+				Tasks:   []map[string]any{},
+				Verbose: false,
+			},
+			reverse: true,
+		},
+		"tasksEquals": {
+			cfgFile: (func() *File {
+				cf := defaultConfigFile()
+				cf.Tasks = []map[string]any{
+					{
+						"test":  13,
+						"test2": 4.25,
+						"abc":   "hello world",
+					},
+					{
+						"test": "str",
+						"bool": true,
+					},
+				}
+
+				return cf
+			})(),
+			want: &Config{
+				ConfigFile: "",
+				Directory:  "",
+				Logging: LoggingConfig{
+					Enabled: true,
+					Format:  "json",
+					Level:   slog.LevelInfo,
+					Output:  defaultLogOutput,
+				},
+				Quiet: false,
+				Tasks: []map[string]any{
+					{
+						"test":  13,
+						"test2": 4.25,
+						"abc":   "hello world",
+					},
+					{
+						"test": "str",
+						"bool": true,
+					},
+				},
+				Verbose: false,
+			},
+			reverse: false,
+		},
+		"tasksNotEquals": {
+			cfgFile: (func() *File {
+				cf := defaultConfigFile()
+				cf.Tasks = []map[string]any{
+					{
+						"test":  13,
+						"test2": 4.25,
+						"abc":   "hello world",
+					},
+					{
+						"test": "str",
+						"bool": false,
+					},
+				}
+
+				return cf
+			})(),
+			want: &Config{
+				ConfigFile: "",
+				Directory:  "",
+				Logging: LoggingConfig{
+					Enabled: true,
+					Format:  "json",
+					Level:   slog.LevelInfo,
+					Output:  defaultLogOutput,
+				},
+				Quiet: false,
+				Tasks: []map[string]any{
+					{
+						"test":  13,
+						"test2": 4.25,
+						"abc":   "hello world",
+					},
+					{
+						"test": "str",
+						"bool": true,
+					},
+				},
 				Verbose: false,
 			},
 			reverse: true,

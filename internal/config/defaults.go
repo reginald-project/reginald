@@ -25,6 +25,7 @@ func defaultConfigFile() *File {
 			Output:  defaultLogOutput,
 		},
 		Quiet:   false,
+		Tasks:   []map[string]any{},
 		Verbose: false,
 	}
 }
