@@ -4,13 +4,14 @@ package pathname_test
 
 import (
 	"os"
-	"os/user"
+	"strings"
 	"testing"
 
 	"github.com/anttikivi/reginald/internal/pathname"
 )
 
 func TestAbs(t *testing.T) {
+	drive := cwd()[:strings.IndexByte(cwd(), ':')+1]
 	tests := []struct {
 		path    string
 		env     map[string]string
@@ -26,7 +27,7 @@ func TestAbs(t *testing.T) {
 		{
 			"\\test\\file",
 			nil,
-			"D:\\test\\file",
+			drive + "\\test\\file",
 			false,
 		},
 		{
@@ -56,7 +57,7 @@ func TestAbs(t *testing.T) {
 		{
 			"\\$ENVVAR\\${SECOND_VAR}",
 			map[string]string{"ENVVAR": "path", "SECOND_VAR": "file"},
-			"D:\\path\\file",
+			drive + "\\path\\file",
 			false,
 		},
 		{
@@ -232,10 +233,4 @@ func home() string {
 	path, _ := os.UserHomeDir()
 
 	return path
-}
-
-func currentUser() string {
-	u, _ := user.Current()
-
-	return u.Username
 }
