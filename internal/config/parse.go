@@ -31,17 +31,17 @@ var (
 //nolint:gochecknoglobals
 var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
 
-// Parse parses the configuration according to the configuration given with fs.
-// The FlagSet fs should be a flag set that contains all of the flags for the
-// program as the function uses the flags to override values from the
-// configuration file. The function returns a pointer to the parsed
-// configuration and any errors it encounters.
+// Parse parses the configuration according to the configuration given with
+// flagSet. The flag set should contain all of the flags for the program as the
+// function uses the flags to override values from the configuration file. The
+// function returns a pointer to the parsed configuration and any errors it
+// encounters.
 //
 // The function also resolves the configuration file according to the standard
 // paths for the file or according the flags. The relevant flags are
 // `--directory` and `--config`.
-func Parse(fs *pflag.FlagSet) (*Config, error) {
-	wd, err := fs.GetString("directory")
+func Parse(flagSet *pflag.FlagSet) (*Config, error) {
+	dir, err := flagSet.GetString("directory")
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to get the value for command-line option '--directory': %w",
@@ -49,14 +49,14 @@ func Parse(fs *pflag.FlagSet) (*Config, error) {
 		)
 	}
 
-	if !filepath.IsAbs(wd) {
-		wd, err = pathname.Abs(wd)
+	if !filepath.IsAbs(dir) {
+		dir, err = pathname.Abs(dir)
 		if err != nil {
 			return nil, fmt.Errorf("failed to make the working directory absolute: %w", err)
 		}
 	}
 
-	filename, err := fs.GetString("config")
+	filename, err := flagSet.GetString("config")
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to get the value for command-line option '--config': %w",
@@ -64,21 +64,38 @@ func Parse(fs *pflag.FlagSet) (*Config, error) {
 		)
 	}
 
-	configFile, err := resolveFile(wd, filename)
+	configFile, err := resolveFile(dir, filename)
 	if err != nil {
 		return nil, fmt.Errorf("searching for config file failed: %w", err)
 	}
 
 	slog.Debug("resolved config file path", "path", configFile)
 
-	data, err := os.ReadFile(filepath.Clean(configFile))
+	f, err := os.Open(filepath.Clean(configFile))
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+		return nil, fmt.Errorf("failed to open config file: %w", err)
 	}
 
+	d := toml.NewDecoder(f).DisallowUnknownFields()
 	cf := defaultConfigFile()
-	if err = toml.Unmarshal(data, cf); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal the config file: %w", err)
+
+	if err = d.Decode(cf); err != nil {
+		var strictMissingError *toml.StrictMissingError
+		if !errors.As(err, &strictMissingError) {
+			panic(
+				fmt.Sprintf(
+					"err should have been a *toml.StrictMissingError, but got %s (%T)",
+					err,
+					err,
+				),
+			)
+		}
+
+		return nil, fmt.Errorf(
+			"failed to decode the config file: %w\n%s",
+			strictMissingError,
+			strictMissingError.String(),
+		)
 	}
 
 	cfg := cf.from()
@@ -87,10 +104,10 @@ func Parse(fs *pflag.FlagSet) (*Config, error) {
 		return nil, fmt.Errorf("failed to read environment variables for config: %w", err)
 	}
 
-	applyFlags(cfg, fs)
+	applyFlags(cfg, flagSet)
 
 	cfg.ConfigFile = configFile
-	cfg.Directory = wd
+	cfg.Directory = dir
 
 	if err = normalize(cfg); err != nil {
 		return nil, fmt.Errorf("%w", err)
