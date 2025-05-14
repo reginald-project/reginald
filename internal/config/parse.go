@@ -72,7 +72,7 @@ func Parse(fs *pflag.FlagSet) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal the config file: %w", err)
 	}
 
-	cfg := from(cf)
+	cfg := cf.from()
 
 	if err = applyEnv(cfg); err != nil {
 		return nil, fmt.Errorf("failed to read environment variables for config: %w", err)
@@ -335,51 +335,4 @@ func tryUnmarshalText(fv reflect.Value, sf reflect.StructField, val string) (boo
 	}
 
 	return false, nil
-}
-
-// from creates a new [Config] by creating one with default values and then
-// applying all of the found values from f.
-func from(f *File) *Config {
-	cfg := defaultConfig()
-	cfgValue := reflect.ValueOf(cfg).Elem()
-	cfgFile := reflect.ValueOf(f).Elem()
-
-	applyFileValues(cfgFile, cfgValue)
-
-	return cfg
-}
-
-// applyFileValues applies the configuration values from the value of
-// [File] given as the first parameter to the value [Config] given as
-// the second parameter. It calls itself recursively to resolve structs. It
-// panics if there is an error.
-func applyFileValues(cfgFile, cfg reflect.Value) {
-	for i := range cfgFile.NumField() {
-		fieldValue := cfgFile.Field(i)
-		structField := cfgFile.Type().Field(i)
-		target := cfg.FieldByName(structField.Name)
-
-		if !target.IsValid() || !target.CanSet() {
-			panic("target value in Config cannot be set: " + structField.Name)
-		}
-
-		slog.Debug("checking config file field", "field", structField.Name)
-
-		if fieldValue.Kind() == reflect.Struct {
-			applyFileValues(fieldValue, target)
-
-			continue
-		}
-
-		if !fieldValue.Type().AssignableTo(target.Type()) {
-			panic(
-				fmt.Sprintf(
-					"config file value from field %q is not assignable to config",
-					structField.Name,
-				),
-			)
-		}
-
-		target.Set(fieldValue)
-	}
 }

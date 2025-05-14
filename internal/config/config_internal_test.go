@@ -178,7 +178,7 @@ func Test_from(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			c := from(tt.cfgFile)
+			c := tt.cfgFile.from()
 
 			if tt.reverse {
 				if c.Equal(tt.want) {
