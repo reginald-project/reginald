@@ -4,7 +4,6 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/anttikivi/reginald/internal/cli"
+	"github.com/anttikivi/reginald/internal/pathname"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/pflag"
 )
@@ -49,6 +49,13 @@ func Parse(fs *pflag.FlagSet) (*Config, error) {
 		)
 	}
 
+	if !filepath.IsAbs(wd) {
+		wd, err = pathname.Abs(wd)
+		if err != nil {
+			return nil, fmt.Errorf("failed to make the working directory absolute: %w", err)
+		}
+	}
+
 	filename, err := fs.GetString("config")
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -61,6 +68,8 @@ func Parse(fs *pflag.FlagSet) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("searching for config file failed: %w", err)
 	}
+
+	slog.Debug("resolved config file path", "path", configFile)
 
 	data, err := os.ReadFile(filepath.Clean(configFile))
 	if err != nil {
@@ -80,6 +89,13 @@ func Parse(fs *pflag.FlagSet) (*Config, error) {
 
 	applyFlags(cfg, fs)
 
+	cfg.ConfigFile = configFile
+	cfg.Directory = wd
+
+	if err = normalize(cfg); err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+
 	if err = validate(cfg); err != nil {
 		return nil, fmt.Errorf("%w", err)
 	}
@@ -91,35 +107,47 @@ func Parse(fs *pflag.FlagSet) (*Config, error) {
 // returns the first one that contains a file with a valid name. The returned
 // path is absolute. If no configuration file is found, the function returns an
 // empty string and an error.
-func resolveFile(wd, f string) (string, error) {
+func resolveFile(wd, file string) (string, error) {
+	original := file
+
+	slog.Debug("resolving config file", "wd", wd, "f", file)
+
 	// Use the config file f if it is an absolute path.
-	if f != "" && filepath.IsAbs(f) {
-		if ok, err := checkFile(f); err != nil {
+	if filepath.IsAbs(file) {
+		slog.Debug("given config file is an absolute path", "f", file)
+
+		if ok, err := pathname.IsFile(file); err != nil {
 			return "", fmt.Errorf("%w", err)
 		} else if ok {
-			return filepath.Clean(f), nil
-		}
-	}
+			slog.Debug("found config file", "f", file)
 
-	if !filepath.IsAbs(wd) {
-		realWD, err := os.Getwd()
-		if err != nil {
-			return "", fmt.Errorf("failed to get the current working directory: %w", err)
+			return filepath.Clean(file), nil
 		}
-
-		wd = filepath.Join(realWD, wd)
 	}
 
 	// Check if the config file f matches a file in the working directory.
-	if f != "" {
-		f = filepath.Join(wd, f)
-		if ok, err := checkFile(f); err != nil {
-			return "", fmt.Errorf("%w", err)
-		} else if ok {
-			return f, nil
-		}
+	file = filepath.Join(wd, file)
+
+	slog.Debug("checking joint path", "f", file)
+
+	if ok, err := pathname.IsFile(file); err != nil {
+		return "", fmt.Errorf("%w", err)
+	} else if ok {
+		slog.Debug("found config file", "f", file)
+
+		return file, nil
 	}
 
+	// If the config file flag is set but it didn't resolve, fail so that the
+	// program doesn't use a config file from some other location by surprise.
+	if original != "" {
+		return "", fmt.Errorf(
+			"%w: value given with flag --config did not resolve to any file",
+			errConfigFileNotFound,
+		)
+	}
+
+	// TODO: Add more locations.
 	configDirs := []string{
 		wd,
 	}
@@ -135,11 +163,16 @@ func resolveFile(wd, f string) (string, error) {
 	for _, d := range configDirs {
 		for _, n := range configNames {
 			for _, e := range extensions {
-				f = filepath.Join(d, fmt.Sprintf("%s.%s", n, e))
-				if ok, err := checkFile(f); err != nil {
+				file = filepath.Join(d, fmt.Sprintf("%s.%s", n, e))
+
+				slog.Debug("checking default path", "f", file)
+
+				if ok, err := pathname.IsFile(file); err != nil {
 					return "", fmt.Errorf("%w", err)
 				} else if ok {
-					return f, nil
+					slog.Debug("found config file", "f", file)
+
+					return file, nil
 				}
 			}
 		}
@@ -148,30 +181,39 @@ func resolveFile(wd, f string) (string, error) {
 	return "", fmt.Errorf("%w", errConfigFileNotFound)
 }
 
-// checkFile checks it the given file exists. It returns an error if there is an
-// error other than [fs.ErrNotExist].
-func checkFile(f string) (bool, error) {
-	if _, err := os.Stat(f); err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return false, nil
-		}
-
-		return false, fmt.Errorf("%w", err)
-	}
-
-	return true, nil
-}
-
 // normalize normalizes the configuration values so that they have a predictable
 // format for use later in the program. For example, this includes making paths
 // absolute.
-func normalize(_ *Config) error { //nolint:unused
+func normalize(cfg *Config) error {
+	var err error
+
+	// Logging file path should be absolute to safely use it later.
+	if cfg.Logging.Output != "stderr" && cfg.Logging.Output != "stdout" &&
+		!filepath.IsAbs(cfg.Logging.Output) {
+		cfg.Logging.Output, err = pathname.Abs(cfg.Logging.Output)
+		if err != nil {
+			return fmt.Errorf("failed to make the log file path absolute: %w", err)
+		}
+	}
+
 	return nil
 }
 
 // validate checks the configuration values and an error if there is an invalid
 // combination of configuration values.
 func validate(c *Config) error {
+	if !filepath.IsAbs(c.ConfigFile) {
+		return fmt.Errorf("%w: config file is not absolute: %s", errInvalidConfig, c.ConfigFile)
+	}
+
+	if !filepath.IsAbs(c.Directory) {
+		return fmt.Errorf(
+			"%w: working directory is not absolute: %s",
+			errInvalidConfig,
+			c.Directory,
+		)
+	}
+
 	if c.Quiet && c.Verbose {
 		return fmt.Errorf("%w: both quiet and verbose are set", errInvalidConfig)
 	}

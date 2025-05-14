@@ -3,7 +3,9 @@
 package pathname
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -69,6 +71,24 @@ func ExpandUser(path string) (string, error) {
 	}
 
 	return path, nil
+}
+
+// IsFile reports whether the file name exists and is a file.
+func IsFile(name string) (bool, error) {
+	info, err := os.Stat(name)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("%w", err)
+	}
+
+	if info.IsDir() {
+		return false, nil
+	}
+
+	return true, nil
 }
 
 // expandOtherUser tries to replace "~username" in path to match the
