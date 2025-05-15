@@ -40,7 +40,7 @@ func InitBootstrap() error {
 	debugVar = strings.ToLower(debugVar)
 
 	if debugVar == "" || (debugVar != "true" && debugVar != "1") {
-		slog.SetDefault(slog.New(NullHandler{}))
+		slog.SetDefault(slog.New(slog.DiscardHandler))
 
 		return nil
 	}
@@ -58,7 +58,7 @@ func InitBootstrap() error {
 // logger in [log/slog].
 func Init(cfg config.LoggingConfig) error {
 	if !cfg.Enabled {
-		slog.SetDefault(slog.New(NullHandler{}))
+		slog.SetDefault(slog.New(slog.DiscardHandler))
 
 		return nil
 	}
