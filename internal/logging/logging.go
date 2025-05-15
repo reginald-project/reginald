@@ -31,41 +31,25 @@ const (
 // Errors for logging.
 var (
 	errInvalidFormat = errors.New("given log format not supported")
-	errInvalidOutput = errors.New("given log output not supported")
 )
 
 // InitBootstrap initializes the bootstrap logger and sets it as the default
 // logger in [log/slog].
 func InitBootstrap() error {
-	outputName := os.Getenv("REGINALD_BOOTSTRAP_OUTPUT")
-	if outputName == "" {
-		// TODO: The default should be file or disabled, but let's implement
-		// that later.
-		// outputName = "/dev/null"
-		outputName = "stderr"
+	debugVar := os.Getenv("REGINALD_DEBUG")
+	debugVar = strings.ToLower(debugVar)
+
+	if debugVar == "" || (debugVar != "true" && debugVar != "1") {
+		slog.SetDefault(slog.New(NullHandler{}))
+
+		return nil
 	}
 
-	var output io.Writer
-
-	switch strings.ToLower(outputName) {
-	case "/dev/null":
-		output = io.Discard
-	case "stderr":
-		output = os.Stderr
-	case "stdout":
-		output = os.Stdout
-	default:
-		return fmt.Errorf("failed to create the bootstrap logger: %w", errInvalidOutput)
-	}
-
-	handler := slog.NewTextHandler(output, &slog.HandlerOptions{ //nolint:exhaustruct
+	//nolint:exhaustruct
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		AddSource: true,
 		Level:     slog.LevelDebug,
-	})
-
-	logger := slog.New(handler)
-
-	slog.SetDefault(logger)
+	})))
 
 	return nil
 }
