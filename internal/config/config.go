@@ -18,6 +18,7 @@ type Config struct {
 	ConfigFile string        // path to the config file
 	Directory  string        // path to the directory passed in with '-C'
 	Logging    LoggingConfig // logging config values
+	PluginDir  string        // directory where Reginald looks for plugins
 	Quiet      bool          // whether only errors are output
 	Tasks      []task.Config // tasks configs
 	Verbose    bool          // whether verbose output is enabled
@@ -38,10 +39,11 @@ type LoggingConfig struct {
 //
 // See the documentation for each field in [Config].
 type File struct {
-	Logging LoggingConfig
-	Quiet   bool
-	Tasks   []map[string]any
-	Verbose bool
+	Logging   LoggingConfig
+	PluginDir string `toml:"plugin-dir"`
+	Quiet     bool
+	Tasks     []map[string]any
+	Verbose   bool
 }
 
 // Equal reports if the Config that d points to is equal to the Config that c

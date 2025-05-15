@@ -24,8 +24,9 @@ func defaultConfigFile() *File {
 			Level:   slog.LevelInfo,
 			Output:  defaultLogOutput,
 		},
-		Quiet:   false,
-		Tasks:   []map[string]any{},
-		Verbose: false,
+		PluginDir: "~/.local/share/reginald/plugins",
+		Quiet:     false,
+		Tasks:     []map[string]any{},
+		Verbose:   false,
 	}
 }

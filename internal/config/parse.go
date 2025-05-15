@@ -216,6 +216,16 @@ func normalize(cfg *Config) error {
 		}
 	}
 
+	if !filepath.IsAbs(cfg.PluginDir) && !strings.HasPrefix(cfg.PluginDir, "~") {
+		cfg.PluginDir = filepath.Join(cfg.Directory, cfg.PluginDir)
+	} else {
+		// This expands the users' home directories.
+		cfg.PluginDir, err = pathname.Abs(cfg.PluginDir)
+		if err != nil {
+			return fmt.Errorf("failed to make the plugins directory absolute: %w", err)
+		}
+	}
+
 	return nil
 }
 
