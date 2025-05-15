@@ -183,26 +183,22 @@ func Test_from(t *testing.T) {
 			},
 			reverse: true,
 		},
-		"tasksEquals": { //nolint:dupl
+		"tasksEquals": {
 			cfgFile: (func() *File {
 				cf := defaultConfigFile()
-				cf.Tasks = []task.Config{
+				cf.Tasks = []map[string]any{
 					{
-						Type: "test",
-						Name: "testing",
-						Settings: map[string]any{
-							"test":  13,
-							"test2": 4.25,
-							"abc":   "hello world",
-						},
+						"type":  "test",
+						"name":  "testing",
+						"test":  13,
+						"test2": 4.25,
+						"abc":   "hello world",
 					},
 					{
-						Type: "test2",
-						Name: "testing2",
-						Settings: map[string]any{
-							"test": "str",
-							"bool": false,
-						},
+						"type": "test2",
+						"name": "testing2",
+						"test": "str",
+						"bool": false,
 					},
 				}
 
@@ -241,26 +237,22 @@ func Test_from(t *testing.T) {
 			},
 			reverse: false,
 		},
-		"tasksNotEquals": { //nolint:dupl
+		"tasksNotEquals": {
 			cfgFile: (func() *File {
 				cf := defaultConfigFile()
-				cf.Tasks = []task.Config{
+				cf.Tasks = []map[string]any{
 					{
-						Type: "test",
-						Name: "testing",
-						Settings: map[string]any{
-							"test":  13,
-							"test2": 4.25,
-							"abc":   "hello world",
-						},
+						"type":  "test",
+						"name":  "testing",
+						"test":  13,
+						"test2": 4.25,
+						"abc":   "hello world",
 					},
 					{
-						Type: "test2",
-						Name: "testing2",
-						Settings: map[string]any{
-							"test": "str",
-							"bool": false,
-						},
+						"type": "test2",
+						"name": "testing2",
+						"test": "str",
+						"bool": false,
 					},
 				}
 
@@ -305,15 +297,18 @@ func Test_from(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			c := tt.cfgFile.from()
+			c, err := tt.cfgFile.from()
+			if err != nil {
+				t.Errorf("File.from() failed: %v", err)
+			}
 
 			if tt.reverse {
 				if c.Equal(tt.want) {
-					t.Errorf("new(%v) = %v, want != %v", tt.cfgFile, c, tt.want)
+					t.Errorf("File.from(%v) = %v, want != %v", tt.cfgFile, c, tt.want)
 				}
 			} else {
 				if !c.Equal(tt.want) {
-					t.Errorf("new(%v) = %v, want %v", tt.cfgFile, c, tt.want)
+					t.Errorf("File.from(%v) = %v, want %v", tt.cfgFile, c, tt.want)
 				}
 			}
 		})

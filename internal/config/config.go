@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"strings"
 
 	"github.com/anttikivi/reginald/pkg/task"
 )
@@ -39,7 +40,7 @@ type LoggingConfig struct {
 type File struct {
 	Logging LoggingConfig
 	Quiet   bool
-	Tasks   []task.Config
+	Tasks   []map[string]any
 	Verbose bool
 }
 
@@ -83,14 +84,20 @@ func (c *Config) Equal(d *Config) bool {
 
 // from creates a new [Config] by creating one with default values and then
 // applying all of the found values from f.
-func (f *File) from() *Config {
+func (f *File) from() (*Config, error) {
 	cfg := defaultConfig()
 	cfgValue := reflect.ValueOf(cfg).Elem()
 	cfgFile := reflect.ValueOf(f).Elem()
 
 	applyFileValues(cfgFile, cfgValue)
 
-	return cfg
+	if len(f.Tasks) > 0 {
+		if err := applyTasks(f, cfg); err != nil {
+			return nil, fmt.Errorf("%w", err)
+		}
+	}
+
+	return cfg, nil
 }
 
 // applyFileValues applies the configuration values from the value of
@@ -109,6 +116,13 @@ func applyFileValues(cfgFile, cfg reflect.Value) {
 
 		slog.Debug("checking config file field", "field", structField.Name)
 
+		// Tasks are handled manually in [File.from].
+		if strings.ToLower(structField.Name) == "tasks" {
+			slog.Debug("found tasks config, skipping for now")
+
+			continue
+		}
+
 		if fieldValue.Kind() == reflect.Struct {
 			applyFileValues(fieldValue, target)
 
@@ -126,4 +140,61 @@ func applyFileValues(cfgFile, cfg reflect.Value) {
 
 		target.Set(fieldValue)
 	}
+}
+
+// applyTasks copies the task configurations from cfgFile to cfg. It modifies
+// the pointed Config directly.
+func applyTasks(cfgFile *File, cfg *Config) error {
+	cfg.Tasks = make([]task.Config, len(cfgFile.Tasks))
+	counters := map[string]int{}
+
+	for i, m := range cfgFile.Tasks {
+		var t task.Config
+
+		taskType, ok := m["type"]
+		if !ok {
+			return fmt.Errorf("%w: task does not specify a type", errInvalidConfig)
+		}
+
+		typeString, ok := taskType.(string)
+		if !ok {
+			return fmt.Errorf("%w: task type is not a string: %v", errInvalidConfig, m["type"])
+		}
+
+		t.Type = typeString
+
+		if taskName, ok := m["name"]; ok {
+			nameString, ok := taskName.(string)
+			if !ok {
+				return fmt.Errorf("%w: task name is not a string: %v", errInvalidConfig, m["name"])
+			}
+
+			t.Name = nameString
+		} else {
+			count, ok := counters[typeString]
+			if !ok {
+				count = 0
+			}
+
+			nameString := fmt.Sprintf("%s-%v", typeString, count)
+			t.Name = nameString
+			count++
+			counters[typeString] = count
+		}
+
+		t.Settings = make(map[string]any, len(m)-2) //nolint:mnd
+
+		for k, v := range m {
+			k = strings.ToLower(k)
+			if k == "type" || k == "name" {
+				continue
+			}
+
+			t.Settings[k] = v
+		}
+
+		cfg.Tasks[i] = t
+	}
+
+	return nil
 }

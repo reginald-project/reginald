@@ -1,10 +1,6 @@
 package config
 
-import (
-	"log/slog"
-
-	"github.com/anttikivi/reginald/pkg/task"
-)
+import "log/slog"
 
 const defaultLogOutput = "~/.local/state/reginald.log"
 
@@ -29,7 +25,7 @@ func defaultConfigFile() *File {
 			Output:  defaultLogOutput,
 		},
 		Quiet:   false,
-		Tasks:   []task.Config{},
+		Tasks:   []map[string]any{},
 		Verbose: false,
 	}
 }

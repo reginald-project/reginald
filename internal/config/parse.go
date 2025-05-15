@@ -98,7 +98,10 @@ func Parse(flagSet *pflag.FlagSet) (*Config, error) {
 		)
 	}
 
-	cfg := cf.from()
+	cfg, err := cf.from()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create config from the file data: %w", err)
+	}
 
 	if err = applyEnv(cfg); err != nil {
 		return nil, fmt.Errorf("failed to read environment variables for config: %w", err)
