@@ -71,15 +71,15 @@ Content-Length: ...\r\n
 
 #### JSON-RCP Extension
 
-<!-- TODO: Check wording. -->
-
-The only extension used by the JSON-RCP specification the RPP uses is the
-ability for server to send notification to the client. In JSON-RCP 2.0, a
-notification is always a request but RPP drops this requirement. The server can
-send notifications to the client as needed. For example, this can be especially
-useful as the program benefits from centralizing logging to the client. The
-server can send logging messages as notifications to the client that uses its
-logger to print the messages.
+The only extension used by the JSON-RCP specification the RPP uses is that both
+the client and the server can send both requests and responses. In JSON-RCP 2.0,
+only client can send requests and the server can send responses, but in RPP the
+server is allowed to send information to the client and the client may respond.
+For example, this can be especially useful as the program benefits from
+centralizing logging to the client. The server can send logging messages as
+notifications to the client that uses its logger to print the messages. We still
+call the main program the client and the plugin the server to keep the naming
+clear.
 
 ## Reginald Plugin Protocol
 
