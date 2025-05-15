@@ -7,17 +7,19 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+
+	"github.com/anttikivi/reginald/pkg/task"
 )
 
 // Config the parsed configuration of the program run. There should be only one
 // effective Config per run.
 type Config struct {
-	ConfigFile string           // path to the config file
-	Directory  string           // path to the directory passed in with '-C'
-	Logging    LoggingConfig    // logging config values
-	Quiet      bool             // whether only errors are output
-	Tasks      []map[string]any // tasks configs
-	Verbose    bool             // whether verbose output is enabled
+	ConfigFile string        // path to the config file
+	Directory  string        // path to the directory passed in with '-C'
+	Logging    LoggingConfig // logging config values
+	Quiet      bool          // whether only errors are output
+	Tasks      []task.Config // tasks configs
+	Verbose    bool          // whether verbose output is enabled
 }
 
 // LoggingConfig is type of the logging configuration in Config.
@@ -37,7 +39,7 @@ type LoggingConfig struct {
 type File struct {
 	Logging LoggingConfig
 	Quiet   bool
-	Tasks   []map[string]any
+	Tasks   []task.Config
 	Verbose bool
 }
 
@@ -62,8 +64,13 @@ func (c *Config) Equal(d *Config) bool {
 
 	for i, t := range c.Tasks {
 		u := d.Tasks[i]
-		for k, a := range t {
-			if b, ok := u[k]; !ok || a != b {
+
+		if t.Type != u.Type || t.Name != u.Name {
+			return false
+		}
+
+		for k, a := range t.Settings {
+			if b, ok := u.Settings[k]; !ok || a != b {
 				return false
 			}
 		}

@@ -3,8 +3,11 @@ package config
 import (
 	"log/slog"
 	"testing"
+
+	"github.com/anttikivi/reginald/pkg/task"
 )
 
+//nolint:maintidx
 func Test_from(t *testing.T) {
 	t.Parallel()
 
@@ -25,7 +28,7 @@ func Test_from(t *testing.T) {
 					Output:  defaultLogOutput,
 				},
 				Quiet:   false,
-				Tasks:   []map[string]any{},
+				Tasks:   []task.Config{},
 				Verbose: false,
 			},
 			reverse: false,
@@ -47,7 +50,7 @@ func Test_from(t *testing.T) {
 					Output:  defaultLogOutput,
 				},
 				Quiet:   false,
-				Tasks:   []map[string]any{},
+				Tasks:   []task.Config{},
 				Verbose: false,
 			},
 			reverse: false,
@@ -69,7 +72,7 @@ func Test_from(t *testing.T) {
 					Output:  defaultLogOutput,
 				},
 				Quiet:   false,
-				Tasks:   []map[string]any{},
+				Tasks:   []task.Config{},
 				Verbose: false,
 			},
 			reverse: false,
@@ -91,7 +94,7 @@ func Test_from(t *testing.T) {
 					Output:  defaultLogOutput,
 				},
 				Quiet:   false,
-				Tasks:   []map[string]any{},
+				Tasks:   []task.Config{},
 				Verbose: false,
 			},
 			reverse: false,
@@ -113,7 +116,7 @@ func Test_from(t *testing.T) {
 					Output:  defaultLogOutput,
 				},
 				Quiet:   false,
-				Tasks:   []map[string]any{},
+				Tasks:   []task.Config{},
 				Verbose: false,
 			},
 			reverse: false,
@@ -135,7 +138,7 @@ func Test_from(t *testing.T) {
 					Output:  defaultLogOutput,
 				},
 				Quiet:   false,
-				Tasks:   []map[string]any{},
+				Tasks:   []task.Config{},
 				Verbose: false,
 			},
 			reverse: false,
@@ -158,7 +161,7 @@ func Test_from(t *testing.T) {
 					Output:  "stderr",
 				},
 				Quiet:   false,
-				Tasks:   []map[string]any{},
+				Tasks:   []task.Config{},
 				Verbose: false,
 			},
 			reverse: false,
@@ -175,23 +178,31 @@ func Test_from(t *testing.T) {
 					Output:  "stderr",
 				},
 				Quiet:   true,
-				Tasks:   []map[string]any{},
+				Tasks:   []task.Config{},
 				Verbose: false,
 			},
 			reverse: true,
 		},
-		"tasksEquals": {
+		"tasksEquals": { //nolint:dupl
 			cfgFile: (func() *File {
 				cf := defaultConfigFile()
-				cf.Tasks = []map[string]any{
+				cf.Tasks = []task.Config{
 					{
-						"test":  13,
-						"test2": 4.25,
-						"abc":   "hello world",
+						Type: "test",
+						Name: "testing",
+						Settings: map[string]any{
+							"test":  13,
+							"test2": 4.25,
+							"abc":   "hello world",
+						},
 					},
 					{
-						"test": "str",
-						"bool": true,
+						Type: "test2",
+						Name: "testing2",
+						Settings: map[string]any{
+							"test": "str",
+							"bool": false,
+						},
 					},
 				}
 
@@ -207,33 +218,49 @@ func Test_from(t *testing.T) {
 					Output:  defaultLogOutput,
 				},
 				Quiet: false,
-				Tasks: []map[string]any{
+				Tasks: []task.Config{
 					{
-						"test":  13,
-						"test2": 4.25,
-						"abc":   "hello world",
+						Type: "test",
+						Name: "testing",
+						Settings: map[string]any{
+							"test":  13,
+							"test2": 4.25,
+							"abc":   "hello world",
+						},
 					},
 					{
-						"test": "str",
-						"bool": true,
+						Type: "test2",
+						Name: "testing2",
+						Settings: map[string]any{
+							"test": "str",
+							"bool": false,
+						},
 					},
 				},
 				Verbose: false,
 			},
 			reverse: false,
 		},
-		"tasksNotEquals": {
+		"tasksNotEquals": { //nolint:dupl
 			cfgFile: (func() *File {
 				cf := defaultConfigFile()
-				cf.Tasks = []map[string]any{
+				cf.Tasks = []task.Config{
 					{
-						"test":  13,
-						"test2": 4.25,
-						"abc":   "hello world",
+						Type: "test",
+						Name: "testing",
+						Settings: map[string]any{
+							"test":  13,
+							"test2": 4.25,
+							"abc":   "hello world",
+						},
 					},
 					{
-						"test": "str",
-						"bool": false,
+						Type: "test2",
+						Name: "testing2",
+						Settings: map[string]any{
+							"test": "str",
+							"bool": false,
+						},
 					},
 				}
 
@@ -249,15 +276,23 @@ func Test_from(t *testing.T) {
 					Output:  defaultLogOutput,
 				},
 				Quiet: false,
-				Tasks: []map[string]any{
+				Tasks: []task.Config{
 					{
-						"test":  13,
-						"test2": 4.25,
-						"abc":   "hello world",
+						Type: "test",
+						Name: "testing",
+						Settings: map[string]any{
+							"test":  13,
+							"test2": 4.25,
+							"abc":   "hello world",
+						},
 					},
 					{
-						"test": "str",
-						"bool": true,
+						Type: "test2",
+						Name: "testing2",
+						Settings: map[string]any{
+							"test": "str",
+							"bool": true,
+						},
 					},
 				},
 				Verbose: false,
