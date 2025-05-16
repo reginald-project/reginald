@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/anttikivi/go-semver"
 	"github.com/anttikivi/reginald/internal/cli"
 	"github.com/anttikivi/reginald/internal/cli/apply"
 	"github.com/anttikivi/reginald/internal/config"
 	"github.com/anttikivi/reginald/internal/logging"
+	"github.com/anttikivi/reginald/internal/plugin"
 )
 
 // The name of command-line tool.
@@ -96,6 +99,15 @@ func setup(cmd, subcmd *cli.Command, _ []string) error {
 
 	slog.Debug("logging initialized")
 
+	pluginFiles, err := lookUpPlugins(cfg.PluginDir)
+	if err != nil {
+		return fmt.Errorf("failed to look up plugins: %w", err)
+	}
+
+	slog.Debug("performed the plugin lookup", "plugins", pluginFiles)
+
+	plugin.ResolvePlugins(pluginFiles)
+
 	return nil
 }
 
@@ -103,4 +115,25 @@ func run(_ *cli.Command, _ []string) error {
 	fmt.Fprintln(os.Stdout, "HELP MESSAGE")
 
 	return nil
+}
+
+// lookUpPlugins looks up the plugin files (files starting with "reginald-") in
+// the plugins directory. It returns a list of the absolute paths.
+func lookUpPlugins(dir string) ([]string, error) {
+	var plugins []string
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read plugins directory %s: %w", dir, err)
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			if strings.HasPrefix(entry.Name(), name+"-") {
+				plugins = append(plugins, filepath.Join(dir, entry.Name()))
+			}
+		}
+	}
+
+	return plugins, nil
 }

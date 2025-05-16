@@ -1,3 +1,4 @@
 *.log
 /reginald
+/reginald-theme
 reginald.toml

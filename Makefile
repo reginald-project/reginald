@@ -6,7 +6,7 @@ GOFUMPT_VERSION = 0.8.0
 GOLANGCI_LINT_VERSION = 2.1.6
 GOLINES_VERSION = 0.12.2
 
-all: build
+all: build plugins
 
 build:
 	@commit_hash="$$(git describe --always --dirty --abbrev=40)"; \
@@ -59,6 +59,11 @@ build:
 
 test:
 	go test $(GOFLAGS) ./...
+
+plugins: theme-plugin
+
+theme-plugin:
+	go build -o reginald-theme ./plugins/theme
 
 clean:
 	@exe=""; \
