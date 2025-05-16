@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/anttikivi/go-semver"
 	"github.com/spf13/pflag"
 )
 
@@ -31,21 +30,12 @@ type Command struct {
 	// the command and its parent commands are run.
 	Run func(cmd *Command, args []string) error
 
+	cli                    *CLI           // containing CLI struct
 	commands               []*Command     // list of subcommands
 	flags                  *pflag.FlagSet // all of the command-line options
 	globalFlags            *pflag.FlagSet // options that are inherited by the subcommands
 	mutuallyExclusiveFlags [][]string     // list of flag names that are marked as mutually exclusive
 	parent                 *Command       // parent command of this command if it is a subcommand
-}
-
-// A RootCommand is a special command that is reserved to be used as the root
-// command of the program. It includes some additional information, e.g. the
-// version number of the program.
-type RootCommand struct {
-	Command
-
-	// Version is the version number of the program.
-	Version *semver.Version
 }
 
 // Add adds the given command to the list of subcommands of c and marks c as the
@@ -166,7 +156,8 @@ func (c *Command) flagSet() *pflag.FlagSet {
 // mergeFlags merges the global options of this Command to the set of all
 // options and adds the global options from parents.
 func (c *Command) mergeFlags() {
-	c.Root().GlobalFlags().AddFlagSet(pflag.CommandLine)
+	c.cli.flags.AddFlagSet(pflag.CommandLine)
+	c.Root().GlobalFlags().AddFlagSet(c.cli.flags)
 	c.VisitParents(func(p *Command) {
 		c.GlobalFlags().AddFlagSet(p.GlobalFlags())
 	})

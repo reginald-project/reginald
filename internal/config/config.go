@@ -26,10 +26,10 @@ type Config struct {
 
 // LoggingConfig is type of the logging configuration in Config.
 type LoggingConfig struct {
-	Enabled bool       // whether logging is enabled
-	Format  string     // format of the logs, "json" or "text"
-	Level   slog.Level // logging level
-	Output  string     // destination of the logs
+	Enabled bool       `toml:"enabled"` // whether logging is enabled
+	Format  string     `toml:"format"`  // format of the logs, "json" or "text"
+	Level   slog.Level `toml:"level"`   // logging level
+	Output  string     `toml:"output"`  // destination of the logs
 }
 
 // A File is a struct that the represents the structure of a valid configuration
@@ -39,11 +39,11 @@ type LoggingConfig struct {
 //
 // See the documentation for each field in [Config].
 type File struct {
-	Logging   LoggingConfig
-	PluginDir string `toml:"plugin-dir"`
-	Quiet     bool
-	Tasks     []map[string]any
-	Verbose   bool
+	Logging   LoggingConfig    `toml:"logging"`
+	PluginDir string           `toml:"plugin-dir"`
+	Quiet     bool             `toml:"quiet"`
+	Tasks     []map[string]any `toml:"tasks"`
+	Verbose   bool             `toml:"verbose"`
 }
 
 // Equal reports if the Config that d points to is equal to the Config that c

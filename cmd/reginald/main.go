@@ -9,7 +9,6 @@ import (
 	"os"
 
 	"github.com/anttikivi/reginald/internal/cli"
-	"github.com/anttikivi/reginald/internal/cli/root"
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/version"
 )
@@ -23,13 +22,8 @@ func main() {
 	slog.Debug("bootstrap logger initialized")
 	slog.Info("bootstrapping Reginald", "version", version.Version)
 
-	rootCmd, err := root.New(version.Version)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-
-	if err := cli.Run(rootCmd); err != nil {
+	c := cli.New(version.Version)
+	if err := c.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}

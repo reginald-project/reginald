@@ -8,6 +8,7 @@ import (
 	"github.com/anttikivi/reginald/pkg/rpp"
 )
 
+// ResolvePlugins TODO: Write something.
 func ResolvePlugins(files []string) {
 	plugins, err := Collect(files)
 	if err != nil {
@@ -18,7 +19,7 @@ func ResolvePlugins(files []string) {
 		slog.Debug("executing plugin", "plugin", p.cmd.Path)
 
 		if err := p.cmd.Start(); err != nil {
-			panic(fmt.Sprintf("failed to start plugin at %s", p.cmd.Path))
+			panic("failed to start plugin at " + p.cmd.Path)
 		}
 
 		handshake(&p)
@@ -36,7 +37,7 @@ func handshake(p *Plugin) {
 		panic(fmt.Sprintf("failed to marshal handshake params: %v", err))
 	}
 
-	req := rpp.Message{
+	req := rpp.Message{ //nolint:exhaustruct
 		JSONRCP: "2.0",
 		ID:      1,
 		Method:  "handshake",

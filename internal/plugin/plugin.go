@@ -20,25 +20,36 @@ type Plugin struct {
 	w      *bufio.Writer
 }
 
+// Collect creates and starts all of the plugin processes and performs the
+// handshake with them. All of the plugins that fail the handshake are dropped.
 func Collect(files []string) ([]Plugin, error) {
 	plugins := []Plugin{}
 
 	for _, f := range files {
-		c := exec.Command(f)
+		// TODO: Check if the command name input should be sanitized.
+		c := exec.Command(f) //nolint:gosec
 
 		stdin, err := c.StdinPipe()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create standard input pipe for %s: %w", filepath.Base(f), err)
+			return nil, fmt.Errorf(
+				"failed to create standard input pipe for %s: %w",
+				filepath.Base(f),
+				err,
+			)
 		}
 
 		stdout, err := c.StdoutPipe()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create standard output pipe for %s: %w", filepath.Base(f), err)
+			return nil, fmt.Errorf(
+				"failed to create standard output pipe for %s: %w",
+				filepath.Base(f),
+				err,
+			)
 		}
 
 		// TODO: Do we need this?
 		c.Stderr = os.Stderr
-		p := Plugin{
+		p := Plugin{ //nolint:exhaustruct
 			cmd:    c,
 			stdin:  stdin,
 			stdout: stdout,

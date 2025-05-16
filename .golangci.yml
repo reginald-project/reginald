@@ -37,6 +37,11 @@ linters:
       ignore-string-values:
         - "^stderr$" # TODO: check this again later, maybe the ignore should be removed
       min-occurrences: 3
+    musttag:
+      functions:
+        - name: (*github.com/pelletier/go-toml/v2.Decoder).Decode
+          tag: toml
+          arg-pos: 0
     varnamelen:
       max-distance: 50
 

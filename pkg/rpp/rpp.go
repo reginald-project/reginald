@@ -43,8 +43,8 @@ type Error struct {
 // HandshakeParams are the parameters that the client passes when calling the
 // "handshake" method on the server.
 type HandshakeParams struct {
-	Protocol        string // name of the protocol, must be "rpp"
-	ProtocolVersion int    // protocol version of the client, must be 0
+	Protocol        string `json:"protocol"`        // name of the protocol, must be "rpp"
+	ProtocolVersion int    `json:"protocolVersion"` // protocol version of the client, must be 0
 }
 
 // HandshakeResult is the result struct the server returns when the handshake
@@ -71,6 +71,7 @@ func Read(r *bufio.Reader) (*Message, error) {
 			break
 		}
 
+		// TODO: Disallow other headers.
 		if strings.HasPrefix(strings.ToLower(line), "content-length:") {
 			v := strings.TrimSpace(line[strings.IndexByte(line, ':')+1:])
 
@@ -78,8 +79,6 @@ func Read(r *bufio.Reader) (*Message, error) {
 				return nil, fmt.Errorf("bad Content-Length %q: %w", v, err)
 			}
 		}
-
-		// TODO: Disallow other headers.
 	}
 
 	buf := make([]byte, l)

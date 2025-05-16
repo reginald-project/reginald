@@ -10,10 +10,15 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/anttikivi/reginald/internal/cli"
 	"github.com/anttikivi/reginald/internal/pathname"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/pflag"
+)
+
+// Constants for parsing the configuration.
+const (
+	defaultFile = "reginald" // default name of the config file without the possible leading dot and type extension
+	envPrefix   = "REGINALD" // prefix used for the environment variables.
 )
 
 // Errors returned from the configuration parser.
@@ -172,8 +177,8 @@ func resolveFile(wd, file string) (string, error) {
 		wd,
 	}
 	configNames := []string{
-		strings.ToLower(cli.ProgramName),
-		"." + strings.ToLower(cli.ProgramName),
+		strings.ToLower(defaultFile),
+		"." + strings.ToLower(defaultFile),
 	}
 	extensions := []string{
 		"toml",
@@ -296,7 +301,7 @@ func applyFlags(c *Config, fs *pflag.FlagSet) {
 func applyEnv(cfg *Config) error {
 	v := reflect.ValueOf(cfg).Elem()
 
-	if err := unmarshalEnv(v, cli.ProgramName); err != nil {
+	if err := unmarshalEnv(v, envPrefix); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
