@@ -4,9 +4,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/anttikivi/reginald/internal/cli"
 	"github.com/anttikivi/reginald/internal/logging"
@@ -14,6 +17,20 @@ import (
 )
 
 func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Set up canceling the context on certain signals so the plugins are
+	// killed.
+	sigc := make(chan os.Signal, 1)
+
+	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-sigc
+		cancel()
+	}()
+
 	if err := logging.InitBootstrap(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -23,7 +40,7 @@ func main() {
 	slog.Info("bootstrapping Reginald", "version", version.Version)
 
 	c := cli.New(version.Version)
-	if err := c.Execute(); err != nil {
+	if err := c.Execute(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}

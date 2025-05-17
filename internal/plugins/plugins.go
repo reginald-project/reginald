@@ -3,6 +3,7 @@ package plugins
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -44,14 +45,14 @@ type Plugin struct {
 }
 
 // New returns a pointer to a newly created Plugin.
-func New(path string) (*Plugin, error) {
+func New(ctx context.Context, path string) (*Plugin, error) {
 	if ok, err := pathname.IsFile(path); err != nil {
 		return nil, fmt.Errorf("failed to check if %s is a file: %w", path, err)
 	} else if !ok {
 		return nil, fmt.Errorf("%w: %s", errNotFile, path)
 	}
 
-	c := exec.Command(filepath.Clean(path))
+	c := exec.CommandContext(ctx, filepath.Clean(path))
 
 	stdin, err := c.StdinPipe()
 	if err != nil {
@@ -98,9 +99,9 @@ func New(path string) (*Plugin, error) {
 
 // Load creates the processes for the plugins, performs the handshakes with
 // them, returns a slice of the valid plugins.
-func Load(files []string) ([]*Plugin, error) {
+func Load(ctx context.Context, files []string) ([]*Plugin, error) {
 	// TODO: Provide the config value for the create function.
-	plugins, err := loadAll(files, true)
+	plugins, err := loadAll(ctx, files, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load the plugins: %w", err)
 	}
@@ -121,19 +122,18 @@ func Load(files []string) ([]*Plugin, error) {
 // handshake with them. If ignoreErrors is true, the function simply drops
 // plugins that cause errors when starting or fail the handshake. Otherwise the
 // function fails fast.
-func loadAll(files []string, ignoreErrors bool) ([]*Plugin, error) {
+func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin, error) {
 	var (
 		lock    sync.Mutex
 		plugins []*Plugin
 	)
 
-	// TODO: Add a context for cancellation.
-	eg := errgroup.Group{}
+	eg, egctx := errgroup.WithContext(ctx)
 
 	// TODO: Print the errors to actual output if they are ignored.
 	for _, f := range files {
 		eg.Go(func() error {
-			p, err := New(f)
+			p, err := New(ctx, f)
 			if err != nil {
 				return fmt.Errorf("failed to create a new plugin for path %s; %w", f, err)
 			}
@@ -148,7 +148,7 @@ func loadAll(files []string, ignoreErrors bool) ([]*Plugin, error) {
 				return fmt.Errorf("failed to start plugin %s: %w", p.name, err)
 			}
 
-			if err := p.handshake(); err != nil {
+			if err := p.handshake(egctx); err != nil {
 				if ignoreErrors {
 					slog.Warn("handshake failed", "path", f, "err", err)
 
@@ -157,8 +157,6 @@ func loadAll(files []string, ignoreErrors bool) ([]*Plugin, error) {
 
 				return fmt.Errorf("handshake for plugin %s failed: %w", p.name, err)
 			}
-
-			// TODO: Should I use a context to be able to cancel?
 
 			// I'm not sure about using locks but it's simple and gets the job
 			// done.
@@ -181,7 +179,7 @@ func loadAll(files []string, ignoreErrors bool) ([]*Plugin, error) {
 
 // call calls the given method in the plugin over RPP. It returns the message it
 // got as response and possible errors. The message is nil on error.
-func (p *Plugin) call(method string, params any) (*rpp.Message, error) {
+func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Message, error) {
 	id := rpp.ID(p.nextID.Add(1))
 	rawParams, err := json.Marshal(params)
 	if err != nil {
@@ -223,24 +221,19 @@ func (p *Plugin) call(method string, params any) (*rpp.Message, error) {
 		)
 	}
 
-	res, ok := <-ch
-	if !ok {
-		return nil, fmt.Errorf("%w: %s (method %s)", errNoResponse, p.name, method)
+	select {
+	case res, ok := <-ch:
+		if !ok {
+			return nil, fmt.Errorf("%w: %s (method %s)", errNoResponse, p.name, method)
+		}
+
+		return res, nil
+	case <-ctx.Done():
+		slog.Debug("context canceled during plugin call")
+		p.cleanPending(id, ch)
+
+		return nil, ctx.Err()
 	}
-
-	return res, nil
-
-	// TODO: Use contexts for better control.
-	// select {
-	// case res, ok := <-ch:
-	// 	if !ok {
-	// 		return nil, fmt.Errorf("%w: %s (method %s)", errNoResponse, p.name, method)
-	// 	}
-	// 	return res, nil
-	// case <-ctx.Done():
-	// 	p.cleanPending(id, ch)
-	// 	return nil, ctx.Err()
-	// }
 }
 
 // cleanPending safely cleans up the given ID entry from the pending message
@@ -266,10 +259,10 @@ func (p *Plugin) closeAll() {
 
 // handshake performs the RPP handshake with the plugin and sets the relevant
 // received values to p. If the handshake fails, the function returns an error.
-func (p *Plugin) handshake() error {
+func (p *Plugin) handshake(ctx context.Context) error {
 	params := rpp.DefaultHandshakeParams()
 
-	res, err := p.call(rpp.MethodHandshake, params)
+	res, err := p.call(ctx, rpp.MethodHandshake, params)
 	if err != nil {
 		return fmt.Errorf("method call %q to plugin %s failed: %w", rpp.MethodHandshake, p.name, err)
 	}

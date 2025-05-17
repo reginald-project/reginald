@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -106,7 +107,7 @@ func New(v string) *CLI {
 // Execute executes the CLI. It parses the command-line options, finds the
 // correct command to run, and executes it. An error is returned on user errors.
 // The function panics if it is called with invalid program configuration.
-func (c *CLI) Execute() error {
+func (c *CLI) Execute(ctx context.Context) error {
 	args := os.Args
 
 	// Matches merging flags for commands.
@@ -168,7 +169,7 @@ func (c *CLI) Execute() error {
 
 	slog.Debug("logging initialized")
 
-	if err = c.loadPlugins(); err != nil {
+	if err = c.loadPlugins(ctx); err != nil {
 		return fmt.Errorf("failed to resolve plugins: %w", err)
 	}
 
@@ -351,7 +352,7 @@ func (c *CLI) parseConfig(fs *pflag.FlagSet) (*config.Config, error) {
 // loadPlugins finds and executes all of the plugins in the plugins directory
 // found in the configuration in c. It sets plugins in c to a slice of pointers
 // to the found and executed plugins.
-func (c *CLI) loadPlugins() error {
+func (c *CLI) loadPlugins(ctx context.Context) error {
 	var pluginFiles []string
 
 	entries, err := os.ReadDir(c.cfg.PluginDir)
@@ -369,7 +370,7 @@ func (c *CLI) loadPlugins() error {
 
 	slog.Debug("performed the plugin lookup", "plugins", pluginFiles)
 
-	if c.plugins, err = plugins.Load(pluginFiles); err != nil {
+	if c.plugins, err = plugins.Load(ctx, pluginFiles); err != nil {
 		return fmt.Errorf("failed to load the plugins: %w", err)
 	}
 
