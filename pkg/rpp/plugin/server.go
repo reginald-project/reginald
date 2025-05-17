@@ -13,7 +13,7 @@ import (
 
 // A Plugin is a plugin server that contains the information for running the
 // plugin. It holds the implementation of the plugin's task's or command's
-// functionality as Impl, which must implement either [Command] or [Task]
+// functionality as Impl, which must implement either [Command] or [Task].
 type Plugin struct {
 	name string
 	impl any
@@ -65,9 +65,9 @@ func (p *Plugin) Serve() {
 }
 
 func (p *Plugin) runMethod(msg *rpp.Message) error {
-	switch msg.Method {
+	switch msg.Method { //nolint:gocritic // TODO: This will have more cases.
 	case rpp.MethodHandshake:
-		result := rpp.HandshakeResult{
+		result := rpp.HandshakeResult{ //nolint:exhaustruct
 			Protocol:        rpp.Name,
 			ProtocolVersion: rpp.Version,
 			Kind:            p.kind,
@@ -89,7 +89,7 @@ func (p *Plugin) respond(id rpp.ID, result any) error {
 		return fmt.Errorf("failed to marshal call results: %w", err)
 	}
 
-	err = rpp.Write(p.out, &rpp.Message{
+	err = rpp.Write(p.out, &rpp.Message{ //nolint:exhaustruct
 		JSONRCP: rpp.JSONRCPVersion,
 		ID:      id,
 		Result:  rawResult,

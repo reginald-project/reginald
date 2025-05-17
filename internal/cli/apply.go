@@ -8,7 +8,7 @@ import (
 
 // NewApply returns a new apply command.
 func NewApply() *Command {
-	c := &Command{
+	c := &Command{ //nolint:exhaustruct
 		UsageLine: "apply [options]",
 		Setup:     setupApply,
 		Run:       runApply,

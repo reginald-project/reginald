@@ -74,8 +74,8 @@ type HandshakeResult struct {
 	Protocol        string   `json:"protocol"`        // name of the protocol, must be "rpp"
 	ProtocolVersion int      `json:"protocolVersion"` // protocol version of the server, must be 0
 	Kind            string   `json:"kind"`            // what the plugin provides, either "command" or "task"
-	Name            string   `json:"name"`            // name of the plugin, must match the name of provided command or task
-	Flags           []string `json:"flags,omitempty"` // command-line flags the plugin wants define, available only for commands
+	Name            string   `json:"name"`            // name of provided command or task
+	Flags           []string `json:"flags,omitempty"` // command-line flags the plugin defines, only on commands
 }
 
 // LogParams are the parameters passed with the "log" method.

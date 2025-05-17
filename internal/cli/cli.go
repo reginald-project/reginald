@@ -49,24 +49,25 @@ var errMutuallyExclusive = errors.New("two mutually exclusive flags set at the s
 
 // New creates a new CLI and returns it. It panics on errors.
 func New(v string) *CLI {
-	c := &CLI{
+	cli := &CLI{
 		UsageLine:              Name + " [--version] [-h | --help] <command> [<args>]",
 		Version:                semver.MustParse(v),
 		cfg:                    nil,
 		commands:               []*Command{},
 		flags:                  pflag.NewFlagSet(Name, pflag.ContinueOnError),
 		mutuallyExclusiveFlags: [][]string{},
+		plugins:                []*plugins.Plugin{},
 	}
 
-	c.flags.Bool("version", false, "print the version information and exit")
-	c.flags.BoolP("help", "h", false, "show the help message and exit")
+	cli.flags.Bool("version", false, "print the version information and exit")
+	cli.flags.BoolP("help", "h", false, "show the help message and exit")
 
 	pwd, err := os.Getwd()
 	if err != nil {
 		panic(fmt.Sprintf("failed to get the current working directory: %v", err))
 	}
 
-	c.flags.StringP(
+	cli.flags.StringP(
 		"directory",
 		"C",
 		pwd,
@@ -75,33 +76,33 @@ func New(v string) *CLI {
 			ProgramName,
 		),
 	)
-	c.flags.StringP(
+	cli.flags.StringP(
 		"config",
 		"c",
 		"",
 		"use `<path>` as the configuration file instead of resolving it from the standard locations",
 	)
 
-	c.flags.BoolP("verbose", "v", false, "make "+ProgramName+" print more output during the run")
-	c.flags.BoolP(
+	cli.flags.BoolP("verbose", "v", false, "make "+ProgramName+" print more output during the run")
+	cli.flags.BoolP(
 		"quiet",
 		"q",
 		false,
 		"make "+ProgramName+" print only error messages during the run",
 	)
-	c.markFlagsMutuallyExclusive("quiet", "verbose")
+	cli.markFlagsMutuallyExclusive("quiet", "verbose")
 
-	c.flags.Bool("logging", false, "enable logging")
-	c.flags.Bool("no-logging", false, "disable logging")
-	c.markFlagsMutuallyExclusive("logging", "no-logging")
+	cli.flags.Bool("logging", false, "enable logging")
+	cli.flags.Bool("no-logging", false, "disable logging")
+	cli.markFlagsMutuallyExclusive("logging", "no-logging")
 
-	if err := c.flags.MarkHidden("no-logging"); err != nil {
+	if err := cli.flags.MarkHidden("no-logging"); err != nil {
 		panic(fmt.Sprintf("failed to mark --no-logging hidden: %v", err))
 	}
 
-	c.add(NewApply())
+	cli.add(NewApply())
 
-	return c
+	return cli
 }
 
 // Execute executes the CLI. It parses the command-line options, finds the
@@ -361,10 +362,29 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 	}
 
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			if strings.HasPrefix(entry.Name(), Name+"-") {
-				pluginFiles = append(pluginFiles, filepath.Join(c.cfg.PluginDir, entry.Name()))
-			}
+		if entry.IsDir() {
+			continue
+		}
+
+		if !entry.Type().IsRegular() {
+			continue
+		}
+
+		path := filepath.Join(c.cfg.PluginDir, entry.Name())
+
+		info, err := os.Stat(path)
+		if err != nil {
+			return fmt.Errorf("failed to check the file info for %s: %w", path, err)
+		}
+
+		if info.Mode()&0o111 == 0 {
+			slog.Debug("plugin file is not executable", "path", path)
+
+			continue
+		}
+
+		if strings.HasPrefix(entry.Name(), Name+"-") {
+			pluginFiles = append(pluginFiles, path)
 		}
 	}
 

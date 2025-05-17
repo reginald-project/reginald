@@ -60,7 +60,7 @@ func New(ctx context.Context, path string) (*Plugin, error) {
 		return nil, fmt.Errorf("%w: %s", errNotFile, path)
 	}
 
-	c := exec.CommandContext(ctx, filepath.Clean(path))
+	c := exec.CommandContext(ctx, filepath.Clean(path)) // #nosec G204 -- sanitized earlier
 
 	stdin, err := c.StdinPipe()
 	if err != nil {
@@ -82,24 +82,29 @@ func New(ctx context.Context, path string) (*Plugin, error) {
 
 	stderr, err := c.StderrPipe()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create standard error pipe for %s: %w", filepath.Base(path), err)
+		return nil, fmt.Errorf(
+			"failed to create standard error pipe for %s: %w",
+			filepath.Base(path),
+			err,
+		)
 	}
 
 	p := &Plugin{
 		name: filepath.Base(
 			path,
 		), // the base name of the plugin is used until the real name is received
-		kind:        "",
-		flags:       nil,
-		cmd:         c,
-		nextID:      atomic.Uint64{},
-		stdin:       bufio.NewWriter(stdin),
-		stdout:      bufio.NewReader(stdout),
-		stderr:      bufio.NewScanner(stderr),
-		writeLock:   sync.Mutex{},
-		pending:     make(map[rpp.ID]chan *rpp.Message),
-		pendingLock: sync.Mutex{},
-		doneCh:      nil, // this is initialized when the plugin has started
+		kind:           "",
+		flags:          nil,
+		cmd:            c,
+		nextID:         atomic.Uint64{},
+		stdin:          bufio.NewWriter(stdin),
+		stdout:         bufio.NewReader(stdout),
+		stderr:         bufio.NewScanner(stderr),
+		writeLock:      sync.Mutex{},
+		pending:        make(map[rpp.ID]chan *rpp.Message),
+		pendingLock:    sync.Mutex{},
+		doneCh:         nil, // this is initialized when the plugin has started
+		protocolErrors: atomic.Uint32{},
 	}
 
 	return p, nil
@@ -142,69 +147,12 @@ func (p *Plugin) countProtocolError(reason string) {
 // kill kills the plugin process.
 func (p *Plugin) kill() {
 	if p.cmd.Process != nil {
-		p.cmd.Process.Kill()
+		if err := p.cmd.Process.Kill(); err != nil {
+			panic(fmt.Sprintf("failed to kill a plugin process: %v", err))
+		}
 	}
 
 	p.closeAllPending()
-}
-
-// loadAll creates and starts all of the plugin processes and performs the
-// handshake with them. If ignoreErrors is true, the function simply drops
-// plugins that cause errors when starting or fail the handshake. Otherwise the
-// function fails fast.
-func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin, error) {
-	var (
-		lock    sync.Mutex
-		plugins []*Plugin
-	)
-
-	eg, egctx := errgroup.WithContext(ctx)
-
-	// TODO: Print the errors to actual output if they are ignored.
-	for _, f := range files {
-		eg.Go(func() error {
-			p, err := New(ctx, f)
-			if err != nil {
-				return fmt.Errorf("failed to create a new plugin for path %s; %w", f, err)
-			}
-
-			if err := p.start(); err != nil {
-				if ignoreErrors {
-					slog.Warn("failed to start plugin", "path", f, "err", err)
-
-					return nil
-				}
-
-				return fmt.Errorf("failed to start plugin %s: %w", p.name, err)
-			}
-
-			if err := p.handshake(egctx); err != nil {
-				if ignoreErrors {
-					slog.Warn("handshake failed", "path", f, "err", err)
-
-					return nil
-				}
-
-				return fmt.Errorf("handshake for plugin %s failed: %w", p.name, err)
-			}
-
-			// I'm not sure about using locks but it's simple and gets the job
-			// done.
-			lock.Lock()
-
-			plugins = append(plugins, p)
-
-			lock.Unlock()
-
-			return nil
-		})
-	}
-
-	if err := eg.Wait(); err != nil {
-		return nil, fmt.Errorf("%w", err)
-	}
-
-	return plugins, nil
 }
 
 // call calls the given method in the plugin over RPP. It returns the message it
@@ -289,12 +237,12 @@ func (p *Plugin) closeAllPending() {
 }
 
 // handleNotification handles notifications the client receives from the server.
-func (p *Plugin) handleNotification(msg *rpp.Message) error {
+func (p *Plugin) handleNotification(ctx context.Context, msg *rpp.Message) error {
 	var err error
 
 	switch msg.Method {
 	case rpp.MethodLog:
-		err = p.logNotification(msg)
+		err = p.logNotification(ctx, msg)
 	default:
 		err = fmt.Errorf("%w: %s", errUnknownMethod, msg.Method)
 	}
@@ -309,7 +257,12 @@ func (p *Plugin) handshake(ctx context.Context) error {
 
 	res, err := p.call(ctx, rpp.MethodHandshake, params)
 	if err != nil {
-		return fmt.Errorf("method call %q to plugin %s failed: %w", rpp.MethodHandshake, p.name, err)
+		return fmt.Errorf(
+			"method call %q to plugin %s failed: %w",
+			rpp.MethodHandshake,
+			p.name,
+			err,
+		)
 	}
 
 	var result rpp.HandshakeResult
@@ -348,7 +301,7 @@ func (p *Plugin) handshake(ctx context.Context) error {
 }
 
 // logNotification handles the "log" notifications.
-func (p *Plugin) logNotification(msg *rpp.Message) error {
+func (p *Plugin) logNotification(ctx context.Context, msg *rpp.Message) error {
 	if msg.Params == nil {
 		return fmt.Errorf("%w: %s", errNoParams, p.name)
 	}
@@ -367,14 +320,14 @@ func (p *Plugin) logNotification(msg *rpp.Message) error {
 		attrs = append(attrs, slog.Any(k, v))
 	}
 
-	slog.LogAttrs(context.Background(), params.Level, params.Message, attrs...)
+	slog.LogAttrs(ctx, params.Level, params.Message, attrs...)
 
 	return nil
 }
 
 // read runs the reading loop for the plugin. It listens to the standard output
 // of the plugins and handles the messages when they come in.
-func (p *Plugin) read() {
+func (p *Plugin) read(ctx context.Context) {
 	for {
 		msg, err := rpp.Read(p.stdout)
 		if err != nil {
@@ -400,7 +353,9 @@ func (p *Plugin) read() {
 				continue
 			}
 
-			p.handleNotification(msg)
+			if err := p.handleNotification(ctx, msg); err != nil {
+				p.countProtocolError(err.Error())
+			}
 
 			continue
 		}
@@ -440,7 +395,9 @@ func (p *Plugin) readStderr() {
 	}
 }
 
-func (p *Plugin) start() error {
+// start starts the execution of the plugin process and the related reading
+// goroutines.
+func (p *Plugin) start(ctx context.Context) error {
 	slog.Debug("executing plugin", "path", p.cmd.Path)
 
 	if err := p.cmd.Start(); err != nil {
@@ -451,7 +408,7 @@ func (p *Plugin) start() error {
 
 	p.doneCh = make(chan error, 1)
 
-	go p.read()
+	go p.read(ctx)
 	go p.readStderr()
 
 	go func() {
@@ -461,4 +418,63 @@ func (p *Plugin) start() error {
 	}()
 
 	return nil
+}
+
+// loadAll creates and starts all of the plugin processes and performs the
+// handshake with them. If ignoreErrors is true, the function simply drops
+// plugins that cause errors when starting or fail the handshake. Otherwise the
+// function fails fast.
+func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin, error) {
+	var (
+		lock    sync.Mutex
+		plugins []*Plugin
+	)
+
+	eg, egctx := errgroup.WithContext(ctx)
+
+	// TODO: Print the errors to actual output if they are ignored.
+	for _, f := range files {
+		eg.Go(func() error {
+			p, err := New(ctx, f)
+			if err != nil {
+				return fmt.Errorf("failed to create a new plugin for path %s; %w", f, err)
+			}
+
+			if err := p.start(ctx); err != nil {
+				if ignoreErrors {
+					slog.Warn("failed to start plugin", "path", f, "err", err)
+
+					return nil
+				}
+
+				return fmt.Errorf("failed to start plugin %s: %w", p.name, err)
+			}
+
+			if err := p.handshake(egctx); err != nil {
+				if ignoreErrors {
+					slog.Warn("handshake failed", "path", f, "err", err)
+
+					return nil
+				}
+
+				return fmt.Errorf("handshake for plugin %s failed: %w", p.name, err)
+			}
+
+			// I'm not sure about using locks but it's simple and gets the job
+			// done.
+			lock.Lock()
+
+			plugins = append(plugins, p)
+
+			lock.Unlock()
+
+			return nil
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+
+	return plugins, nil
 }
