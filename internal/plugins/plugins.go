@@ -3,6 +3,7 @@ package plugins
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -19,29 +20,36 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// maxProtocolErrors is the maximum number of protocol errors that the client
+// tolerates from a plugin.
+const maxProtocolErrors = 5
+
 // Errors returned by plugin utility functions.
 var (
 	errHandshake     = errors.New("plugin handshake failed")
+	errNoParams      = errors.New("notification has no params")
 	errNoResponse    = errors.New("plugin disconnected before responding")
 	errNotFile       = errors.New("plugin path is not a file")
+	errUnknownMethod = errors.New("invalid method")
 	errWrongProtocol = errors.New("mismatch in plugin protocol info")
 )
 
 // A Plugin represents a plugin that acts as an RPP server and is run from this
 // client.
 type Plugin struct {
-	name        string                       // user-friendly name for the plugin
-	kind        string                       // whether this plugin is a task or a command
-	flags       []string                     // command-line flags defined by the plugin if it's a command
-	cmd         *exec.Cmd                    // command struct used to run the server
-	nextID      atomic.Uint64                // next ID to use in RPP call
-	stdin       *bufio.Writer                // stdin pipe of the plugin command
-	stdout      *bufio.Reader                // buffered reader for the stdout of the plugin
-	stderr      *bufio.Scanner               // stderr pipe of the plugin command
-	writeLock   sync.Mutex                   // lock for writing to writer to serialize the messages
-	pending     map[rpp.ID]chan *rpp.Message // read messages from the plugin waiting for processing
-	pendingLock sync.Mutex                   // lock used with pending
-	doneCh      chan error                   // channel to close when the plugin is done running
+	name           string                       // user-friendly name for the plugin
+	kind           string                       // whether this plugin is a task or a command
+	flags          []string                     // command-line flags defined by the plugin if it's a command
+	cmd            *exec.Cmd                    // command struct used to run the server
+	nextID         atomic.Uint64                // next ID to use in RPP call
+	stdin          *bufio.Writer                // stdin pipe of the plugin command
+	stdout         *bufio.Reader                // buffered reader for the stdout of the plugin
+	stderr         *bufio.Scanner               // stderr pipe of the plugin command
+	writeLock      sync.Mutex                   // lock for writing to writer to serialize the messages
+	pending        map[rpp.ID]chan *rpp.Message // read messages from the plugin waiting for processing
+	pendingLock    sync.Mutex                   // lock used with pending
+	doneCh         chan error                   // channel to close when the plugin is done running
+	protocolErrors atomic.Uint32                // current number of protocol errors for this plugin
 }
 
 // New returns a pointer to a newly created Plugin.
@@ -118,6 +126,28 @@ func Load(ctx context.Context, files []string) ([]*Plugin, error) {
 	return plugins, nil
 }
 
+// countProtocolError adds one protocol error to the plugins counter and kills
+// the plugin if the maximum threshold for plugin protocol errors is reached.
+func (p *Plugin) countProtocolError(reason string) {
+	n := p.protocolErrors.Add(1)
+
+	slog.Warn("plugin protocol error", "reason", reason)
+
+	if n >= maxProtocolErrors {
+		fmt.Fprintf(os.Stderr, "too many protocol errors by %s, shutting the plugin down", p.name)
+		p.kill()
+	}
+}
+
+// kill kills the plugin process.
+func (p *Plugin) kill() {
+	if p.cmd.Process != nil {
+		p.cmd.Process.Kill()
+	}
+
+	p.closeAllPending()
+}
+
 // loadAll creates and starts all of the plugin processes and performs the
 // handshake with them. If ignoreErrors is true, the function simply drops
 // plugins that cause errors when starting or fail the handshake. Otherwise the
@@ -181,6 +211,7 @@ func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin,
 // got as response and possible errors. The message is nil on error.
 func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Message, error) {
 	id := rpp.ID(p.nextID.Add(1))
+
 	rawParams, err := json.Marshal(params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal params: %w", err)
@@ -232,7 +263,7 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 		slog.Debug("context canceled during plugin call")
 		p.cleanPending(id, ch)
 
-		return nil, ctx.Err()
+		return nil, fmt.Errorf("%w", ctx.Err())
 	}
 }
 
@@ -245,8 +276,8 @@ func (p *Plugin) cleanPending(id rpp.ID, ch chan *rpp.Message) {
 	close(ch)
 }
 
-// closeAll closes all of the pending message channels.
-func (p *Plugin) closeAll() {
+// closeAllPending closes all of the pending message channels.
+func (p *Plugin) closeAllPending() {
 	p.pendingLock.Lock()
 
 	for id, ch := range p.pending {
@@ -255,6 +286,20 @@ func (p *Plugin) closeAll() {
 	}
 
 	p.pendingLock.Unlock()
+}
+
+// handleNotification handles notifications the client receives from the server.
+func (p *Plugin) handleNotification(msg *rpp.Message) error {
+	var err error
+
+	switch msg.Method {
+	case rpp.MethodLog:
+		err = p.logNotification(msg)
+	default:
+		err = fmt.Errorf("%w: %s", errUnknownMethod, msg.Method)
+	}
+
+	return err
 }
 
 // handshake performs the RPP handshake with the plugin and sets the relevant
@@ -302,6 +347,31 @@ func (p *Plugin) handshake(ctx context.Context) error {
 	return nil
 }
 
+// logNotification handles the "log" notifications.
+func (p *Plugin) logNotification(msg *rpp.Message) error {
+	if msg.Params == nil {
+		return fmt.Errorf("%w: %s", errNoParams, p.name)
+	}
+
+	d := json.NewDecoder(bytes.NewReader(msg.Params))
+	d.DisallowUnknownFields()
+
+	var params rpp.LogParams
+
+	if err := d.Decode(&params); err != nil {
+		return fmt.Errorf("failed to decode params: %w", err)
+	}
+
+	attrs := []slog.Attr{slog.String("plugin", p.name)}
+	for k, v := range params.Fields {
+		attrs = append(attrs, slog.Any(k, v))
+	}
+
+	slog.LogAttrs(context.Background(), params.Level, params.Message, attrs...)
+
+	return nil
+}
+
 // read runs the reading loop for the plugin. It listens to the standard output
 // of the plugins and handles the messages when they come in.
 func (p *Plugin) read() {
@@ -310,14 +380,29 @@ func (p *Plugin) read() {
 		if err != nil {
 			// Error when reading or EOF.
 			slog.Warn("error when reading plugin output", "err", err)
-			p.closeAll()
+			p.closeAllPending()
 
 			return
+		}
+
+		if msg.JSONRCP != rpp.JSONRCPVersion {
+			p.countProtocolError("JSON-RCP version mismatch")
+
+			continue
 		}
 
 		// The message is a notification.
 		// TODO: Handle the notifications.
 		if msg.ID == 0 {
+			if msg.Method == "" {
+				p.countProtocolError("no method in notification")
+
+				continue
+			}
+
+			p.handleNotification(msg)
+
+			continue
 		}
 
 		// Otherwise the message is handled as a response.
@@ -336,6 +421,8 @@ func (p *Plugin) read() {
 		if ok {
 			ch <- msg
 			close(ch)
+		} else {
+			p.countProtocolError("response ID does not match any sent request")
 		}
 	}
 }

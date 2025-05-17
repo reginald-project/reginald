@@ -75,6 +75,8 @@ func (p *Plugin) runMethod(msg *rpp.Message) error {
 		}
 		if err := p.respond(msg.ID, result); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
+
+			return fmt.Errorf("response in %s failed: %w", p.name, err)
 		}
 	}
 

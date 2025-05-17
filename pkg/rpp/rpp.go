@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -27,6 +28,7 @@ const (
 	MethodExit       = "exit"
 	MethodHandshake  = "handshake"
 	MethodInitialize = "initialize"
+	MethodLog        = "log"
 	MethodShutdown   = "shutdown"
 )
 
@@ -62,18 +64,25 @@ type Error struct {
 // HandshakeParams are the parameters that the client passes when calling the
 // "handshake" method on the server.
 type HandshakeParams struct {
-	Protocol        string `json:"protocol"`         // name of the protocol, must be "rpp"
-	ProtocolVersion int    `json:"protocol_version"` // protocol version of the client, must be 0
+	Protocol        string `json:"protocol"`        // name of the protocol, must be "rpp"
+	ProtocolVersion int    `json:"protocolVersion"` // protocol version of the client, must be 0
 }
 
 // HandshakeResult is the result struct the server returns when the handshake
 // method is successful.
 type HandshakeResult struct {
-	Protocol        string   `json:"protocol"`         // name of the protocol, must be "rpp"
-	ProtocolVersion int      `json:"protocol_version"` // protocol version of the server, must be 0
-	Kind            string   `json:"kind"`             // what the plugin provides, either "command" or "task"
-	Name            string   `json:"name"`             // name of the plugin, must match the name of provided command or task
-	Flags           []string `json:"flags,omitempty"`  // command-line flags the plugin wants define, available only for commands
+	Protocol        string   `json:"protocol"`        // name of the protocol, must be "rpp"
+	ProtocolVersion int      `json:"protocolVersion"` // protocol version of the server, must be 0
+	Kind            string   `json:"kind"`            // what the plugin provides, either "command" or "task"
+	Name            string   `json:"name"`            // name of the plugin, must match the name of provided command or task
+	Flags           []string `json:"flags,omitempty"` // command-line flags the plugin wants define, available only for commands
+}
+
+// LogParams are the parameters passed with the "log" method.
+type LogParams struct {
+	Level   slog.Level     `json:"level"`
+	Message string         `json:"msg"`
+	Fields  map[string]any `json:"fields,omitempty"`
 }
 
 // DefaultHandshakeParams returns the default parameters used by the client in
