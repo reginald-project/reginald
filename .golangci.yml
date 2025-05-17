@@ -46,6 +46,7 @@ linters:
     varnamelen:
       max-distance: 50
       ignore-decls:
+        - id rpp.ID
         - wg sync.WaitGroup
 
 formatters:
