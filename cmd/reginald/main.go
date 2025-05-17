@@ -17,6 +17,13 @@ import (
 )
 
 func main() {
+	code := run()
+	if code != 0 {
+		os.Exit(code)
+	}
+}
+
+func run() int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -33,7 +40,8 @@ func main() {
 
 	if err := logging.InitBootstrap(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+
+		return 1
 	}
 
 	slog.Debug("bootstrap logger initialized")
@@ -42,6 +50,9 @@ func main() {
 	c := cli.New(version.Version)
 	if err := c.Execute(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+
+		return 1
 	}
+
+	return 0
 }
