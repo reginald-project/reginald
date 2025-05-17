@@ -12,7 +12,7 @@ import (
 	"github.com/anttikivi/go-semver"
 	"github.com/anttikivi/reginald/internal/config"
 	"github.com/anttikivi/reginald/internal/logging"
-	"github.com/anttikivi/reginald/internal/plugin"
+	"github.com/anttikivi/reginald/internal/plugins"
 	"github.com/spf13/pflag"
 )
 
@@ -29,11 +29,11 @@ type CLI struct {
 	UsageLine string          // one-line synopsis of the program
 	Version   *semver.Version // version number of the program
 
-	cfg                    *config.Config   // parsed config of the run
-	commands               []*Command       // list of subcommands
-	flags                  *pflag.FlagSet   // global command-line flags
-	mutuallyExclusiveFlags [][]string       // list of flag names that are marked as mutually exclusive
-	plugins                []*plugin.Plugin // loaded plugins
+	cfg                    *config.Config    // parsed config of the run
+	commands               []*Command        // list of subcommands
+	flags                  *pflag.FlagSet    // global command-line flags
+	mutuallyExclusiveFlags [][]string        // list of flag names that are marked as mutually exclusive
+	plugins                []*plugins.Plugin // loaded plugins
 }
 
 // Program-related constants.
@@ -168,7 +168,7 @@ func (c *CLI) Execute() error {
 
 	slog.Debug("logging initialized")
 
-	if err = c.resolvePlugins(); err != nil {
+	if err = c.loadPlugins(); err != nil {
 		return fmt.Errorf("failed to resolve plugins: %w", err)
 	}
 
@@ -348,10 +348,10 @@ func (c *CLI) parseConfig(fs *pflag.FlagSet) (*config.Config, error) {
 	return cfg, nil
 }
 
-// resolvePlugins finds and executes all of the plugins in the plugins directory
+// loadPlugins finds and executes all of the plugins in the plugins directory
 // found in the configuration in c. It sets plugins in c to a slice of pointers
 // to the found and executed plugins.
-func (c *CLI) resolvePlugins() error {
+func (c *CLI) loadPlugins() error {
 	var pluginFiles []string
 
 	entries, err := os.ReadDir(c.cfg.PluginDir)
@@ -369,7 +369,7 @@ func (c *CLI) resolvePlugins() error {
 
 	slog.Debug("performed the plugin lookup", "plugins", pluginFiles)
 
-	plugin.ResolvePlugins(pluginFiles)
+	plugins.Load(pluginFiles)
 
 	return nil
 }

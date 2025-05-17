@@ -21,6 +21,7 @@ linters:
             - $gostd
             - github.com/anttikivi/reginald
             - github.com/anttikivi/go-semver
+            - golang.org/x/sync
             - github.com/pelletier/go-toml/v2
             - github.com/spf13/pflag
     errcheck:
@@ -44,6 +45,8 @@ linters:
           arg-pos: 0
     varnamelen:
       max-distance: 50
+      ignore-decls:
+        - wg sync.WaitGroup
 
 formatters:
   enable:

@@ -5,6 +5,8 @@
 package main
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -14,7 +16,53 @@ import (
 func main() {
 	fmt.Fprintln(os.Stderr, "HELLO FROM PLUGIN")
 
-	p := rpp.Plugin{}
+	in := bufio.NewReader(os.Stdin)
+	out := bufio.NewWriter(os.Stdout)
 
-	p.Serve()
+Loop:
+	for {
+		msg, err := rpp.Read(in)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "ERROR IN PLUGIN: ", err.Error())
+
+			os.Exit(1)
+		}
+
+		switch msg.Method {
+		case rpp.Handshake:
+			result := rpp.HandshakeResult{
+				Protocol:        rpp.Name,
+				ProtocolVersion: rpp.Version,
+				Kind:            "command",
+				Name:            "theme",
+			}
+			if err := sendResponse(out, msg.ID, result); err != nil {
+				fmt.Fprintln(os.Stderr, err.Error())
+			}
+
+			break Loop
+		}
+	}
+}
+
+func sendResponse(w *bufio.Writer, id rpp.ID, result any) error {
+	rawResult, err := json.Marshal(result)
+	if err != nil {
+		return fmt.Errorf("failed to marshal call results: %w", err)
+	}
+
+	err = rpp.Write(w, &rpp.Message{
+		JSONRCP: rpp.JSONRCPVersion,
+		ID:      id,
+		Result:  rawResult,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to write response: %w", err)
+	}
+
+	if err = w.Flush(); err != nil {
+		return fmt.Errorf("flushing the output buffer failed: %w", err)
+	}
+
+	return nil
 }
