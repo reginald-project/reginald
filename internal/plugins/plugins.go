@@ -34,11 +34,13 @@ type Plugin struct {
 	flags       []string                     // command-line flags defined by the plugin if it's a command
 	cmd         *exec.Cmd                    // command struct used to run the server
 	nextID      atomic.Uint64                // next ID to use in RPP call
-	in          *bufio.Writer                // stdin pipe of the plugin command
-	out         *bufio.Reader                // buffered reader for the stdout of the plugin
+	stdin       *bufio.Writer                // stdin pipe of the plugin command
+	stdout      *bufio.Reader                // buffered reader for the stdout of the plugin
+	stderr      *bufio.Scanner               // stderr pipe of the plugin command
 	writeLock   sync.Mutex                   // lock for writing to writer to serialize the messages
 	pending     map[rpp.ID]chan *rpp.Message // read messages from the plugin waiting for processing
 	pendingLock sync.Mutex                   // lock used with pending
+	doneCh      chan error                   // channel to close when the plugin is done running
 }
 
 // New returns a pointer to a newly created Plugin.
@@ -69,8 +71,11 @@ func New(path string) (*Plugin, error) {
 		)
 	}
 
-	// TODO: Capture the standard error output.
-	c.Stderr = os.Stderr
+	stderr, err := c.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create standard error pipe for %s: %w", filepath.Base(path), err)
+	}
+
 	p := &Plugin{
 		name: filepath.Base(
 			path,
@@ -79,11 +84,13 @@ func New(path string) (*Plugin, error) {
 		flags:       nil,
 		cmd:         c,
 		nextID:      atomic.Uint64{},
-		in:          bufio.NewWriter(stdin),
-		out:         bufio.NewReader(stdout),
+		stdin:       bufio.NewWriter(stdin),
+		stdout:      bufio.NewReader(stdout),
+		stderr:      bufio.NewScanner(stderr),
 		writeLock:   sync.Mutex{},
 		pending:     make(map[rpp.ID]chan *rpp.Message),
 		pendingLock: sync.Mutex{},
+		doneCh:      nil, // this is initialized when the plugin has started
 	}
 
 	return p, nil
@@ -96,6 +103,15 @@ func Load(files []string) ([]*Plugin, error) {
 	plugins, err := loadAll(files, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load the plugins: %w", err)
+	}
+
+	for _, p := range plugins {
+		go func(p *Plugin) {
+			if err := <-p.doneCh; err != nil {
+				// TODO: Better logging or something.
+				fmt.Fprintf(os.Stderr, "plugin %q quit unexpectedly: %v\n", p.name, err)
+			}
+		}(p)
 	}
 
 	return plugins, nil
@@ -189,9 +205,9 @@ func (p *Plugin) call(method string, params any) (*rpp.Message, error) {
 	p.pendingLock.Unlock()
 	p.writeLock.Lock()
 
-	err = rpp.Write(p.in, req)
+	err = rpp.Write(p.stdin, req)
 	if err == nil {
-		err = p.in.Flush()
+		err = p.stdin.Flush()
 	}
 
 	p.writeLock.Unlock()
@@ -253,16 +269,16 @@ func (p *Plugin) closeAll() {
 func (p *Plugin) handshake() error {
 	params := rpp.DefaultHandshakeParams()
 
-	res, err := p.call(rpp.Handshake, params)
+	res, err := p.call(rpp.MethodHandshake, params)
 	if err != nil {
-		return fmt.Errorf("method call %q to plugin %s failed: %w", rpp.Handshake, p.name, err)
+		return fmt.Errorf("method call %q to plugin %s failed: %w", rpp.MethodHandshake, p.name, err)
 	}
 
 	var result rpp.HandshakeResult
 	if err = json.Unmarshal(res.Result, &result); err != nil {
 		return fmt.Errorf(
 			"failed to unmarshal result for the %q method call to %s: %w",
-			rpp.Handshake,
+			rpp.MethodHandshake,
 			p.name,
 			err,
 		)
@@ -297,10 +313,10 @@ func (p *Plugin) handshake() error {
 // of the plugins and handles the messages when they come in.
 func (p *Plugin) read() {
 	for {
-		msg, err := rpp.Read(p.out)
+		msg, err := rpp.Read(p.stdout)
 		if err != nil {
 			// Error when reading or EOF.
-			// TODO: Print the error or something.
+			slog.Warn("error when reading plugin output", "err", err)
 			p.closeAll()
 
 			return
@@ -331,6 +347,19 @@ func (p *Plugin) read() {
 	}
 }
 
+// readStderr runs a loop for reading the standard error output of the plugin.
+func (p *Plugin) readStderr() {
+	for p.stderr.Scan() {
+		line := p.stderr.Text()
+
+		fmt.Fprintf(os.Stderr, "[%s] %s\n", p.name, line)
+	}
+
+	if err := p.stderr.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "error reading the stderr for %q: %v", p.name, err)
+	}
+}
+
 func (p *Plugin) start() error {
 	slog.Debug("executing plugin", "path", p.cmd.Path)
 
@@ -340,7 +369,16 @@ func (p *Plugin) start() error {
 
 	slog.Info("started a plugin process", "path", p.cmd.Path, "pid", p.cmd.Process.Pid)
 
+	p.doneCh = make(chan error, 1)
+
 	go p.read()
+	go p.readStderr()
+
+	go func() {
+		p.doneCh <- p.cmd.Wait()
+
+		close(p.doneCh)
+	}()
 
 	return nil
 }

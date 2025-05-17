@@ -24,7 +24,10 @@ const (
 
 // Standard method names used by the RPP.
 const (
-	Handshake = "handshake"
+	MethodExit       = "exit"
+	MethodHandshake  = "handshake"
+	MethodInitialize = "initialize"
+	MethodShutdown   = "shutdown"
 )
 
 // Errors returned by the RPP helper functions.

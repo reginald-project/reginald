@@ -369,7 +369,9 @@ func (c *CLI) loadPlugins() error {
 
 	slog.Debug("performed the plugin lookup", "plugins", pluginFiles)
 
-	plugins.Load(pluginFiles)
+	if c.plugins, err = plugins.Load(pluginFiles); err != nil {
+		return fmt.Errorf("failed to load the plugins: %w", err)
+	}
 
 	return nil
 }

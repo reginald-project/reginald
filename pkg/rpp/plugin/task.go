@@ -1,5 +1,4 @@
-// Package task defines the public interface for creating tasks for Reginald.
-package task
+package plugin
 
 // Task is a task that Reginald can run. The task implementation is resolved by
 // the applying commands from either Reginald itself or plugins.
@@ -11,11 +10,4 @@ type Task interface {
 	//
 	// TODO: Maybe the rules should have some other type.
 	Rules() map[string]any
-}
-
-// A Config is the configuration of a task.
-type Config struct {
-	Type     string         // type of the task
-	Name     string         // user-defined display name of the task
-	Settings map[string]any // rest of the config settings
 }
