@@ -26,10 +26,6 @@ linters:
             - github.com/spf13/pflag
     errcheck:
       disable-default-exclusions: false
-      exclude-functions:
-        - fmt.Fprint
-        - fmt.Fprintf
-        - fmt.Fprintln
     funlen:
       lines: 100
       ignore-comments: true

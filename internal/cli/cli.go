@@ -12,6 +12,7 @@ import (
 
 	"github.com/anttikivi/go-semver"
 	"github.com/anttikivi/reginald/internal/config"
+	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/plugins"
 	"github.com/spf13/pflag"
@@ -163,6 +164,10 @@ func (c *CLI) Execute(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("%w", err)
 	}
+
+	// Initialize the output streams for user output.
+	// TODO: Set the colors in config.
+	iostreams.Streams = iostreams.New(c.cfg.Quiet, c.cfg.Verbose, true)
 
 	if err := logging.Init(c.cfg.Logging); err != nil {
 		return fmt.Errorf("failed to init the logger: %w", err)
