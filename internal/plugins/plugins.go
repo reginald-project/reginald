@@ -21,12 +21,15 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// PluginShutdownTimeout is the default timeout for the plugin shutdown phase.
-const PluginShutdownTimeout = 5 * time.Second
+// Default values associated with the plugin client.
+const (
+	// PluginShutdownTimeout is the default timeout for the plugin shutdown phase.
+	DefaultPluginShutdownTimeout = 5 * time.Second
 
-// maxProtocolErrors is the maximum number of protocol errors that the client
-// tolerates from a plugin.
-const maxProtocolErrors = 5
+	// DefaultMaxProtocolErrors is the maximum number of protocol errors that the client
+	// tolerates from a plugin.
+	DefaultMaxProtocolErrors = 5
+)
 
 // Errors returned by plugin utility functions.
 var (
@@ -163,7 +166,7 @@ func (p *Plugin) countProtocolError(reason string) {
 
 	slog.Warn("plugin protocol error", "reason", reason)
 
-	if n >= maxProtocolErrors {
+	if n >= DefaultMaxProtocolErrors {
 		fmt.Fprintf(os.Stderr, "too many protocol errors by %s, shutting the plugin down", p.name)
 		p.kill()
 	}
