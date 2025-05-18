@@ -26,6 +26,9 @@ linters:
             - github.com/spf13/pflag
     errcheck:
       disable-default-exclusions: false
+    exhaustruct:
+      exclude:
+        - '^github\.com/anttikivi/reginald/pkg/rpp\.Message$'
     funlen:
       lines: 100
       ignore-comments: true

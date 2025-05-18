@@ -89,7 +89,7 @@ func (p *Plugin) respond(id rpp.ID, result any) error {
 		return fmt.Errorf("failed to marshal call results: %w", err)
 	}
 
-	err = rpp.Write(p.out, &rpp.Message{ //nolint:exhaustruct
+	err = rpp.Write(p.out, &rpp.Message{
 		JSONRCP: rpp.JSONRCPVersion,
 		ID:      id,
 		Result:  rawResult,

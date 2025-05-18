@@ -182,7 +182,7 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 		return nil, fmt.Errorf("failed to marshal params: %w", err)
 	}
 
-	req := &rpp.Message{ //nolint:exhaustruct
+	req := &rpp.Message{
 		JSONRCP: rpp.JSONRCPVersion,
 		ID:      id,
 		Method:  method,
