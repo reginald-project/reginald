@@ -151,7 +151,9 @@ func (c *CLI) Execute(ctx context.Context) error {
 	}
 
 	if help {
-		fmt.Fprintln(os.Stdout, "HELP MESSAGE")
+		if err = printHelp(); err != nil {
+			return fmt.Errorf("failed to print the usage info: %w", err)
+		}
 
 		return nil
 	}
@@ -162,7 +164,9 @@ func (c *CLI) Execute(ctx context.Context) error {
 	}
 
 	if version {
-		fmt.Fprintf(os.Stdout, "%s %v\n", ProgramName, c.Version)
+		if err = printVersion(c); err != nil {
+			return fmt.Errorf("failed to print the version info: %w", err)
+		}
 
 		return nil
 	}

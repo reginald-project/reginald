@@ -12,12 +12,6 @@ import (
 	"github.com/anttikivi/reginald/pkg/rpp"
 )
 
-// Errors returned by the server functions when there is an unrecoverable
-// failure.
-var (
-	errImplType = errors.New("failed to cast impl to the expected type")
-)
-
 // A Plugin is a plugin server that contains the information for running the
 // plugin. It holds the implementation of the plugin's task's or command's
 // functionality as Impl, which must implement either [Command] or [Task].
@@ -30,6 +24,12 @@ type Plugin struct {
 	shutdown bool // set to true when the plugin should start shutdown
 	exit     bool // set to true when the plugin should exit right away
 }
+
+// Errors returned by the server functions when there is an unrecoverable
+// failure.
+var (
+	errImplType = errors.New("failed to cast impl to the expected type")
+)
 
 // New returns a new Plugin for the given parameters.
 func New(name string, impl any) *Plugin {
@@ -78,9 +78,10 @@ func (p *Plugin) Serve() error {
 // handshake handles responding to the handshake method.
 func (p *Plugin) handshake(msg *rpp.Message) error {
 	if msg.ID == nil {
-		err := p.respondError(msg.ID, rpp.Error{
+		err := p.respondError(msg.ID, &rpp.Error{
 			Code:    rpp.InvalidRequest,
 			Message: fmt.Sprintf("Method %q was called using a notification", msg.Method),
+			Data:    nil,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to send error response: %w", err)
@@ -116,12 +117,13 @@ func (p *Plugin) handshake(msg *rpp.Message) error {
 // when an unrecoverable error is encountered.
 func (p *Plugin) runMethod(msg *rpp.Message) error {
 	if p.shutdown && msg.Method != rpp.MethodExit {
-		err := p.respondError(msg.ID, rpp.Error{
+		err := p.respondError(msg.ID, &rpp.Error{
 			Code: rpp.InvalidRequest,
 			Message: fmt.Sprintf(
 				"method %q was called after the plugin was requested to shut down",
 				msg.Method,
 			),
+			Data: nil,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to send error response: %w", err)
@@ -133,12 +135,13 @@ func (p *Plugin) runMethod(msg *rpp.Message) error {
 	switch msg.Method {
 	case rpp.MethodExit:
 		if msg.ID != nil {
-			err := p.respondError(msg.ID, rpp.Error{
+			err := p.respondError(msg.ID, &rpp.Error{
 				Code: rpp.InvalidRequest,
 				Message: fmt.Sprintf(
 					"method %q was not called using a notification",
 					rpp.MethodExit,
 				),
+				Data: nil,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to send error response: %w", err)
@@ -152,9 +155,10 @@ func (p *Plugin) runMethod(msg *rpp.Message) error {
 		}
 	case rpp.MethodShutdown:
 		if msg.ID == nil {
-			err := p.respondError(msg.ID, rpp.Error{
+			err := p.respondError(msg.ID, &rpp.Error{
 				Code:    rpp.InvalidRequest,
 				Message: fmt.Sprintf("method %q was called using a notification", msg.Method),
+				Data:    nil,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to send error response: %w", err)
@@ -167,9 +171,10 @@ func (p *Plugin) runMethod(msg *rpp.Message) error {
 			return fmt.Errorf("failed to send response: %w", err)
 		}
 	default:
-		err := p.respondError(msg.ID, rpp.Error{
+		err := p.respondError(msg.ID, &rpp.Error{
 			Code:    rpp.MethodNotFound,
 			Message: fmt.Sprintf("invalid method name: %q", msg.Method),
+			Data:    nil,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to send error response: %w", err)
@@ -204,8 +209,8 @@ func (p *Plugin) respond(id *rpp.ID, result any) error {
 
 // respondError sends an error response instead of the regular response if the
 // plugin has encountered an error.
-func (p *Plugin) respondError(id *rpp.ID, errObj rpp.Error) error {
-	rawErr, err := json.Marshal(errObj)
+func (p *Plugin) respondError(id *rpp.ID, resErr *rpp.Error) error {
+	rawErr, err := json.Marshal(resErr)
 	if err != nil {
 		return fmt.Errorf("failed to marshal error object: %w", err)
 	}

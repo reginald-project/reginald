@@ -13,38 +13,6 @@ import (
 	"strings"
 )
 
-// Constant values related to the RPP version currently implemented by this
-// package.
-const (
-	ContentType    = "application/json-rpc" // default content type of messages
-	JSONRCPVersion = "2.0"                  // JSON-RCP version the protocol uses
-	Name           = "rpp"                  // protocol name to use in handshake
-	Version        = 0                      // protocol version
-)
-
-// Standard method names used by the RPP.
-const (
-	MethodExit       = "exit"
-	MethodHandshake  = "handshake"
-	MethodInitialize = "initialize"
-	MethodLog        = "log"
-	MethodShutdown   = "shutdown"
-)
-
-// Error codes used for the protocol.
-const (
-	ParseError     = -32700
-	InvalidRequest = -32600
-	MethodNotFound = -32601
-	InvalidParams  = -32602
-	InternalError  = -32603
-)
-
-// Errors returned by the RPP helper functions.
-var (
-	errZeroLength = errors.New("content-length is zero")
-)
-
 // ID is the type used for the JSON-RCP message IDs in RPP. The zero value is
 // reserved for denoting that the ID is effectively omitted.
 type ID int64
@@ -99,6 +67,46 @@ type LogParams struct {
 	Level   slog.Level     `json:"level"`
 	Message string         `json:"msg"`
 	Fields  map[string]any `json:"fields,omitempty"`
+}
+
+// Constant values related to the RPP version currently implemented by this
+// package.
+const (
+	ContentType    = "application/json-rpc" // default content type of messages
+	JSONRCPVersion = "2.0"                  // JSON-RCP version the protocol uses
+	Name           = "rpp"                  // protocol name to use in handshake
+	Version        = 0                      // protocol version
+)
+
+// Standard method names used by the RPP.
+const (
+	MethodExit       = "exit"
+	MethodHandshake  = "handshake"
+	MethodInitialize = "initialize"
+	MethodLog        = "log"
+	MethodShutdown   = "shutdown"
+)
+
+// Error codes used for the protocol.
+const (
+	ParseError     = -32700
+	InvalidRequest = -32600
+	MethodNotFound = -32601
+	InvalidParams  = -32602
+	InternalError  = -32603
+)
+
+// Errors returned by the RPP helper functions.
+var (
+	errZeroLength = errors.New("content-length is zero")
+)
+
+func (e *Error) Error() string {
+	if e.Data != nil {
+		return fmt.Sprintf("%s (%v)", e.Message, e.Data)
+	}
+
+	return e.Message
 }
 
 // DefaultHandshakeParams returns the default parameters used by the client in

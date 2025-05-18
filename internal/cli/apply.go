@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"fmt"
 	"log/slog"
-	"os"
 )
 
 // NewApply returns a new apply command.
@@ -24,7 +22,7 @@ func setupApply(cmd, _ *Command, _ []string) error {
 }
 
 func runApply(_ *Command, _ []string) error {
-	fmt.Fprintln(os.Stdout, "RUN APPLY")
+	slog.Info("running apply")
 
 	return nil
 }

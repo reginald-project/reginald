@@ -13,6 +13,10 @@ linters:
   settings:
     cyclop:
       max-complexity: 20
+    decorder:
+      disable-dec-order-check: false
+      disable-init-func-first-check: false
+      disable-dec-num-check: true
     depguard:
       rules:
         main:
