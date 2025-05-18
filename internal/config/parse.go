@@ -259,6 +259,24 @@ func validate(c *Config) error {
 // applyFlags applies the overrides of the configuration values from
 // command-line flags. It modifies cfg.
 func applyFlags(c *Config, fs *pflag.FlagSet) {
+	if fs.Changed("color") {
+		b, err := fs.GetBool("color")
+		if err != nil {
+			panic("failed to get the value for --color")
+		}
+
+		c.Color = b
+	}
+
+	if fs.Changed("no-color") {
+		b, err := fs.GetBool("no-color")
+		if err != nil {
+			panic("failed to get the value for --no-color")
+		}
+
+		c.Color = !b
+	}
+
 	if fs.Changed("logging") {
 		b, err := fs.GetBool("logging")
 		if err != nil {

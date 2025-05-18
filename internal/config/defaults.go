@@ -1,6 +1,11 @@
 package config
 
-import "log/slog"
+import (
+	"log/slog"
+	"os"
+
+	"golang.org/x/term"
+)
 
 const defaultLogOutput = "~/.local/state/reginald.log"
 
@@ -18,6 +23,7 @@ func defaultConfig() *Config {
 // that can be set using a config file.
 func defaultConfigFile() *File {
 	return &File{
+		Color: term.IsTerminal(int(os.Stdout.Fd())),
 		Logging: LoggingConfig{
 			Enabled: true,
 			Format:  "json",

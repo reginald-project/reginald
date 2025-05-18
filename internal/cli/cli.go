@@ -16,6 +16,7 @@ import (
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/plugins"
 	"github.com/spf13/pflag"
+	"golang.org/x/term"
 )
 
 // A CLI is the command-line interface that runs the program. It handles
@@ -93,6 +94,16 @@ func New(v string) *CLI {
 	)
 	cli.markFlagsMutuallyExclusive("quiet", "verbose")
 
+	isTerminal := term.IsTerminal(int(os.Stdout.Fd()))
+
+	cli.flags.Bool("color", isTerminal, "enable colors in the output")
+	cli.flags.Bool("no-color", !isTerminal, "disable colors in the output")
+	cli.markFlagsMutuallyExclusive("color", "no-color")
+
+	if err := cli.flags.MarkHidden("no-color"); err != nil {
+		panic(fmt.Sprintf("failed to mark --no-color hidden: %v", err))
+	}
+
 	cli.flags.Bool("logging", false, "enable logging")
 	cli.flags.Bool("no-logging", false, "disable logging")
 	cli.markFlagsMutuallyExclusive("logging", "no-logging")
@@ -166,8 +177,7 @@ func (c *CLI) Execute(ctx context.Context) error {
 	}
 
 	// Initialize the output streams for user output.
-	// TODO: Set the colors in config.
-	iostreams.Streams = iostreams.New(c.cfg.Quiet, c.cfg.Verbose, true)
+	iostreams.Streams = iostreams.New(c.cfg.Quiet, c.cfg.Verbose, c.cfg.Color)
 
 	if err := logging.Init(c.cfg.Logging); err != nil {
 		return fmt.Errorf("failed to init the logger: %w", err)

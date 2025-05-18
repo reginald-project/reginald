@@ -21,9 +21,10 @@ linters:
             - $gostd
             - github.com/anttikivi/reginald
             - github.com/anttikivi/go-semver
-            - golang.org/x/sync
             - github.com/pelletier/go-toml/v2
             - github.com/spf13/pflag
+            - golang.org/x/sync
+            - golang.org/x/term
     errcheck:
       disable-default-exclusions: false
     exhaustruct:

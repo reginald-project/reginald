@@ -15,6 +15,7 @@ import (
 // Config the parsed configuration of the program run. There should be only one
 // effective Config per run.
 type Config struct {
+	Color      bool          // whether colors are enabled in the output
 	ConfigFile string        // path to the config file
 	Directory  string        // path to the directory passed in with '-C'
 	Logging    LoggingConfig // logging config values
@@ -39,6 +40,7 @@ type LoggingConfig struct {
 //
 // See the documentation for each field in [Config].
 type File struct {
+	Color     bool             `toml:"color"`
 	Logging   LoggingConfig    `toml:"logging"`
 	PluginDir string           `toml:"plugin-dir"`
 	Quiet     bool             `toml:"quiet"`
