@@ -12,7 +12,7 @@
 
 👔 the personal workstation valet
 
-This project is still in early development. More info follows.
+This project is still in early development. More info will be added later.
 
 ## License
 
