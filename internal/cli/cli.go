@@ -375,9 +375,14 @@ func (c *CLI) parseConfig(fs *pflag.FlagSet) (*config.Config, error) {
 func (c *CLI) loadPlugins(ctx context.Context) error {
 	var pluginFiles []string
 
-	entries, err := os.ReadDir(c.cfg.PluginDir)
+	dir, err := config.PluginsDir()
 	if err != nil {
-		return fmt.Errorf("failed to read plugins directory %s: %w", c.cfg.PluginDir, err)
+		return fmt.Errorf("failed to get the plugins directory: %w", err)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("failed to read plugins directory %s: %w", dir, err)
 	}
 
 	for _, entry := range entries {
@@ -389,7 +394,7 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 			continue
 		}
 
-		path := filepath.Join(c.cfg.PluginDir, entry.Name())
+		path := filepath.Join(dir, entry.Name())
 
 		info, err := os.Stat(path)
 		if err != nil {

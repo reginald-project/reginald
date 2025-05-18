@@ -19,7 +19,6 @@ type Config struct {
 	ConfigFile string        // path to the config file
 	Directory  string        // path to the directory passed in with '-C'
 	Logging    LoggingConfig // logging config values
-	PluginDir  string        // directory where Reginald looks for plugins
 	Quiet      bool          // whether only errors are output
 	Tasks      []task.Config // tasks configs
 	Verbose    bool          // whether verbose output is enabled
@@ -40,12 +39,11 @@ type LoggingConfig struct {
 //
 // See the documentation for each field in [Config].
 type File struct {
-	Color     bool             `toml:"color"`
-	Logging   LoggingConfig    `toml:"logging"`
-	PluginDir string           `toml:"plugin-dir"`
-	Quiet     bool             `toml:"quiet"`
-	Tasks     []map[string]any `toml:"tasks"`
-	Verbose   bool             `toml:"verbose"`
+	Color   bool             `toml:"color"`
+	Logging LoggingConfig    `toml:"logging"`
+	Quiet   bool             `toml:"quiet"`
+	Tasks   []map[string]any `toml:"tasks"`
+	Verbose bool             `toml:"verbose"`
 }
 
 // Equal reports if the Config that d points to is equal to the Config that c
@@ -83,7 +81,6 @@ func (c *Config) Equal(d *Config) bool {
 
 	return c.Color == d.Color && c.ConfigFile == d.ConfigFile && c.Directory == d.Directory &&
 		c.Logging == d.Logging &&
-		c.PluginDir == d.PluginDir &&
 		c.Quiet == d.Quiet &&
 		c.Verbose == d.Verbose
 }
