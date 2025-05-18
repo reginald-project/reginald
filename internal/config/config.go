@@ -81,7 +81,9 @@ func (c *Config) Equal(d *Config) bool {
 		}
 	}
 
-	return c.ConfigFile == d.ConfigFile && c.Directory == d.ConfigFile && c.Logging == d.Logging &&
+	return c.Color == d.Color && c.ConfigFile == d.ConfigFile && c.Directory == d.Directory &&
+		c.Logging == d.Logging &&
+		c.PluginDir == d.PluginDir &&
 		c.Quiet == d.Quiet &&
 		c.Verbose == d.Verbose
 }
