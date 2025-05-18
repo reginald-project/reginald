@@ -189,11 +189,7 @@ func (c *CLI) Execute(ctx context.Context) error {
 		return fmt.Errorf("failed to resolve plugins: %w", err)
 	}
 
-	if err = setup(cmd, cmd, args); err != nil {
-		return fmt.Errorf("%w", err)
-	}
-
-	if err = cmd.Run(cmd, args); err != nil {
+	if err = c.run(cmd, args); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
@@ -415,6 +411,23 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 
 	if c.plugins, err = plugins.Load(ctx, pluginFiles); err != nil {
 		return fmt.Errorf("failed to load the plugins: %w", err)
+	}
+
+	return nil
+}
+
+// run runs the setup and execution of the resolved command.
+func (c *CLI) run(cmd *Command, args []string) error {
+	if cmd == nil {
+		return nil
+	}
+
+	if err := setup(cmd, cmd, args); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	if err := cmd.Run(cmd, args); err != nil {
+		return fmt.Errorf("%w", err)
 	}
 
 	return nil
