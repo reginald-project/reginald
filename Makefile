@@ -1,3 +1,7 @@
+# This Makefile is POSIX-compliant, and non-compliance is considered a bug. It
+# follows the POSIX base specification IEEE Std 1003.1-2024. The specification
+# can be found here: https://pubs.opengroup.org/onlinepubs/9799919799/.
+
 .POSIX:
 .SUFFIXES:
 
@@ -6,8 +10,39 @@ GOFUMPT_VERSION = 0.8.0
 GOLANGCI_LINT_VERSION = 2.1.6
 GOLINES_VERSION = 0.12.2
 
+# Default target.
+.PHONY: all
 all: build plugins
 
+# ============================================================================ #
+# QUALITY CONTROL
+# ============================================================================ #
+
+.PHONY: audit
+audit: test lint
+	go mod tidy -diff
+	go mod verify
+
+.PHONY: lint
+lint: install-golangci-lint
+	golangci-lint run
+
+.PHONY: test
+test:
+	go test $(GOFLAGS) ./...
+
+# ============================================================================ #
+# DEVELOPMENT & BUILDING
+# ============================================================================ #
+
+.PHONY: tidy
+tidy: install-gci install-gofumpt install-golines
+	go mod tidy -v
+	gci write .
+	golines --no-chain-split-dots -w .
+	gofumpt -extra -l -w .
+
+.PHONY: build
 build:
 	@commit_hash="$$(git describe --always --dirty --abbrev=40)"; \
 	build_date="$$(date -u +"%Y-%m-%dT%H:%M:%SZ")"; \
@@ -57,14 +92,14 @@ build:
 	echo "building Reginald version $${version}"; \
 	go build $${goflags} -ldflags "$${ldflags}" -o "$${output}" ./cmd/reginald
 
-test:
-	go test $(GOFLAGS) ./...
+.PHONY: plugins
+plugins: theme
 
-plugins: theme-plugin
-
-theme-plugin:
+.PHONY: theme
+theme:
 	go build -o reginald-theme ./plugins/theme
 
+.PHONY: clean
 clean:
 	@exe=""; \
 	\
@@ -79,20 +114,13 @@ clean:
 	fi; \
 	\
 	rm "$${output}"
+	@rm reginald-theme
 
-# Linting and formatting
+# ============================================================================ #
+# TOOL HELPERS
+# ============================================================================ #
 
-fmt: install-gci install-gofumpt install-golines
-	go mod tidy
-	gci write .
-	golines --no-chain-split-dots -w .
-	gofumpt -extra -l -w .
-
-lint: install-golangci-lint
-	golangci-lint run
-
-# Tools
-
+.PHONY: install-gci
 install-gci:
 	@PATH="$${PATH}:$$(go env GOPATH)/bin"; \
 	if ! command -v gci >/dev/null 2>&1; then \
@@ -106,6 +134,7 @@ install-gci:
 		go install github.com/daixiang0/gci@v$(GCI_VERSION); \
 	fi
 
+.PHONY: install-gofumpt
 install-gofumpt:
 	@PATH="$${PATH}:$$(go env GOPATH)/bin"; \
 	if ! command -v gofumpt >/dev/null 2>&1; then \
@@ -119,6 +148,7 @@ install-gofumpt:
 		go install mvdan.cc/gofumpt@v$(GOFUMPT_VERSION); \
 	fi
 
+.PHONY: install-golangci-lint
 install-golangci-lint:
 	@GOPATH="$$(go env GOPATH)"; \
 	PATH="$${PATH}:$${GOPATH}/bin"; \
@@ -133,6 +163,7 @@ install-golangci-lint:
 		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "${GOPATH}/bin" v$(GOLANGCI_LINT_VERSION); \
 	fi
 
+.PHONY: install-golines
 install-golines:
 	@PATH="$${PATH}:$$(go env GOPATH)/bin"; \
 	if ! command -v golines >/dev/null 2>&1; then \
