@@ -415,7 +415,7 @@ func (p *Plugin) readStderr() {
 	for p.stderr.Scan() {
 		line := p.stderr.Text()
 
-		fmt.Fprintf(os.Stderr, "[%s] %s\n", p.name, line)
+		fmt.Fprintf(os.Stderr, "[%s:stderr] %s\n", p.name, line)
 	}
 
 	if err := p.stderr.Err(); err != nil {
