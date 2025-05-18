@@ -33,6 +33,8 @@ func Load(ctx context.Context, files []string) ([]*Plugin, error) {
 
 // ShutdownAll tries to gracefully shut down all of the plugins.
 func ShutdownAll(ctx context.Context, plugins []*Plugin) error {
+	slog.Info("shutting down plugins")
+
 	eg, egctx := errgroup.WithContext(ctx)
 
 	for _, p := range plugins {
@@ -41,6 +43,8 @@ func ShutdownAll(ctx context.Context, plugins []*Plugin) error {
 				return fmt.Errorf("%w", err)
 			}
 
+			slog.Info("shutdown successful", "plugin", p.name)
+
 			return nil
 		})
 	}
@@ -48,6 +52,8 @@ func ShutdownAll(ctx context.Context, plugins []*Plugin) error {
 	if err := eg.Wait(); err != nil {
 		return fmt.Errorf("%w", err)
 	}
+
+	slog.Info("all plugins shut down successfully")
 
 	return nil
 }
