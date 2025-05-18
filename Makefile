@@ -93,11 +93,11 @@ build:
 	go build $${goflags} -ldflags "$${ldflags}" -o "$${output}" ./cmd/reginald
 
 .PHONY: plugins
-plugins: theme
+plugins: sleep
 
-.PHONY: theme
-theme:
-	go build -o reginald-theme ./plugins/theme
+.PHONY: sleep
+sleep:
+	go build -o reginald-sleep ./plugins/sleep
 
 .PHONY: clean
 clean:
@@ -114,7 +114,7 @@ clean:
 	fi; \
 	\
 	rm "$${output}"
-	@rm reginald-theme
+	@rm reginald-sleep
 
 # ============================================================================ #
 # TOOL HELPERS

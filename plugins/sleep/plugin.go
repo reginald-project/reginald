@@ -11,8 +11,15 @@ import (
 	"github.com/anttikivi/reginald/pkg/rpp/plugin"
 )
 
+// Sleep is the command implementation for the sleep plugin.
+type Sleep struct{}
+
+func (s *Sleep) Run(args []string) error {
+	return nil
+}
+
 func main() {
-	p := plugin.New("theme", nil)
+	p := plugin.New("sleep", &Sleep{})
 
 	fmt.Fprintln(os.Stderr, "HELLO FROM PLUGIN")
 
