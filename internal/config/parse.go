@@ -258,14 +258,14 @@ func validate(c *Config) error {
 
 // applyFlags applies the overrides of the configuration values from
 // command-line flags. It modifies cfg.
-func applyFlags(c *Config, fs *pflag.FlagSet) {
+func applyFlags(cfg *Config, fs *pflag.FlagSet) {
 	if fs.Changed("color") {
 		b, err := fs.GetBool("color")
 		if err != nil {
 			panic("failed to get the value for --color")
 		}
 
-		c.Color = b
+		cfg.Color = b
 	}
 
 	if fs.Changed("no-color") {
@@ -274,7 +274,7 @@ func applyFlags(c *Config, fs *pflag.FlagSet) {
 			panic("failed to get the value for --no-color")
 		}
 
-		c.Color = !b
+		cfg.Color = !b
 	}
 
 	if fs.Changed("logging") {
@@ -283,7 +283,7 @@ func applyFlags(c *Config, fs *pflag.FlagSet) {
 			panic("failed to get the value for --logging")
 		}
 
-		c.Logging.Enabled = b
+		cfg.Logging.Enabled = b
 	}
 
 	if fs.Changed("no-logging") {
@@ -292,7 +292,7 @@ func applyFlags(c *Config, fs *pflag.FlagSet) {
 			panic("failed to get the value for --no-logging")
 		}
 
-		c.Logging.Enabled = !b
+		cfg.Logging.Enabled = !b
 	}
 
 	if fs.Changed("quiet") {
@@ -301,7 +301,7 @@ func applyFlags(c *Config, fs *pflag.FlagSet) {
 			panic("failed to get the value for --quiet")
 		}
 
-		c.Quiet = b
+		cfg.Quiet = b
 	}
 
 	if fs.Changed("verbose") {
@@ -310,7 +310,7 @@ func applyFlags(c *Config, fs *pflag.FlagSet) {
 			panic("failed to get the value for --verbose")
 		}
 
-		c.Quiet = b
+		cfg.Quiet = b
 	}
 }
 
