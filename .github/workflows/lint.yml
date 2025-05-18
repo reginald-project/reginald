@@ -37,7 +37,12 @@ jobs:
           go mod verify
           go mod download
 
+      - name: Extract the golangci-lint version
+        run: |
+          GOLANGCI_LINT_VERSION="$(grep '^GOLANGCI_LINT_VERSION' Makefile | cut -d '=' -f2 | xargs)"
+          echo "GOLANGCI_LINT_VERSION=${GOLANGCI_LINT_VERSION}" >> "${GITHUB_ENV}"
+
       - name: Run the linter
         uses: golangci/golangci-lint-action@v8.0.0
         with:
-          version: v2.1.6
+          version: v${{ env.GOLANGCI_LINT_VERSION }}
