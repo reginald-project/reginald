@@ -12,7 +12,7 @@ import (
 
 func defaultPluginsDir() (string, error) {
 	if env := os.Getenv("XDG_DATA_HOME"); env != "" {
-		path := filepath.Join(env, defaultDirName, "plugins")
+		path := filepath.Join(env, defaultFileName, "plugins")
 
 		path, err := pathname.Abs(path)
 		if err != nil {
@@ -27,7 +27,7 @@ func defaultPluginsDir() (string, error) {
 		return "", fmt.Errorf("failed to get the user home directory: %w", err)
 	}
 
-	path := filepath.Join(home, ".local", "share", defaultDirName, "plugins")
+	path := filepath.Join(home, ".local", "share", defaultFileName, "plugins")
 
 	path, err = pathname.Abs(path)
 	if err != nil {

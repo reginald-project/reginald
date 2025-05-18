@@ -15,12 +15,6 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// Constants for parsing the configuration.
-const (
-	defaultFile = "reginald" // default name of the config file without the possible leading dot and type extension
-	envPrefix   = "REGINALD" // prefix used for the environment variables.
-)
-
 // Errors returned from the configuration parser.
 var (
 	errConfigFileNotFound = errors.New("config file not found")
@@ -177,8 +171,8 @@ func resolveFile(wd, file string) (string, error) {
 		wd,
 	}
 	configNames := []string{
-		strings.ToLower(defaultFile),
-		"." + strings.ToLower(defaultFile),
+		strings.ToLower(defaultFileName),
+		"." + strings.ToLower(defaultFileName),
 	}
 	extensions := []string{
 		"toml",
@@ -309,7 +303,7 @@ func applyFlags(cfg *Config, fs *pflag.FlagSet) {
 func applyEnv(cfg *Config) error {
 	v := reflect.ValueOf(cfg).Elem()
 
-	if err := unmarshalEnv(v, envPrefix); err != nil {
+	if err := unmarshalEnv(v, defaultEnvPrefix); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 

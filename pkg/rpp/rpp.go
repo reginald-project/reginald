@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"strconv"
 	"strings"
 )
@@ -32,6 +31,15 @@ const (
 	MethodShutdown   = "shutdown"
 )
 
+// Error codes used for the protocol.
+const (
+	ParseError     = -32700
+	InvalidRequest = -32600
+	MethodNotFound = -32601
+	InvalidParams  = -32602
+	InternalError  = -32603
+)
+
 // Errors returned by the RPP helper functions.
 var (
 	errZeroLength = errors.New("content-length is zero")
@@ -39,7 +47,7 @@ var (
 
 // ID is the type used for the JSON-RCP message IDs in RPP. The zero value is
 // reserved for denoting that the ID is effectively omitted.
-type ID uint64
+type ID int64
 
 // A Message is the Go representation of a message using RPP. It includes all of
 // the possible fields for a message. Thus, the values that are not used for a
@@ -47,11 +55,11 @@ type ID uint64
 // the client and the server.
 type Message struct {
 	JSONRCP string          `json:"jsonrpc"`          // version of the JSON-RCP protocol, must be "2.0"
-	ID      ID              `json:"id,omitempty"`     // identifier established by the client
+	ID      *ID             `json:"id,omitempty"`     // identifier established by the client
 	Method  string          `json:"method,omitempty"` // name of the method to be invoked
 	Params  json.RawMessage `json:"params,omitempty"` // params of the method call as raw encoded JSON value
 	Result  json.RawMessage `json:"result,omitempty"` // result of the invoked method, present only on success
-	Error   *Error          `json:"error,omitempty"`  // error trigger by the invoked method, not present on success
+	Error   json.RawMessage `json:"error,omitempty"`  // error trigger by the invoked method, not present on success
 }
 
 // An Error is the Go representation of a JSON-RCP error object using RPP.
@@ -71,11 +79,19 @@ type HandshakeParams struct {
 // HandshakeResult is the result struct the server returns when the handshake
 // method is successful.
 type HandshakeResult struct {
-	Protocol        string   `json:"protocol"`        // name of the protocol, must be "rpp"
-	ProtocolVersion int      `json:"protocolVersion"` // protocol version of the server, must be 0
-	Kind            string   `json:"kind"`            // what the plugin provides, either "command" or "task"
-	Name            string   `json:"name"`            // name of provided command or task
-	Flags           []string `json:"flags,omitempty"` // command-line flags the plugin defines, only on commands
+	Protocol        string `json:"protocol"`        // name of the protocol, must be "rpp"
+	ProtocolVersion int    `json:"protocolVersion"` // protocol version of the server, must be 0
+	Kind            string `json:"kind"`            // what the plugin provides, either "command" or "task"
+	Name            string `json:"name"`            // name of provided command or task
+	Flags           []Flag `json:"flags,omitempty"` // command-line flags the plugin defines, only on commands
+}
+
+// Flag is an entry in the handshake response for a command that defines one
+// flag. The type of the flag is inferred using the type of the default value.
+type Flag struct {
+	Name         string `json:"name"`                // full name of the flag
+	Shorthand    string `json:"shorthand,omitempty"` // one-letter shorthand for the flag, if any
+	DefaultValue any    `json:"defaultValue"`        // default value of the flag
 }
 
 // LogParams are the parameters passed with the "log" method.
@@ -128,16 +144,12 @@ func Read(r *bufio.Reader) (*Message, error) {
 		return nil, fmt.Errorf("failed to read message: %w", err)
 	}
 
-	fmt.Fprintln(os.Stderr, string(buf))
-
 	var msg Message
 
 	// TODO: Disallow unknown fields.
 	if err := json.Unmarshal(buf, &msg); err != nil {
 		return nil, fmt.Errorf("failed to decode message from JSON: %w", err)
 	}
-
-	fmt.Fprintln(os.Stderr, "msg body:", msg)
 
 	return &msg, nil
 }
@@ -154,8 +166,6 @@ func Write(w io.Writer, msg *Message) error {
 	if _, err = w.Write([]byte(header)); err != nil {
 		return fmt.Errorf("failed to write message header: %w", err)
 	}
-
-	fmt.Fprintln(os.Stdout, "Writing message:", string(data))
 
 	if _, err = w.Write(data); err != nil {
 		return fmt.Errorf("failed to write message: %w", err)

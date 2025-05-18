@@ -10,7 +10,7 @@ import (
 )
 
 func defaultPluginsDir() (string, error) {
-	path := filepath.Join("%LOCALAPPDATA%", defaultDirName, "plugins")
+	path := filepath.Join("%LOCALAPPDATA%", defaultFileName, "plugins")
 
 	path, err := pathname.Abs(path)
 	if err != nil {

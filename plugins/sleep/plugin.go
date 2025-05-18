@@ -8,13 +8,20 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/anttikivi/reginald/pkg/rpp"
 	"github.com/anttikivi/reginald/pkg/rpp/plugin"
 )
 
 // Sleep is the command implementation for the sleep plugin.
 type Sleep struct{}
 
-func (s *Sleep) Run(args []string) error {
+// Flags returns the flags supported by this command.
+func (s *Sleep) Flags() []rpp.Flag {
+	return nil
+}
+
+// Run executes the command for the plugin.
+func (s *Sleep) Run(_ []string) error {
 	return nil
 }
 
@@ -23,5 +30,8 @@ func main() {
 
 	fmt.Fprintln(os.Stderr, "HELLO FROM PLUGIN")
 
-	p.Serve()
+	if err := p.Serve(); err != nil {
+		fmt.Fprintf(os.Stderr, "plugin %q is going to exit with an error: %v", "sleep", err)
+		os.Exit(1)
+	}
 }

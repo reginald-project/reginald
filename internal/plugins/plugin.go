@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -18,13 +19,12 @@ import (
 
 	"github.com/anttikivi/reginald/internal/pathname"
 	"github.com/anttikivi/reginald/pkg/rpp"
-	"golang.org/x/sync/errgroup"
 )
 
 // Default values associated with the plugin client.
 const (
 	// PluginShutdownTimeout is the default timeout for the plugin shutdown phase.
-	DefaultPluginShutdownTimeout = 5 * time.Second
+	DefaultPluginShutdownTimeout = 15 * time.Second
 
 	// DefaultMaxProtocolErrors is the maximum number of protocol errors that the client
 	// tolerates from a plugin.
@@ -46,9 +46,9 @@ var (
 type Plugin struct {
 	name           string                       // user-friendly name for the plugin
 	kind           string                       // whether this plugin is a task or a command
-	flags          []string                     // command-line flags defined by the plugin if it's a command
+	flags          []rpp.Flag                   // command-line flags defined by the plugin if it's a command
 	cmd            *exec.Cmd                    // command struct used to run the server
-	nextID         atomic.Uint64                // next ID to use in RPP call
+	nextID         atomic.Int64                 // next ID to use in RPP call
 	stdin          *bufio.Writer                // stdin pipe of the plugin command
 	stdout         *bufio.Reader                // buffered reader for the stdout of the plugin
 	stderr         *bufio.Scanner               // stderr pipe of the plugin command
@@ -103,7 +103,7 @@ func New(ctx context.Context, path string) (*Plugin, error) {
 		kind:           "",
 		flags:          nil,
 		cmd:            c,
-		nextID:         atomic.Uint64{},
+		nextID:         atomic.Int64{},
 		stdin:          bufio.NewWriter(stdin),
 		stdout:         bufio.NewReader(stdout),
 		stderr:         bufio.NewScanner(stderr),
@@ -115,48 +115,6 @@ func New(ctx context.Context, path string) (*Plugin, error) {
 	}
 
 	return p, nil
-}
-
-// Load creates the processes for the plugins, performs the handshakes with
-// them, returns a slice of the valid plugins.
-func Load(ctx context.Context, files []string) ([]*Plugin, error) {
-	// TODO: Provide the config value for the create function.
-	plugins, err := loadAll(ctx, files, true)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load the plugins: %w", err)
-	}
-
-	for _, p := range plugins {
-		go func(p *Plugin) {
-			if err := <-p.doneCh; err != nil {
-				// TODO: Better logging or something.
-				fmt.Fprintf(os.Stderr, "plugin %q quit unexpectedly: %v\n", p.name, err)
-			}
-		}(p)
-	}
-
-	return plugins, nil
-}
-
-// ShutdownAll tries to gracefully shut down all of the plugins.
-func ShutdownAll(ctx context.Context, plugins []*Plugin) error {
-	eg, egctx := errgroup.WithContext(ctx)
-
-	for _, p := range plugins {
-		eg.Go(func() error {
-			if err := p.shutdown(egctx); err != nil {
-				return fmt.Errorf("%w", err)
-			}
-
-			return nil
-		})
-	}
-
-	if err := eg.Wait(); err != nil {
-		return fmt.Errorf("%w", err)
-	}
-
-	return nil
 }
 
 // countProtocolError adds one protocol error to the plugins counter and kills
@@ -184,7 +142,7 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 
 	req := &rpp.Message{
 		JSONRCP: rpp.JSONRCPVersion,
-		ID:      id,
+		ID:      &id,
 		Method:  method,
 		Params:  rawParams,
 	}
@@ -314,6 +272,8 @@ func (p *Plugin) handshake(ctx context.Context) error {
 
 	p.flags = append(p.flags, result.Flags...)
 
+	slog.Info("handshake succeeded", "plugin", p.name)
+
 	return nil
 }
 
@@ -360,7 +320,10 @@ func (p *Plugin) read(ctx context.Context) {
 		msg, err := rpp.Read(p.stdout)
 		if err != nil {
 			// Error when reading or EOF.
-			slog.Warn("error when reading plugin output", "err", err)
+			if !errors.Is(err, io.EOF) {
+				slog.Error("error when reading plugin output", "err", err)
+			}
+
 			p.closeAllPending()
 
 			return
@@ -373,8 +336,7 @@ func (p *Plugin) read(ctx context.Context) {
 		}
 
 		// The message is a notification.
-		// TODO: Handle the notifications.
-		if msg.ID == 0 {
+		if *msg.ID == 0 {
 			if msg.Method == "" {
 				p.countProtocolError("no method in notification")
 
@@ -391,12 +353,12 @@ func (p *Plugin) read(ctx context.Context) {
 		// Otherwise the message is handled as a response.
 		p.pendingLock.Lock()
 
-		ch, ok := p.pending[msg.ID]
+		ch, ok := p.pending[*msg.ID]
 		if ok {
 			// Each request should accepts exactly one response, therefore the
 			// entry from pending is deleted when the matching response is
 			// received.
-			delete(p.pending, msg.ID)
+			delete(p.pending, *msg.ID)
 		}
 
 		p.pendingLock.Unlock()
@@ -425,9 +387,16 @@ func (p *Plugin) readStderr() {
 
 // shutdown tries to shut Plugin p down gracefully within the given context.
 func (p *Plugin) shutdown(ctx context.Context) error {
-	_, err := p.call(ctx, rpp.MethodShutdown, struct{}{})
+	res, err := p.call(ctx, rpp.MethodShutdown, nil)
 	if err != nil {
 		slog.Warn("error when calling shutdown", "plugin", p.name, "err", err.Error())
+	}
+
+	var resErr rpp.Error
+	if len(res.Error) > 0 {
+		if err = json.Unmarshal(res.Error, &resErr); err != nil {
+			slog.Warn("error unmarshaling response error", "plugin", p.name, "err", err.Error())
+		}
 	}
 
 	p.writeLock.Lock()
@@ -487,63 +456,4 @@ func (p *Plugin) start(ctx context.Context) error {
 	}()
 
 	return nil
-}
-
-// loadAll creates and starts all of the plugin processes and performs the
-// handshake with them. If ignoreErrors is true, the function simply drops
-// plugins that cause errors when starting or fail the handshake. Otherwise the
-// function fails fast.
-func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin, error) {
-	var (
-		lock    sync.Mutex
-		plugins []*Plugin
-	)
-
-	eg, egctx := errgroup.WithContext(ctx)
-
-	// TODO: Print the errors to actual output if they are ignored.
-	for _, f := range files {
-		eg.Go(func() error {
-			p, err := New(ctx, f)
-			if err != nil {
-				return fmt.Errorf("failed to create a new plugin for path %s; %w", f, err)
-			}
-
-			if err := p.start(ctx); err != nil {
-				if ignoreErrors {
-					slog.Warn("failed to start plugin", "path", f, "err", err)
-
-					return nil
-				}
-
-				return fmt.Errorf("failed to start plugin %s: %w", p.name, err)
-			}
-
-			if err := p.handshake(egctx); err != nil {
-				if ignoreErrors {
-					slog.Warn("handshake failed", "path", f, "err", err)
-
-					return nil
-				}
-
-				return fmt.Errorf("handshake for plugin %s failed: %w", p.name, err)
-			}
-
-			// I'm not sure about using locks but it's simple and gets the job
-			// done.
-			lock.Lock()
-
-			plugins = append(plugins, p)
-
-			lock.Unlock()
-
-			return nil
-		})
-	}
-
-	if err := eg.Wait(); err != nil {
-		return nil, fmt.Errorf("%w", err)
-	}
-
-	return plugins, nil
 }

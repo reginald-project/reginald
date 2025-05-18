@@ -12,14 +12,15 @@ import (
 )
 
 const (
+	defaultEnvPrefix = "REGINALD" // prefix used for the environment variables.
+	defaultFileName  = "reginald"
 	defaultLogOutput = "~/.local/state/reginald.log"
-	defaultDirName   = "reginald"
 )
 
 // PluginsDir returns the plugins directory to use. It takes the environment
 // variable for customizing the plugins directory and the platform into account.
 func PluginsDir() (string, error) {
-	name := strings.ToUpper(envPrefix + "_PLUGINS_DIR")
+	name := strings.ToUpper(defaultEnvPrefix + "_PLUGINS_DIR")
 	if env := os.Getenv(name); env != "" {
 		path, err := pathname.Abs(env)
 		if err != nil {
