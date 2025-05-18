@@ -1,6 +1,6 @@
 # This Makefile is POSIX-compliant, and non-compliance is considered a bug. It
-# follows the POSIX base specification IEEE Std 1003.1-2024. The specification
-# can be found here: https://pubs.opengroup.org/onlinepubs/9799919799/.
+# follows the POSIX base specification IEEE Std 1003.1-2024. Documentation can
+# be found here: https://pubs.opengroup.org/onlinepubs/9799919799/.
 
 .POSIX:
 .SUFFIXES:
