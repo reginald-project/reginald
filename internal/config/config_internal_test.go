@@ -2,9 +2,11 @@ package config
 
 import (
 	"log/slog"
+	"os"
 	"testing"
 
 	"github.com/anttikivi/reginald/pkg/task"
+	"golang.org/x/term"
 )
 
 //nolint:maintidx
@@ -19,6 +21,7 @@ func Test_from(t *testing.T) {
 		"default": {
 			cfgFile: defaultConfigFile(),
 			want: &Config{
+				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
 				Directory:  "",
 				Logging: LoggingConfig{
@@ -42,6 +45,7 @@ func Test_from(t *testing.T) {
 				return cf
 			})(),
 			want: &Config{
+				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
 				Directory:  "",
 				Logging: LoggingConfig{
@@ -65,6 +69,7 @@ func Test_from(t *testing.T) {
 				return cf
 			})(),
 			want: &Config{
+				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
 				Directory:  "",
 				Logging: LoggingConfig{
@@ -88,6 +93,7 @@ func Test_from(t *testing.T) {
 				return cf
 			})(),
 			want: &Config{
+				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
 				Directory:  "",
 				Logging: LoggingConfig{
@@ -111,6 +117,7 @@ func Test_from(t *testing.T) {
 				return cf
 			})(),
 			want: &Config{
+				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
 				Directory:  "",
 				Logging: LoggingConfig{
@@ -134,6 +141,7 @@ func Test_from(t *testing.T) {
 				return cf
 			})(),
 			want: &Config{
+				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
 				Directory:  "",
 				Logging: LoggingConfig{
@@ -158,6 +166,7 @@ func Test_from(t *testing.T) {
 				return cf
 			})(),
 			want: &Config{
+				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
 				Directory:  "",
 				Logging: LoggingConfig{
@@ -176,6 +185,7 @@ func Test_from(t *testing.T) {
 		"notDefault": {
 			cfgFile: defaultConfigFile(),
 			want: &Config{
+				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
 				Directory:  "",
 				Logging: LoggingConfig{
@@ -191,7 +201,7 @@ func Test_from(t *testing.T) {
 			},
 			reverse: true,
 		},
-		"tasksEquals": {
+		"tasksEquals": { //nolint:dupl
 			cfgFile: (func() *File {
 				cf := defaultConfigFile()
 				cf.Tasks = []map[string]any{
@@ -213,6 +223,7 @@ func Test_from(t *testing.T) {
 				return cf
 			})(),
 			want: &Config{
+				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
 				Directory:  "",
 				Logging: LoggingConfig{
@@ -246,7 +257,7 @@ func Test_from(t *testing.T) {
 			},
 			reverse: false,
 		},
-		"tasksNotEquals": {
+		"tasksNotEquals": { //nolint:dupl
 			cfgFile: (func() *File {
 				cf := defaultConfigFile()
 				cf.Tasks = []map[string]any{
@@ -268,6 +279,7 @@ func Test_from(t *testing.T) {
 				return cf
 			})(),
 			want: &Config{
+				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
 				Directory:  "",
 				Logging: LoggingConfig{
