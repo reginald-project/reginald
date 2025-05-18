@@ -14,11 +14,15 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/anttikivi/reginald/internal/pathname"
 	"github.com/anttikivi/reginald/pkg/rpp"
 	"golang.org/x/sync/errgroup"
 )
+
+// PluginShutdownTimeout is the default timeout for the plugin shutdown phase.
+const PluginShutdownTimeout = 5 * time.Second
 
 // maxProtocolErrors is the maximum number of protocol errors that the client
 // tolerates from a plugin.
@@ -131,6 +135,27 @@ func Load(ctx context.Context, files []string) ([]*Plugin, error) {
 	return plugins, nil
 }
 
+// ShutdownAll tries to gracefully shut down all of the plugins.
+func ShutdownAll(ctx context.Context, plugins []*Plugin) error {
+	eg, egctx := errgroup.WithContext(ctx)
+
+	for _, p := range plugins {
+		eg.Go(func() error {
+			if err := p.shutdown(egctx); err != nil {
+				return fmt.Errorf("%w", err)
+			}
+
+			return nil
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	return nil
+}
+
 // countProtocolError adds one protocol error to the plugins counter and kills
 // the plugin if the maximum threshold for plugin protocol errors is reached.
 func (p *Plugin) countProtocolError(reason string) {
@@ -142,17 +167,6 @@ func (p *Plugin) countProtocolError(reason string) {
 		fmt.Fprintf(os.Stderr, "too many protocol errors by %s, shutting the plugin down", p.name)
 		p.kill()
 	}
-}
-
-// kill kills the plugin process.
-func (p *Plugin) kill() {
-	if p.cmd.Process != nil {
-		if err := p.cmd.Process.Kill(); err != nil {
-			panic(fmt.Sprintf("failed to kill a plugin process: %v", err))
-		}
-	}
-
-	p.closeAllPending()
 }
 
 // call calls the given method in the plugin over RPP. It returns the message it
@@ -300,6 +314,17 @@ func (p *Plugin) handshake(ctx context.Context) error {
 	return nil
 }
 
+// kill kills the plugin process.
+func (p *Plugin) kill() {
+	if p.cmd.Process != nil {
+		if err := p.cmd.Process.Kill(); err != nil {
+			panic(fmt.Sprintf("failed to kill a plugin process: %v", err))
+		}
+	}
+
+	p.closeAllPending()
+}
+
 // logNotification handles the "log" notifications.
 func (p *Plugin) logNotification(ctx context.Context, msg *rpp.Message) error {
 	if msg.Params == nil {
@@ -392,6 +417,47 @@ func (p *Plugin) readStderr() {
 
 	if err := p.stderr.Err(); err != nil {
 		fmt.Fprintf(os.Stderr, "error reading the stderr for %q: %v", p.name, err)
+	}
+}
+
+// shutdown tries to shut Plugin p down gracefully within the given context.
+func (p *Plugin) shutdown(ctx context.Context) error {
+	_, err := p.call(ctx, rpp.MethodShutdown, struct{}{})
+	if err != nil {
+		slog.Warn("error when calling shutdown", "plugin", p.name, "err", err.Error())
+	}
+
+	p.writeLock.Lock()
+
+	err = rpp.Write(p.stdin, &rpp.Message{
+		JSONRCP: rpp.JSONRCPVersion,
+		Method:  rpp.MethodExit,
+	})
+	if err == nil {
+		err = p.stdin.Flush()
+	}
+
+	if err != nil {
+		slog.Warn("error when sending the exit notification", "plugin", p.name, "err", err.Error())
+	}
+
+	p.writeLock.Unlock()
+
+	select {
+	case err := <-p.doneCh:
+		if err != nil {
+			return fmt.Errorf("plugin run returned an error: %w", err)
+		}
+
+		return nil
+	case <-ctx.Done():
+		p.kill()
+
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("%w", err)
+		}
+
+		return nil
 	}
 }
 

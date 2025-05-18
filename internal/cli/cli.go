@@ -187,6 +187,14 @@ func (c *CLI) Execute(ctx context.Context) error {
 		return fmt.Errorf("%w", err)
 	}
 
+	// End by shutting down the plugins.
+	timeoutCtx, cancel := context.WithTimeout(ctx, plugins.PluginShutdownTimeout)
+	defer cancel()
+
+	if err = plugins.ShutdownAll(timeoutCtx, c.plugins); err != nil {
+		return fmt.Errorf("failed to shut down plugins: %w", err)
+	}
+
 	return nil
 }
 
