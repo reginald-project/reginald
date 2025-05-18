@@ -10,6 +10,8 @@
   Reginald
 </h1>
 
+[![CI](https://github.com/anttikivi/reginald/actions/workflows/ci.yml/badge.svg)](https://github.com/anttikivi/reginald/actions/workflows/ci.yml)
+
 👔 the personal workstation valet
 
 This project is still in early development. More info will be added later.
