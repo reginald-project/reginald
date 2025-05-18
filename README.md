@@ -10,7 +10,9 @@
   Reginald
 </h1>
 
-[![CI](https://github.com/anttikivi/reginald/actions/workflows/ci.yml/badge.svg)](https://github.com/anttikivi/reginald/actions/workflows/ci.yml)
+<div align="center">
+  [![CI](https://github.com/anttikivi/reginald/actions/workflows/ci.yml/badge.svg)](https://github.com/anttikivi/reginald/actions/workflows/ci.yml)
+</div>
 
 👔 the personal workstation valet
 
