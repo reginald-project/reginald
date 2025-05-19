@@ -55,6 +55,11 @@ func defaultConfig() *Config {
 // defaultConfigFile returns the default values for the configuration options
 // that can be set using a config file.
 func defaultConfigFile() *File {
+	pd, err := DefaultPluginsDir()
+	if err != nil {
+		panic(fmt.Sprintf("failed to create value for the default config file: %v", err))
+	}
+
 	return &File{
 		Color: term.IsTerminal(int(os.Stdout.Fd())),
 		Logging: LoggingConfig{
@@ -63,8 +68,9 @@ func defaultConfigFile() *File {
 			Level:   slog.LevelInfo,
 			Output:  defaultLogOutput,
 		},
-		Quiet:   false,
-		Tasks:   []map[string]any{},
-		Verbose: false,
+		PluginDir: pd,
+		Quiet:     false,
+		Tasks:     []map[string]any{},
+		Verbose:   false,
 	}
 }

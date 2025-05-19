@@ -215,6 +215,15 @@ func normalize(cfg *Config) error {
 		}
 	}
 
+	if !filepath.IsAbs(cfg.PluginDir) {
+		cfg.PluginDir, err = pathname.Abs(cfg.PluginDir)
+		if err != nil {
+			return fmt.Errorf("failed to make the plugin directory path absolute: %w", err)
+		}
+	}
+
+	cfg.PluginDir = filepath.Clean(cfg.PluginDir)
+
 	return nil
 }
 
@@ -233,6 +242,10 @@ func validate(c *Config) error {
 		)
 	}
 
+	if !filepath.IsAbs(c.PluginDir) {
+		return fmt.Errorf("%w: plugin directory is not absolute: %s", errInvalidConfig, c.PluginDir)
+	}
+
 	if c.Quiet && c.Verbose {
 		return fmt.Errorf("%w: both quiet and verbose are set", errInvalidConfig)
 	}
@@ -246,7 +259,7 @@ func applyFlags(cfg *Config, fs *pflag.FlagSet) {
 	if fs.Changed("color") {
 		b, err := fs.GetBool("color")
 		if err != nil {
-			panic("failed to get the value for --color")
+			panic(fmt.Sprintf("failed to get the value for --color: %v", err))
 		}
 
 		cfg.Color = b
@@ -255,7 +268,7 @@ func applyFlags(cfg *Config, fs *pflag.FlagSet) {
 	if fs.Changed("no-color") {
 		b, err := fs.GetBool("no-color")
 		if err != nil {
-			panic("failed to get the value for --no-color")
+			panic(fmt.Sprintf("failed to get the value for --no-color: %v", err))
 		}
 
 		cfg.Color = !b
@@ -264,7 +277,7 @@ func applyFlags(cfg *Config, fs *pflag.FlagSet) {
 	if fs.Changed("logging") {
 		b, err := fs.GetBool("logging")
 		if err != nil {
-			panic("failed to get the value for --logging")
+			panic(fmt.Sprintf("failed to get the value for --logging: %v", err))
 		}
 
 		cfg.Logging.Enabled = b
@@ -273,16 +286,25 @@ func applyFlags(cfg *Config, fs *pflag.FlagSet) {
 	if fs.Changed("no-logging") {
 		b, err := fs.GetBool("no-logging")
 		if err != nil {
-			panic("failed to get the value for --no-logging")
+			panic(fmt.Sprintf("failed to get the value for --no-logging: %v", err))
 		}
 
 		cfg.Logging.Enabled = !b
 	}
 
+	if fs.Changed("plugin-dir") {
+		s, err := fs.GetString("plugin-dir")
+		if err != nil {
+			panic(fmt.Sprintf("failed to get the value for --plugin-dir: %v", err))
+		}
+
+		cfg.PluginDir = s
+	}
+
 	if fs.Changed("quiet") {
 		b, err := fs.GetBool("quiet")
 		if err != nil {
-			panic("failed to get the value for --quiet")
+			panic(fmt.Sprintf("failed to get the value for --quiet: %v", err))
 		}
 
 		cfg.Quiet = b
@@ -291,7 +313,7 @@ func applyFlags(cfg *Config, fs *pflag.FlagSet) {
 	if fs.Changed("verbose") {
 		b, err := fs.GetBool("verbose")
 		if err != nil {
-			panic("failed to get the value for --verbose")
+			panic(fmt.Sprintf("failed to get the value for --verbose: %v", err))
 		}
 
 		cfg.Quiet = b
