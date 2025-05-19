@@ -36,10 +36,9 @@ func run() int {
 
 	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
 
-	handler := panichandler.WithStackTrace()
-
+	handlePanic := panichandler.WithStackTrace()
 	go func() {
-		defer handler()
+		defer handlePanic()
 		<-sigc
 		cancel()
 	}()

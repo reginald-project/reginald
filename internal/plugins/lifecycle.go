@@ -7,6 +7,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/anttikivi/reginald/internal/panichandler"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -20,7 +21,10 @@ func Load(ctx context.Context, files []string) ([]*Plugin, error) {
 	}
 
 	for _, p := range plugins {
+		handlePanic := panichandler.WithStackTrace()
 		go func(p *Plugin) {
+			defer handlePanic()
+
 			if err := <-p.doneCh; err != nil {
 				// TODO: Better logging or something.
 				fmt.Fprintf(os.Stderr, "plugin %q quit unexpectedly: %v\n", p.name, err)
@@ -38,7 +42,9 @@ func ShutdownAll(ctx context.Context, plugins []*Plugin) error {
 	eg, egctx := errgroup.WithContext(ctx)
 
 	for _, p := range plugins {
+		handlePanic := panichandler.WithStackTrace()
 		eg.Go(func() error {
+			defer handlePanic()
 			if err := p.shutdown(egctx); err != nil {
 				return fmt.Errorf("%w", err)
 			}
@@ -72,7 +78,9 @@ func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin,
 
 	// TODO: Print the errors to actual output if they are ignored.
 	for _, f := range files {
+		handlePanic := panichandler.WithStackTrace()
 		eg.Go(func() error {
+			defer handlePanic()
 			p, err := New(ctx, f)
 			if err != nil {
 				return fmt.Errorf("failed to create a new plugin for path %s; %w", f, err)

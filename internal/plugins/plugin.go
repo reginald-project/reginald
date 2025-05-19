@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/anttikivi/reginald/internal/panichandler"
 	"github.com/anttikivi/reginald/internal/pathname"
 	"github.com/anttikivi/reginald/pkg/rpp"
 )
@@ -328,7 +329,9 @@ func (p *Plugin) logNotification(ctx context.Context, msg *rpp.Message) error {
 
 // read runs the reading loop for the plugin. It listens to the standard output
 // of the plugins and handles the messages when they come in.
-func (p *Plugin) read(ctx context.Context) {
+func (p *Plugin) read(ctx context.Context, panicHandler func()) {
+	defer panicHandler()
+
 	for {
 		msg, err := rpp.Read(p.stdout)
 		if err != nil {
@@ -386,7 +389,8 @@ func (p *Plugin) read(ctx context.Context) {
 }
 
 // readStderr runs a loop for reading the standard error output of the plugin.
-func (p *Plugin) readStderr() {
+func (p *Plugin) readStderr(panicHandler func()) {
+	defer panicHandler()
 	for p.stderr.Scan() {
 		line := p.stderr.Text()
 
@@ -452,10 +456,13 @@ func (p *Plugin) start(ctx context.Context) error {
 
 	p.doneCh = make(chan error, 1)
 
-	go p.read(ctx)
-	go p.readStderr()
+	handlePanic := panichandler.WithStackTrace()
+
+	go p.read(ctx, handlePanic)
+	go p.readStderr(handlePanic)
 
 	go func() {
+		defer handlePanic()
 		p.doneCh <- p.cmd.Wait()
 
 		close(p.doneCh)
