@@ -11,6 +11,10 @@ import (
 	"sync"
 )
 
+// Streams is the global IO streams instance for the program. It must be
+// initialized before use.
+var Streams *IOStreams //nolint:gochecknoglobals
+
 // IOStreams is the type of the global input and output object.
 type IOStreams struct {
 	out           io.Writer
@@ -21,10 +25,6 @@ type IOStreams struct {
 	verbose       bool
 	colorsEnabled bool
 }
-
-// Streams is the global IO streams instance for the program. It must be
-// initialized before use.
-var Streams *IOStreams //nolint:gochecknoglobals
 
 // New returns a new IOStreams for the given settings.
 func New(quiet, verbose, colors bool) *IOStreams {

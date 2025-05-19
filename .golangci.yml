@@ -14,6 +14,11 @@ linters:
     cyclop:
       max-complexity: 20
     decorder:
+      dec-order:
+        - const
+        - var
+        - type
+        - func
       disable-dec-order-check: false
       disable-init-func-first-check: false
       disable-dec-num-check: true

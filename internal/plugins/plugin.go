@@ -21,24 +21,6 @@ import (
 	"github.com/anttikivi/reginald/pkg/rpp"
 )
 
-// A Plugin represents a plugin that acts as an RPP server and is run from this
-// client.
-type Plugin struct {
-	name           string                       // user-friendly name for the plugin
-	kind           string                       // whether this plugin is a task or a command
-	flags          []rpp.Flag                   // command-line flags defined by the plugin if it's a command
-	cmd            *exec.Cmd                    // command struct used to run the server
-	nextID         atomic.Int64                 // next ID to use in RPP call
-	stdin          *bufio.Writer                // stdin pipe of the plugin command
-	stdout         *bufio.Reader                // buffered reader for the stdout of the plugin
-	stderr         *bufio.Scanner               // stderr pipe of the plugin command
-	writeLock      sync.Mutex                   // lock for writing to writer to serialize the messages
-	pending        map[rpp.ID]chan *rpp.Message // read messages from the plugin waiting for processing
-	pendingLock    sync.Mutex                   // lock used with pending
-	doneCh         chan error                   // channel to close when the plugin is done running
-	protocolErrors atomic.Uint32                // current number of protocol errors for this plugin
-}
-
 // Default values associated with the plugin client.
 const (
 	// PluginShutdownTimeout is the default timeout for the plugin shutdown phase.
@@ -58,6 +40,24 @@ var (
 	errUnknownMethod = errors.New("invalid method")
 	errWrongProtocol = errors.New("mismatch in plugin protocol info")
 )
+
+// A Plugin represents a plugin that acts as an RPP server and is run from this
+// client.
+type Plugin struct {
+	name           string                       // user-friendly name for the plugin
+	kind           string                       // whether this plugin is a task or a command
+	flags          []rpp.Flag                   // command-line flags defined by the plugin if it's a command
+	cmd            *exec.Cmd                    // command struct used to run the server
+	nextID         atomic.Int64                 // next ID to use in RPP call
+	stdin          *bufio.Writer                // stdin pipe of the plugin command
+	stdout         *bufio.Reader                // buffered reader for the stdout of the plugin
+	stderr         *bufio.Scanner               // stderr pipe of the plugin command
+	writeLock      sync.Mutex                   // lock for writing to writer to serialize the messages
+	pending        map[rpp.ID]chan *rpp.Message // read messages from the plugin waiting for processing
+	pendingLock    sync.Mutex                   // lock used with pending
+	doneCh         chan error                   // channel to close when the plugin is done running
+	protocolErrors atomic.Uint32                // current number of protocol errors for this plugin
+}
 
 // New returns a pointer to a newly created Plugin.
 func New(ctx context.Context, path string) (*Plugin, error) {

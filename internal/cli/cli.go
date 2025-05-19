@@ -19,6 +19,16 @@ import (
 	"golang.org/x/term"
 )
 
+// Program-related constants.
+const (
+	ProgramName = "Reginald" // canonical name for the program
+	Name        = "reginald" // name of the command that's run
+)
+
+// errMutuallyExclusive is returned when the user sets two mutually exclusive
+// flags from the same group at the same time.
+var errMutuallyExclusive = errors.New("two mutually exclusive flags set at the same time")
+
 // A CLI is the command-line interface that runs the program. It handles
 // subcommands, global command-line flags, and the program execution. The "root
 // command" of the CLI is represented by the CLI itself and should not a
@@ -38,16 +48,6 @@ type CLI struct {
 	mutuallyExclusiveFlags [][]string        // list of flag names that are marked as mutually exclusive
 	plugins                []*plugins.Plugin // loaded plugins
 }
-
-// Program-related constants.
-const (
-	ProgramName = "Reginald" // canonical name for the program
-	Name        = "reginald" // name of the command that's run
-)
-
-// errMutuallyExclusive is returned when the user sets two mutually exclusive
-// flags from the same group at the same time.
-var errMutuallyExclusive = errors.New("two mutually exclusive flags set at the same time")
 
 // New creates a new CLI and returns it. It panics on errors.
 func New(v string) *CLI {
@@ -120,7 +120,7 @@ func New(v string) *CLI {
 // Execute executes the CLI. It parses the command-line options, finds the
 // correct command to run, and executes it. An error is returned on user errors.
 // The function panics if it is called with invalid program configuration.
-func (c *CLI) Execute(ctx context.Context) error {
+func (c *CLI) Execute(ctx context.Context) error { //nolint:funlen // TODO: Split this functions?
 	args := os.Args
 
 	// Matches merging flags for commands.

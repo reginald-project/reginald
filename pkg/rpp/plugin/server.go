@@ -12,6 +12,12 @@ import (
 	"github.com/anttikivi/reginald/pkg/rpp"
 )
 
+// Errors returned by the server functions when there is an unrecoverable
+// failure.
+var (
+	errImplType = errors.New("failed to cast impl to the expected type")
+)
+
 // A Plugin is a plugin server that contains the information for running the
 // plugin. It holds the implementation of the plugin's task's or command's
 // functionality as Impl, which must implement either [Command] or [Task].
@@ -24,12 +30,6 @@ type Plugin struct {
 	shutdown bool // set to true when the plugin should start shutdown
 	exit     bool // set to true when the plugin should exit right away
 }
-
-// Errors returned by the server functions when there is an unrecoverable
-// failure.
-var (
-	errImplType = errors.New("failed to cast impl to the expected type")
-)
 
 // New returns a new Plugin for the given parameters.
 func New(name string, impl any) *Plugin {
