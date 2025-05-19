@@ -7,7 +7,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/anttikivi/reginald/internal/panichandler"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -20,13 +19,8 @@ func Load(ctx context.Context, files []string) ([]*Plugin, error) {
 		return nil, fmt.Errorf("failed to load the plugins: %w", err)
 	}
 
-	ph := panichandler.WithStackTrace()
 	for _, p := range plugins {
 		go func(p *Plugin) {
-			defer ph()
-
-			panic("test")
-
 			if err := <-p.doneCh; err != nil {
 				// TODO: Better logging or something.
 				fmt.Fprintf(os.Stderr, "plugin %q quit unexpectedly: %v\n", p.name, err)

@@ -273,9 +273,9 @@ func validate(c *Config) error {
 
 // applyFlags applies the overrides of the configuration values from
 // command-line flags. It modifies cfg.
-func applyFlags(cfg *Config, fs *pflag.FlagSet) {
-	if fs.Changed("color") {
-		b, err := fs.GetBool("color")
+func applyFlags(cfg *Config, flagSet *pflag.FlagSet) {
+	if flagSet.Changed("color") {
+		b, err := flagSet.GetBool("color")
 		if err != nil {
 			panic(fmt.Sprintf("failed to get the value for --color: %v", err))
 		}
@@ -283,8 +283,8 @@ func applyFlags(cfg *Config, fs *pflag.FlagSet) {
 		cfg.Color = b
 	}
 
-	if fs.Changed("no-color") {
-		b, err := fs.GetBool("no-color")
+	if flagSet.Changed("no-color") {
+		b, err := flagSet.GetBool("no-color")
 		if err != nil {
 			panic(fmt.Sprintf("failed to get the value for --no-color: %v", err))
 		}
@@ -292,8 +292,8 @@ func applyFlags(cfg *Config, fs *pflag.FlagSet) {
 		cfg.Color = !b
 	}
 
-	if fs.Changed("logging") {
-		b, err := fs.GetBool("logging")
+	if flagSet.Changed("logging") {
+		b, err := flagSet.GetBool("logging")
 		if err != nil {
 			panic(fmt.Sprintf("failed to get the value for --logging: %v", err))
 		}
@@ -301,8 +301,8 @@ func applyFlags(cfg *Config, fs *pflag.FlagSet) {
 		cfg.Logging.Enabled = b
 	}
 
-	if fs.Changed("no-logging") {
-		b, err := fs.GetBool("no-logging")
+	if flagSet.Changed("no-logging") {
+		b, err := flagSet.GetBool("no-logging")
 		if err != nil {
 			panic(fmt.Sprintf("failed to get the value for --no-logging: %v", err))
 		}
@@ -310,8 +310,8 @@ func applyFlags(cfg *Config, fs *pflag.FlagSet) {
 		cfg.Logging.Enabled = !b
 	}
 
-	if fs.Changed("plugin-dir") {
-		s, err := fs.GetString("plugin-dir")
+	if flagSet.Changed("plugin-dir") {
+		s, err := flagSet.GetString("plugin-dir")
 		if err != nil {
 			panic(fmt.Sprintf("failed to get the value for --plugin-dir: %v", err))
 		}
@@ -319,8 +319,8 @@ func applyFlags(cfg *Config, fs *pflag.FlagSet) {
 		cfg.PluginDir = s
 	}
 
-	if fs.Changed("quiet") {
-		b, err := fs.GetBool("quiet")
+	if flagSet.Changed("quiet") {
+		b, err := flagSet.GetBool("quiet")
 		if err != nil {
 			panic(fmt.Sprintf("failed to get the value for --quiet: %v", err))
 		}
@@ -328,8 +328,8 @@ func applyFlags(cfg *Config, fs *pflag.FlagSet) {
 		cfg.Quiet = b
 	}
 
-	if fs.Changed("verbose") {
-		b, err := fs.GetBool("verbose")
+	if flagSet.Changed("verbose") {
+		b, err := flagSet.GetBool("verbose")
 		if err != nil {
 			panic(fmt.Sprintf("failed to get the value for --verbose: %v", err))
 		}

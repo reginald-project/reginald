@@ -206,7 +206,10 @@ func (c *CLI) runFirstPass(ctx context.Context) (bool, error) {
 
 	help, err := fs.GetBool("help")
 	if err != nil {
-		return false, fmt.Errorf("failed to get the value for command-line option '--help': %w", err)
+		return false, fmt.Errorf(
+			"failed to get the value for command-line option '--help': %w",
+			err,
+		)
 	}
 
 	if help {
@@ -219,7 +222,10 @@ func (c *CLI) runFirstPass(ctx context.Context) (bool, error) {
 
 	version, err := fs.GetBool("version")
 	if err != nil {
-		return false, fmt.Errorf("failed to get the value for command-line option '--version': %w", err)
+		return false, fmt.Errorf(
+			"failed to get the value for command-line option '--version': %w",
+			err,
+		)
 	}
 
 	if version {
@@ -259,6 +265,74 @@ func (c *CLI) initFirstPassFlags() *pflag.FlagSet {
 	fs.AddFlagSet(c.flags)
 
 	return fs
+}
+
+// parseConfig parses the configuration from the configuration files,
+// environment variables, and command-line flags. It returns a pointer to the
+// configuration and any errors encountered.
+func (c *CLI) parseConfig(fs *pflag.FlagSet) (*config.Config, error) {
+	slog.Info("parsing config")
+
+	cfg, err := config.Parse(fs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse the config: %w", err)
+	}
+
+	slog.Info("config parsed", "config", cfg)
+
+	return cfg, nil
+}
+
+// loadPlugins finds and executes all of the plugins in the plugins directory
+// found in the configuration in c. It sets plugins in c to a slice of pointers
+// to the found and executed plugins.
+func (c *CLI) loadPlugins(ctx context.Context) error {
+	var pluginFiles []string
+
+	dir, err := config.DefaultPluginsDir()
+	if err != nil {
+		return fmt.Errorf("failed to get the plugins directory: %w", err)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("failed to read plugins directory %s: %w", dir, err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		if !entry.Type().IsRegular() {
+			continue
+		}
+
+		path := filepath.Join(dir, entry.Name())
+
+		info, err := os.Stat(path)
+		if err != nil {
+			return fmt.Errorf("failed to check the file info for %s: %w", path, err)
+		}
+
+		if info.Mode()&0o111 == 0 {
+			slog.Debug("plugin file is not executable", "path", path)
+
+			continue
+		}
+
+		if strings.HasPrefix(entry.Name(), Name+"-") {
+			pluginFiles = append(pluginFiles, path)
+		}
+	}
+
+	slog.Debug("performed the plugin lookup", "plugins", pluginFiles)
+
+	if c.plugins, err = plugins.Load(ctx, pluginFiles); err != nil {
+		return fmt.Errorf("failed to load the plugins: %w", err)
+	}
+
+	return nil
 }
 
 // checkMutuallyExclusiveFlags checks if two flags marked as mutually exclusive
@@ -394,74 +468,6 @@ func (c *CLI) markFlagsMutuallyExclusive(a ...string) {
 	}
 
 	c.mutuallyExclusiveFlags = append(c.mutuallyExclusiveFlags, a)
-}
-
-// parseConfig parses the configuration from the configuration files,
-// environment variables, and command-line flags. It returns a pointer to the
-// configuration and any errors encountered.
-func (c *CLI) parseConfig(fs *pflag.FlagSet) (*config.Config, error) {
-	slog.Info("parsing config")
-
-	cfg, err := config.Parse(fs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse the config: %w", err)
-	}
-
-	slog.Info("config parsed", "config", cfg)
-
-	return cfg, nil
-}
-
-// loadPlugins finds and executes all of the plugins in the plugins directory
-// found in the configuration in c. It sets plugins in c to a slice of pointers
-// to the found and executed plugins.
-func (c *CLI) loadPlugins(ctx context.Context) error {
-	var pluginFiles []string
-
-	dir, err := config.DefaultPluginsDir()
-	if err != nil {
-		return fmt.Errorf("failed to get the plugins directory: %w", err)
-	}
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return fmt.Errorf("failed to read plugins directory %s: %w", dir, err)
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		if !entry.Type().IsRegular() {
-			continue
-		}
-
-		path := filepath.Join(dir, entry.Name())
-
-		info, err := os.Stat(path)
-		if err != nil {
-			return fmt.Errorf("failed to check the file info for %s: %w", path, err)
-		}
-
-		if info.Mode()&0o111 == 0 {
-			slog.Debug("plugin file is not executable", "path", path)
-
-			continue
-		}
-
-		if strings.HasPrefix(entry.Name(), Name+"-") {
-			pluginFiles = append(pluginFiles, path)
-		}
-	}
-
-	slog.Debug("performed the plugin lookup", "plugins", pluginFiles)
-
-	if c.plugins, err = plugins.Load(ctx, pluginFiles); err != nil {
-		return fmt.Errorf("failed to load the plugins: %w", err)
-	}
-
-	return nil
 }
 
 // run runs the setup and execution of the resolved command.
