@@ -120,12 +120,8 @@ func applyFileValues(cfgFile, cfg reflect.Value) {
 			panic("target value in Config cannot be set: " + structField.Name)
 		}
 
-		slog.Debug("checking config file field", "field", structField.Name)
-
 		// Tasks are handled manually in [File.from].
 		if strings.ToLower(structField.Name) == "tasks" {
-			slog.Debug("found tasks config, skipping for now")
-
 			continue
 		}
 

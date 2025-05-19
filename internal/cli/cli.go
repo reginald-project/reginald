@@ -259,6 +259,8 @@ func (c *CLI) runFirstPass(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
+// initFirstPassFlags creates a temporary flag set for parsing the command-line
+// arguments during the first pass before loading the plugins.
 func (c *CLI) initFirstPassFlags() *pflag.FlagSet {
 	fs := pflag.NewFlagSet(c.flags.Name(), pflag.ContinueOnError)
 
@@ -271,8 +273,6 @@ func (c *CLI) initFirstPassFlags() *pflag.FlagSet {
 // environment variables, and command-line flags. It returns a pointer to the
 // configuration and any errors encountered.
 func (c *CLI) parseConfig(fs *pflag.FlagSet) (*config.Config, error) {
-	slog.Info("parsing config")
-
 	cfg, err := config.Parse(fs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse the config: %w", err)
@@ -300,15 +300,17 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 	}
 
 	for _, entry := range entries {
+		path := filepath.Join(dir, entry.Name())
+
 		if entry.IsDir() {
+			slog.Debug("plugin file is a directory", "path", path)
+
 			continue
 		}
 
 		if !entry.Type().IsRegular() {
 			continue
 		}
-
-		path := filepath.Join(dir, entry.Name())
 
 		info, err := os.Stat(path)
 		if err != nil {

@@ -162,17 +162,11 @@ func fileOptions(flagSet *pflag.FlagSet) (string, string, error) {
 func resolveFile(wd, file string) (string, error) {
 	original := file
 
-	slog.Debug("resolving config file", "wd", wd, "f", file)
-
 	// Use the config file f if it is an absolute path.
 	if filepath.IsAbs(file) {
-		slog.Debug("given config file is an absolute path", "f", file)
-
 		if ok, err := pathname.IsFile(file); err != nil {
 			return "", fmt.Errorf("%w", err)
 		} else if ok {
-			slog.Debug("found config file", "f", file)
-
 			return filepath.Clean(file), nil
 		}
 	}
@@ -180,13 +174,9 @@ func resolveFile(wd, file string) (string, error) {
 	// Check if the config file f matches a file in the working directory.
 	file = filepath.Join(wd, file)
 
-	slog.Debug("checking joint path", "f", file)
-
 	if ok, err := pathname.IsFile(file); err != nil {
 		return "", fmt.Errorf("%w", err)
 	} else if ok {
-		slog.Debug("found config file", "f", file)
-
 		return file, nil
 	}
 
@@ -213,14 +203,9 @@ func resolveFile(wd, file string) (string, error) {
 		for _, n := range configNames {
 			for _, e := range extensions {
 				file = filepath.Join(d, fmt.Sprintf("%s.%s", n, e))
-
-				slog.Debug("checking default path", "f", file)
-
 				if ok, err := pathname.IsFile(file); err != nil {
 					return "", fmt.Errorf("%w", err)
 				} else if ok {
-					slog.Debug("found config file", "f", file)
-
 					return file, nil
 				}
 			}
@@ -381,11 +366,7 @@ func unmarshalEnv(v reflect.Value, prefix string) error {
 			continue
 		}
 
-		slog.Debug("checking config field", "field", structField.Name)
-
 		if structField.Name == "ConfigFile" || structField.Name == "Directory" {
-			slog.Debug("skipping field", "field", structField)
-
 			continue
 		}
 
@@ -398,8 +379,6 @@ func unmarshalEnv(v reflect.Value, prefix string) error {
 
 			continue
 		}
-
-		slog.Debug("reading config value from env", "var", env)
 
 		if val := os.Getenv(env); val != "" {
 			ok, err := tryUnmarshalText(fieldValue, structField, val)
@@ -470,8 +449,6 @@ func toSnakeCase(name string) string {
 // this was successful and the second is error.
 func tryUnmarshalText(fv reflect.Value, sf reflect.StructField, val string) (bool, error) {
 	if reflect.PointerTo(fv.Type()).Implements(textUnmarshalerType) {
-		slog.Debug("pointer to field implements TextUnmarshaler", "field", sf.Name)
-
 		unmarshaler, ok := fv.Addr().Interface().(encoding.TextUnmarshaler)
 		if !ok {
 			panic(
