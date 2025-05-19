@@ -13,6 +13,7 @@ import (
 
 	"github.com/anttikivi/reginald/internal/cli"
 	"github.com/anttikivi/reginald/internal/logging"
+	"github.com/anttikivi/reginald/internal/panichandler"
 	"github.com/anttikivi/reginald/internal/version"
 )
 
@@ -24,7 +25,7 @@ func main() {
 }
 
 func run() int {
-	defer panicHandler()
+	defer panichandler.Handle()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -35,7 +36,10 @@ func run() int {
 
 	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
 
+	handler := panichandler.WithStackTrace()
+
 	go func() {
+		defer handler()
 		<-sigc
 		cancel()
 	}()
