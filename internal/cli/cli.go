@@ -123,6 +123,14 @@ func New(v string) *CLI {
 // correct command to run, and executes it. An error is returned on user errors.
 // The function panics if it is called with invalid program configuration.
 func (c *CLI) Execute(ctx context.Context) error {
+	var err error
+
+	if ok, err := c.runFirstPass(ctx); err != nil {
+		return fmt.Errorf("%w", err)
+	} else if !ok {
+		return nil
+	}
+
 	args := os.Args
 
 	// Matches merging flags for commands.
@@ -140,59 +148,17 @@ func (c *CLI) Execute(ctx context.Context) error {
 		flagSet = cmd.Flags()
 	}
 
-	// TODO: Move checking the errors to a later time when the plugin system is
-	// in place. It should be possible to define subcommands and flags for them
-	// using the plugins.
 	if err := flagSet.Parse(args); err != nil {
 		return fmt.Errorf("failed to parse command-line arguments: %w", err)
 	}
 
-	help, err := flagSet.GetBool("help")
-	if err != nil {
-		return fmt.Errorf("failed to get the value for command-line option '--help': %w", err)
-	}
-
-	if help {
-		if err = printHelp(); err != nil {
-			return fmt.Errorf("failed to print the usage info: %w", err)
-		}
-
-		return nil
-	}
-
-	version, err := flagSet.GetBool("version")
-	if err != nil {
-		return fmt.Errorf("failed to get the value for command-line option '--version': %w", err)
-	}
-
-	if version {
-		if err = printVersion(c); err != nil {
-			return fmt.Errorf("failed to print the version info: %w", err)
-		}
-
-		return nil
-	}
-
-	if err = c.checkMutuallyExclusiveFlags(cmd); err != nil {
+	if err := c.checkMutuallyExclusiveFlags(cmd); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
 	c.cfg, err = c.parseConfig(flagSet)
 	if err != nil {
 		return fmt.Errorf("%w", err)
-	}
-
-	// Initialize the output streams for user output.
-	iostreams.Streams = iostreams.New(c.cfg.Quiet, c.cfg.Verbose, c.cfg.Color)
-
-	if err := logging.Init(c.cfg.Logging); err != nil {
-		return fmt.Errorf("failed to init the logger: %w", err)
-	}
-
-	slog.Debug("logging initialized")
-
-	if err = c.loadPlugins(ctx); err != nil {
-		return fmt.Errorf("failed to resolve plugins: %w", err)
 	}
 
 	if err = c.run(cmd, args); err != nil {
@@ -222,6 +188,77 @@ func (c *CLI) add(cmd *Command) {
 	cmd.mutuallyExclusiveFlags = append(cmd.mutuallyExclusiveFlags, c.mutuallyExclusiveFlags...)
 
 	c.commands = append(c.commands, cmd)
+}
+
+// runFirstPass does the priority actions of the program. It checks it the
+// "--version" or "--help" flags were invoked and loads the plugins from the
+// configured location. It should run before entering the rest of the execution
+// to have all of the command-line flags and configuration options from the
+// plugin available when the final parsing of the configuration is done. The
+// function returns true if the execution should not return after this function.
+func (c *CLI) runFirstPass(ctx context.Context) (bool, error) {
+	args := os.Args
+	fs := c.initFirstPassFlags()
+
+	// Ignore errors for now as we want to get all of the flags from plugins
+	// first.
+	_ = fs.Parse(args)
+
+	help, err := fs.GetBool("help")
+	if err != nil {
+		return false, fmt.Errorf("failed to get the value for command-line option '--help': %w", err)
+	}
+
+	if help {
+		if err = printHelp(); err != nil {
+			return false, fmt.Errorf("failed to print the usage info: %w", err)
+		}
+
+		return false, nil
+	}
+
+	version, err := fs.GetBool("version")
+	if err != nil {
+		return false, fmt.Errorf("failed to get the value for command-line option '--version': %w", err)
+	}
+
+	if version {
+		if err = printVersion(c); err != nil {
+			return false, fmt.Errorf("failed to print the version info: %w", err)
+		}
+
+		return false, nil
+	}
+
+	// The first-pass config will be replaced by the "real" config later.
+	// TODO: Add a faster parsing function for the first-pass config.
+	c.cfg, err = c.parseConfig(fs)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse the first-pass config: %w", err)
+	}
+
+	// Initialize the output streams for user output.
+	iostreams.Streams = iostreams.New(c.cfg.Quiet, c.cfg.Verbose, c.cfg.Color)
+
+	if err := logging.Init(c.cfg.Logging); err != nil {
+		return false, fmt.Errorf("failed to init the logger: %w", err)
+	}
+
+	slog.Debug("logging initialized")
+
+	if err = c.loadPlugins(ctx); err != nil {
+		return false, fmt.Errorf("failed to resolve plugins: %w", err)
+	}
+
+	return true, nil
+}
+
+func (c *CLI) initFirstPassFlags() *pflag.FlagSet {
+	fs := pflag.NewFlagSet(c.flags.Name(), pflag.ContinueOnError)
+
+	fs.AddFlagSet(c.flags)
+
+	return fs
 }
 
 // checkMutuallyExclusiveFlags checks if two flags marked as mutually exclusive
