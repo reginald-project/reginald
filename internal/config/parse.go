@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"unicode"
 
 	"github.com/anttikivi/reginald/internal/pathname"
 	"github.com/pelletier/go-toml/v2"
@@ -353,7 +354,7 @@ func unmarshalEnv(v reflect.Value, prefix string) error {
 
 		slog.Debug("checking config field", "field", structField.Name)
 
-		env := strings.ToUpper(fmt.Sprintf("%s_%s", prefix, structField.Name))
+		env := strings.ToUpper(fmt.Sprintf("%s_%s", prefix, toSnakeCase(structField.Name)))
 
 		if fieldValue.Kind() == reflect.Struct {
 			if err := unmarshalEnv(fieldValue, env); err != nil {
@@ -409,6 +410,24 @@ func unmarshalEnv(v reflect.Value, prefix string) error {
 	}
 
 	return nil
+}
+
+// toSnakeCase converts a struct field from camel case to snake case in order to
+// make the resulting environment variable names more natural. It does not
+// handle changing cases for any of the letters in the string as that is done
+// within the calling function. It only inserts underscores between words.
+func toSnakeCase(name string) string {
+	result := ""
+
+	for i, r := range name {
+		if i > 0 && unicode.IsUpper(r) {
+			result += "_"
+		}
+
+		result += string(r)
+	}
+
+	return result
 }
 
 // tryUnmarshalText checks if it can use [encoding.TextUnmarshaler] to unmarshal
