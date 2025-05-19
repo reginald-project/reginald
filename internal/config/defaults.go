@@ -17,9 +17,9 @@ const (
 	defaultLogOutput = "~/.local/state/reginald.log"
 )
 
-// PluginsDir returns the plugins directory to use. It takes the environment
+// DefaultPluginsDir returns the plugins directory to use. It takes the environment
 // variable for customizing the plugins directory and the platform into account.
-func PluginsDir() (string, error) {
+func DefaultPluginsDir() (string, error) {
 	name := strings.ToUpper(defaultEnvPrefix + "_PLUGINS_DIR")
 	if env := os.Getenv(name); env != "" {
 		path, err := pathname.Abs(env)

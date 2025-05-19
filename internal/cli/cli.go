@@ -85,6 +85,13 @@ func New(v string) *CLI {
 		"use `<path>` as the configuration file instead of resolving it from the standard locations",
 	)
 
+	d, err := config.DefaultPluginsDir()
+	if err != nil {
+		panic(fmt.Sprintf("failed to get the default plugins directory: %v", err))
+	}
+
+	cli.flags.StringP("plugin-dir", "p", d, "search for plugins from `<path>`")
+
 	cli.flags.BoolP("verbose", "v", false, "make "+ProgramName+" print more output during the run")
 	cli.flags.BoolP(
 		"quiet",
@@ -120,7 +127,7 @@ func New(v string) *CLI {
 // Execute executes the CLI. It parses the command-line options, finds the
 // correct command to run, and executes it. An error is returned on user errors.
 // The function panics if it is called with invalid program configuration.
-func (c *CLI) Execute(ctx context.Context) error { //nolint:funlen // TODO: Split this functions?
+func (c *CLI) Execute(ctx context.Context) error {
 	args := os.Args
 
 	// Matches merging flags for commands.
@@ -379,7 +386,7 @@ func (c *CLI) parseConfig(fs *pflag.FlagSet) (*config.Config, error) {
 func (c *CLI) loadPlugins(ctx context.Context) error {
 	var pluginFiles []string
 
-	dir, err := config.PluginsDir()
+	dir, err := config.DefaultPluginsDir()
 	if err != nil {
 		return fmt.Errorf("failed to get the plugins directory: %w", err)
 	}
