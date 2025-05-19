@@ -64,15 +64,10 @@ func New(v string) *CLI {
 	cli.flags.Bool("version", false, "print the version information and exit")
 	cli.flags.BoolP("help", "h", false, "show the help message and exit")
 
-	pwd, err := os.Getwd()
-	if err != nil {
-		panic(fmt.Sprintf("failed to get the current working directory: %v", err))
-	}
-
 	cli.flags.StringP(
 		"directory",
 		"C",
-		pwd,
+		config.DefaultDirectory(),
 		fmt.Sprintf(
 			"run as if %s was started in `<path>` instead of the current working directory",
 			ProgramName,

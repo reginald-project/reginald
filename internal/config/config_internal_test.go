@@ -24,7 +24,7 @@ func Test_from(t *testing.T) {
 		reverse bool
 	}{
 		"default": {
-			cfgFile: defaultConfigFile(),
+			cfgFile: defaultConfigFileValue(),
 			want: &Config{
 				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
@@ -44,7 +44,7 @@ func Test_from(t *testing.T) {
 		},
 		"loggingDisabled": {
 			cfgFile: (func() *File {
-				cf := defaultConfigFile()
+				cf := defaultConfigFileValue()
 				cf.Logging.Enabled = false
 
 				return cf
@@ -68,7 +68,7 @@ func Test_from(t *testing.T) {
 		},
 		"loggingFormat": {
 			cfgFile: (func() *File {
-				cf := defaultConfigFile()
+				cf := defaultConfigFileValue()
 				cf.Logging.Format = "text"
 
 				return cf
@@ -92,7 +92,7 @@ func Test_from(t *testing.T) {
 		},
 		"loggingLevelDebug": {
 			cfgFile: (func() *File {
-				cf := defaultConfigFile()
+				cf := defaultConfigFileValue()
 				cf.Logging.Level = slog.LevelDebug
 
 				return cf
@@ -116,7 +116,7 @@ func Test_from(t *testing.T) {
 		},
 		"loggingLevelWarn": {
 			cfgFile: (func() *File {
-				cf := defaultConfigFile()
+				cf := defaultConfigFileValue()
 				cf.Logging.Level = slog.LevelWarn
 
 				return cf
@@ -140,7 +140,7 @@ func Test_from(t *testing.T) {
 		},
 		"loggingLevelError": {
 			cfgFile: (func() *File {
-				cf := defaultConfigFile()
+				cf := defaultConfigFileValue()
 				cf.Logging.Level = slog.LevelError
 
 				return cf
@@ -164,7 +164,7 @@ func Test_from(t *testing.T) {
 		},
 		"loggingOutputStderr": {
 			cfgFile: (func() *File {
-				cf := defaultConfigFile()
+				cf := defaultConfigFileValue()
 				cf.Logging.Level = slog.LevelError
 				cf.Logging.Output = "stderr"
 
@@ -188,7 +188,7 @@ func Test_from(t *testing.T) {
 			reverse: false,
 		},
 		"notDefault": {
-			cfgFile: defaultConfigFile(),
+			cfgFile: defaultConfigFileValue(),
 			want: &Config{
 				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
@@ -208,7 +208,7 @@ func Test_from(t *testing.T) {
 		},
 		"tasksEquals": { //nolint:dupl
 			cfgFile: (func() *File {
-				cf := defaultConfigFile()
+				cf := defaultConfigFileValue()
 				cf.Tasks = []map[string]any{
 					{
 						"type":  "test",
@@ -264,7 +264,7 @@ func Test_from(t *testing.T) {
 		},
 		"tasksNotEquals": { //nolint:dupl
 			cfgFile: (func() *File {
-				cf := defaultConfigFile()
+				cf := defaultConfigFileValue()
 				cf.Tasks = []map[string]any{
 					{
 						"type":  "test",

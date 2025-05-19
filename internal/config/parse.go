@@ -41,12 +41,26 @@ var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem(
 // paths for the file or according the flags. The relevant flags are
 // `--directory` and `--config`.
 func Parse(flagSet *pflag.FlagSet) (*Config, error) {
-	dir, err := flagSet.GetString("directory")
-	if err != nil {
-		return nil, fmt.Errorf(
-			"failed to get the value for command-line option '--directory': %w",
-			err,
-		)
+	var (
+		dir      string
+		filename string
+		err      error
+	)
+
+	dir = DefaultDirectory()
+
+	if env := os.Getenv(defaultEnvPrefix + "_DIRECTORY"); env != "" {
+		dir = env
+	}
+
+	if flagSet.Changed("directory") {
+		dir, err = flagSet.GetString("directory")
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to get the value for command-line option '--directory': %w",
+				err,
+			)
+		}
 	}
 
 	if !filepath.IsAbs(dir) {
@@ -56,12 +70,18 @@ func Parse(flagSet *pflag.FlagSet) (*Config, error) {
 		}
 	}
 
-	filename, err := flagSet.GetString("config")
-	if err != nil {
-		return nil, fmt.Errorf(
-			"failed to get the value for command-line option '--config': %w",
-			err,
-		)
+	if env := os.Getenv(defaultEnvPrefix + "_CONFIG_FILE"); env != "" {
+		filename = env
+	}
+
+	if flagSet.Changed("config") {
+		filename, err = flagSet.GetString("config")
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to get the value for command-line option '--config': %w",
+				err,
+			)
+		}
 	}
 
 	configFile, err := resolveFile(dir, filename)
@@ -77,7 +97,7 @@ func Parse(flagSet *pflag.FlagSet) (*Config, error) {
 	}
 
 	d := toml.NewDecoder(f).DisallowUnknownFields()
-	cf := defaultConfigFile()
+	cf := defaultConfigFileValue()
 
 	if err = d.Decode(cf); err != nil {
 		var strictMissingError *toml.StrictMissingError
@@ -161,10 +181,7 @@ func resolveFile(wd, file string) (string, error) {
 	// If the config file flag is set but it didn't resolve, fail so that the
 	// program doesn't use a config file from some other location by surprise.
 	if original != "" {
-		return "", fmt.Errorf(
-			"%w: value given with flag --config did not resolve to any file",
-			errConfigFileNotFound,
-		)
+		return "", fmt.Errorf("%w: tried to resolve file with %q", errConfigFileNotFound, original)
 	}
 
 	// TODO: Add more locations.
@@ -353,6 +370,12 @@ func unmarshalEnv(v reflect.Value, prefix string) error {
 		}
 
 		slog.Debug("checking config field", "field", structField.Name)
+
+		if structField.Name == "ConfigFile" || structField.Name == "Directory" {
+			slog.Debug("skipping field", "field", structField)
+
+			continue
+		}
 
 		env := strings.ToUpper(fmt.Sprintf("%s_%s", prefix, toSnakeCase(structField.Name)))
 
