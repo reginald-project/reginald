@@ -24,6 +24,8 @@ func main() {
 }
 
 func run() int {
+	defer panicHandler()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
