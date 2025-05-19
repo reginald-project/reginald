@@ -5,30 +5,28 @@ import (
 	"fmt"
 	"os"
 	"runtime/debug"
+	"strings"
 	"sync"
 
 	"github.com/anttikivi/go-semver"
 	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/version"
+	"golang.org/x/term"
 )
 
-const header = `
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! REGINALD CRASHED !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-Reginald has encountered an unexpected error. This is most likely a bug in the
-program. In your bug report, please include the Reginald version and stack trace
-shown below and any additional information that may help with resolving the bug
-or replicating the issue.
-
+const (
+	header    = "!!! REGINALD CRASHED !%s"
+	panicInfo = `
+Reginald has encountered an unexpected error. This is most likely a bug in the program. In your bug report, please include the Reginald version and stack trace shown below and any additional information that may help with resolving the bug or replicating the issue.
 `
-
-const footer = `
+	footer = `
 Please open an issue at:
 
 	https://github.com/anttikivi/reginald/issues
 
 Thank you for helping Reginald!
 `
+)
 
 // panicMu is a mutex used to lock the panic handler in case multiple goroutines
 // panic simultaneously. It ensures that only the first one recovers, prints the
@@ -82,7 +80,14 @@ func panicHandler(r any, v string, t []byte) {
 
 	var buf bytes.Buffer
 
-	buf.WriteString(header)
+	buf.WriteByte('\n')
+
+	width := termWidth()
+
+	buf.WriteString(fmt.Sprintf(header, strings.Repeat("!", width-len(header)+1)))
+	buf.WriteString("\n\n")
+	buf.WriteString(wrap(panicInfo, width))
+	buf.WriteByte('\n')
 	buf.WriteString(v)
 	buf.WriteByte('\n')
 	buf.WriteString(fmt.Sprintf("Panic: %v\n\n", r))
@@ -99,4 +104,57 @@ func panicHandler(r any, v string, t []byte) {
 	os.Stderr.Write(buf.Bytes())
 	iostreams.StdioMu.Unlock()
 	os.Exit(1)
+}
+
+func wrap(s string, width int) string {
+	var sb strings.Builder
+
+	for p := range strings.SplitSeq(s, "\n\n") {
+		words := strings.Fields(p)
+		l := 0
+
+		for i, w := range words {
+			addForSpace := 0
+
+			if l > 0 {
+				addForSpace = 1
+			}
+
+			if l+len(w)+addForSpace > width {
+				sb.WriteByte('\n')
+				l = 0
+			}
+
+			if l > 0 {
+				sb.WriteByte(' ')
+				l++
+			}
+
+			sb.WriteString(w)
+
+			l += len(w)
+
+			if i == len(words)-1 {
+				sb.WriteString("\n\n")
+			}
+		}
+	}
+
+	result := sb.String()
+
+	if strings.HasSuffix(result, "\n\n") {
+		result = result[:len(result)-1]
+	}
+
+	return result
+}
+
+// termWidth returns the current terminal width (in characters) or a default of
+// 80 if it cannot be determined.
+func termWidth() int {
+	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
+		return w
+	}
+
+	return 80
 }
