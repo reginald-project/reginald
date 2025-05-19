@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/anttikivi/reginald/internal/config"
+	"github.com/anttikivi/reginald/internal/iostreams"
 )
 
 // Default values for the logger.
@@ -45,11 +46,16 @@ func InitBootstrap() error {
 		return nil
 	}
 
+	// TODO: See if other output writers should be allowed.
 	//nolint:exhaustruct
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		AddSource: true,
-		Level:     slog.LevelDebug,
-	})))
+	slog.SetDefault(
+		slog.New(
+			slog.NewTextHandler(
+				iostreams.NewLockedWriter(os.Stderr),
+				&slog.HandlerOptions{AddSource: true, Level: slog.LevelDebug},
+			),
+		),
+	)
 
 	return nil
 }
@@ -67,9 +73,9 @@ func Init(cfg config.LoggingConfig) error {
 
 	switch strings.ToLower(cfg.Output) {
 	case "stderr":
-		w = os.Stderr
+		w = iostreams.NewLockedWriter(os.Stderr)
 	case "stdout":
-		w = os.Stdout
+		w = iostreams.NewLockedWriter(os.Stdout)
 	default:
 		fw, err := os.OpenFile(cfg.Output, os.O_WRONLY|os.O_APPEND|os.O_CREATE, defaultFilePerm)
 		if err != nil {
