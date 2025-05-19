@@ -42,6 +42,9 @@ tidy: install-gci install-gofumpt install-golines
 	golines --no-chain-split-dots -w .
 	gofumpt -extra -l -w .
 
+.PHONY: fmt
+fmt: tidy
+
 .PHONY: build
 build:
 	@commit_hash="$$(git describe --always --dirty --abbrev=40)"; \
