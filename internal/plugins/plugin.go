@@ -391,6 +391,7 @@ func (p *Plugin) read(ctx context.Context, panicHandler func()) {
 // readStderr runs a loop for reading the standard error output of the plugin.
 func (p *Plugin) readStderr(panicHandler func()) {
 	defer panicHandler()
+
 	for p.stderr.Scan() {
 		line := p.stderr.Text()
 

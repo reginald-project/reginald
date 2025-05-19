@@ -1,3 +1,7 @@
+// Package panichandler defines the panic handler functions for Reginald. They
+// need to be deferred at the beginning of each goroutine. The functions print
+// a helpful message that guides to issue a bug report in case the program
+// crashes.
 package panichandler
 
 import (
@@ -15,7 +19,9 @@ import (
 )
 
 const (
-	header    = "!!! REGINALD CRASHED !%s"
+	defaultPrintWidth = 80
+	header            = "!!! REGINALD CRASHED !%s"
+	//nolint:lll
 	panicInfo = `
 Reginald has encountered an unexpected error. This is most likely a bug in the program. In your bug report, please include the Reginald version and stack trace shown below and any additional information that may help with resolving the bug or replicating the issue.
 `
@@ -31,7 +37,7 @@ Thank you for helping Reginald!
 // panicMu is a mutex used to lock the panic handler in case multiple goroutines
 // panic simultaneously. It ensures that only the first one recovers, prints the
 // message, and exits the program.
-var panicMu sync.Mutex
+var panicMu sync.Mutex //nolint:gochecknoglobals
 
 // Handle recovers the panics of the program and prints the information included
 // with them with the stack trace and a helpful message that guides the user to
@@ -66,11 +72,12 @@ func WithStackTrace() func() {
 }
 
 func versionInfo() string {
-	if v, err := semver.Parse(version.Version); err != nil {
+	v, err := semver.Parse(version.Version)
+	if err != nil {
 		return fmt.Sprintf("Version: %s\nParsing the version failed: %v", version.Version, err)
-	} else {
-		return fmt.Sprint("Version: ", v)
 	}
+
+	return fmt.Sprint("Version: ", v)
 }
 
 func panicHandler(r any, v string, t []byte) {
@@ -99,9 +106,13 @@ func panicHandler(r any, v string, t []byte) {
 		buf.Write(t)
 	}
 
-	buf.WriteString(fmt.Sprintf("\n%s", footer))
+	buf.WriteString("\n" + footer)
 	iostreams.StdioMu.Lock()
-	os.Stderr.Write(buf.Bytes())
+
+	if _, err := os.Stderr.Write(buf.Bytes()); err != nil {
+		buf.WriteString(fmt.Sprintf("FAILED TO WRITE BYTES TO STDERR: %v\n", err))
+	}
+
 	iostreams.StdioMu.Unlock()
 	os.Exit(1)
 }
@@ -122,11 +133,13 @@ func wrap(s string, width int) string {
 
 			if l+len(w)+addForSpace > width {
 				sb.WriteByte('\n')
+
 				l = 0
 			}
 
 			if l > 0 {
 				sb.WriteByte(' ')
+
 				l++
 			}
 
@@ -156,5 +169,5 @@ func termWidth() int {
 		return w
 	}
 
-	return 80
+	return defaultPrintWidth
 }

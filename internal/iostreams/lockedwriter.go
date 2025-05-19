@@ -1,6 +1,7 @@
 package iostreams
 
 import (
+	"fmt"
 	"io"
 	"sync"
 )
@@ -9,12 +10,14 @@ import (
 // and output streams where necessary to prevent multiple sources reading or
 // writing at the same time. It is usually used with the [io.Writer] acquired by
 // [NewLockedWriter].
-var StdioMu sync.Mutex
+var StdioMu sync.Mutex //nolint:gochecknoglobals
 
 type lockedWriter struct {
 	w io.Writer
 }
 
+// NewLockedWriter creates a new locked writer that guarantees sequential
+// writing to the given writer. It uses the global [StdioMu] for locking.
 func NewLockedWriter(w io.Writer) io.Writer {
 	return &lockedWriter{w: w}
 }
@@ -27,5 +30,10 @@ func (w *lockedWriter) Write(p []byte) (int, error) {
 	StdioMu.Lock()
 	defer StdioMu.Unlock()
 
-	return w.w.Write(p)
+	n, err := w.w.Write(p)
+	if err != nil {
+		return n, fmt.Errorf("%w", err)
+	}
+
+	return n, nil
 }
