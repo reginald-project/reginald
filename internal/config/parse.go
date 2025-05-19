@@ -41,55 +41,10 @@ var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem(
 // paths for the file or according the flags. The relevant flags are
 // `--directory` and `--config`.
 func Parse(flagSet *pflag.FlagSet) (*Config, error) {
-	var (
-		dir      string
-		filename string
-		err      error
-	)
-
-	dir = DefaultDirectory()
-
-	if env := os.Getenv(defaultEnvPrefix + "_DIRECTORY"); env != "" {
-		dir = env
-	}
-
-	if flagSet.Changed("directory") {
-		dir, err = flagSet.GetString("directory")
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to get the value for command-line option '--directory': %w",
-				err,
-			)
-		}
-	}
-
-	if !filepath.IsAbs(dir) {
-		dir, err = pathname.Abs(dir)
-		if err != nil {
-			return nil, fmt.Errorf("failed to make the working directory absolute: %w", err)
-		}
-	}
-
-	if env := os.Getenv(defaultEnvPrefix + "_CONFIG_FILE"); env != "" {
-		filename = env
-	}
-
-	if flagSet.Changed("config") {
-		filename, err = flagSet.GetString("config")
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to get the value for command-line option '--config': %w",
-				err,
-			)
-		}
-	}
-
-	configFile, err := resolveFile(dir, filename)
+	dir, configFile, err := fileOptions(flagSet)
 	if err != nil {
-		return nil, fmt.Errorf("searching for config file failed: %w", err)
+		return nil, fmt.Errorf("%w", err)
 	}
-
-	slog.Debug("resolved config file path", "path", configFile)
 
 	f, err := os.Open(filepath.Clean(configFile))
 	if err != nil {
@@ -141,6 +96,63 @@ func Parse(flagSet *pflag.FlagSet) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// fileOptions parses and returns the values for the working directory and the
+// configuration file. The values are checked from the environment variables and
+// command-line flags. The first return value is the working directory and the
+// second is the configuration file.
+func fileOptions(flagSet *pflag.FlagSet) (string, string, error) {
+	var (
+		err      error
+		filename string
+	)
+
+	dir := DefaultDirectory()
+
+	if env := os.Getenv(defaultEnvPrefix + "_DIRECTORY"); env != "" {
+		dir = env
+	}
+
+	if flagSet.Changed("directory") {
+		dir, err = flagSet.GetString("directory")
+		if err != nil {
+			return "", "", fmt.Errorf(
+				"failed to get the value for command-line option '--directory': %w",
+				err,
+			)
+		}
+	}
+
+	if !filepath.IsAbs(dir) {
+		dir, err = pathname.Abs(dir)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to make the working directory absolute: %w", err)
+		}
+	}
+
+	if env := os.Getenv(defaultEnvPrefix + "_CONFIG_FILE"); env != "" {
+		filename = env
+	}
+
+	if flagSet.Changed("config") {
+		filename, err = flagSet.GetString("config")
+		if err != nil {
+			return "", "", fmt.Errorf(
+				"failed to get the value for command-line option '--config': %w",
+				err,
+			)
+		}
+	}
+
+	configFile, err := resolveFile(dir, filename)
+	if err != nil {
+		return "", "", fmt.Errorf("searching for config file failed: %w", err)
+	}
+
+	slog.Debug("resolved config file path", "path", configFile)
+
+	return dir, configFile, nil
 }
 
 // resolveFile looks up the possible paths for the configuration file and
