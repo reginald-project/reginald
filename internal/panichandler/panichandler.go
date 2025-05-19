@@ -110,6 +110,7 @@ func panicHandler(r any, v string, t []byte) {
 	iostreams.StdioMu.Lock()
 
 	if _, err := os.Stderr.Write(buf.Bytes()); err != nil {
+		// This is absolutely stupid but, if we get here, all is lost anyway.
 		buf.WriteString(fmt.Sprintf("FAILED TO WRITE BYTES TO STDERR: %v\n", err))
 	}
 
