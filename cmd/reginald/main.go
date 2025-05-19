@@ -39,7 +39,7 @@ func run() int {
 	}()
 
 	if err := logging.InitBootstrap(); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 
 		return 1
 	}
@@ -49,7 +49,7 @@ func run() int {
 
 	c := cli.New(version.Version)
 	if err := c.Execute(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 
 		return 1
 	}
