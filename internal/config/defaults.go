@@ -31,7 +31,7 @@ func DefaultDirectory() string {
 // DefaultPluginsDir returns the plugins directory to use. It takes the environment
 // variable for customizing the plugins directory and the platform into account.
 func DefaultPluginsDir() (string, error) {
-	name := strings.ToUpper(defaultEnvPrefix + "_PLUGINS_DIR")
+	name := strings.ToUpper(defaultEnvPrefix + "_PLUGIN_DIR")
 	if env := os.Getenv(name); env != "" {
 		path, err := pathname.Abs(env)
 		if err != nil {

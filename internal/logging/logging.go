@@ -46,7 +46,6 @@ func InitBootstrap() error {
 		return nil
 	}
 
-	// TODO: See if other output writers should be allowed.
 	//nolint:exhaustruct
 	slog.SetDefault(
 		slog.New(
