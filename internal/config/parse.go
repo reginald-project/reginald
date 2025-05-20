@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"encoding"
 	"errors"
 	"fmt"
@@ -40,8 +41,8 @@ var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem(
 // The function also resolves the configuration file according to the standard
 // paths for the file or according the flags. The relevant flags are
 // `--directory` and `--config`.
-func Parse(flagSet *pflag.FlagSet) (*Config, error) {
-	dir, configFile, err := fileOptions(flagSet)
+func Parse(ctx context.Context, flagSet *pflag.FlagSet) (*Config, error) {
+	dir, configFile, err := fileOptions(ctx, flagSet)
 	if err != nil {
 		return nil, fmt.Errorf("%w", err)
 	}
@@ -102,7 +103,7 @@ func Parse(flagSet *pflag.FlagSet) (*Config, error) {
 // configuration file. The values are checked from the environment variables and
 // command-line flags. The first return value is the working directory and the
 // second is the configuration file.
-func fileOptions(flagSet *pflag.FlagSet) (string, string, error) {
+func fileOptions(ctx context.Context, flagSet *pflag.FlagSet) (string, string, error) {
 	var (
 		err      error
 		filename string
@@ -150,7 +151,7 @@ func fileOptions(flagSet *pflag.FlagSet) (string, string, error) {
 		return "", "", fmt.Errorf("searching for config file failed: %w", err)
 	}
 
-	slog.Debug("resolved config file path", "path", configFile)
+	slog.DebugContext(ctx, "resolved config file path", "path", configFile)
 
 	return dir, configFile, nil
 }

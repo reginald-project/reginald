@@ -144,7 +144,7 @@ func (c *CLI) Execute(ctx context.Context) error {
 	// Plugins are started in runFirstPass so defer shutting them down. We want
 	// to aim for a clean plugin shutdown in all cases.
 	defer func() {
-		timeoutCtx, cancel := context.WithTimeout(ctx, plugins.DefaultPluginShutdownTimeout)
+		timeoutCtx, cancel := context.WithTimeout(ctx, plugins.DefaultShutdownTimeout)
 		defer cancel()
 
 		if err := plugins.ShutdownAll(timeoutCtx, c.plugins); err != nil {
@@ -152,11 +152,11 @@ func (c *CLI) Execute(ctx context.Context) error {
 		}
 	}()
 
-	if err := c.setup(); err != nil {
+	if err := c.setup(ctx); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
-	if err := c.run(c.cmd, c.args); err != nil {
+	if err := c.run(ctx, c.cmd, c.args); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
@@ -175,45 +175,6 @@ func (c *CLI) add(cmd *Command) {
 	cmd.mutuallyExclusiveFlags = append(cmd.mutuallyExclusiveFlags, c.mutuallyExclusiveFlags...)
 
 	c.commands = append(c.commands, cmd)
-}
-
-// setup runs the setup phase of the program.
-func (c *CLI) setup() error {
-	var err error
-
-	args := os.Args
-
-	// Matches merging flags for commands.
-	c.flags.AddFlagSet(pflag.CommandLine)
-	slog.Debug("starting to parse the command-line arguments", "args", args)
-
-	c.cmd, args = c.findSubcommand(args)
-
-	var flagSet *pflag.FlagSet
-
-	if c.cmd == nil {
-		flagSet = c.flags
-	} else {
-		c.cmd.mergeFlags()
-		flagSet = c.cmd.Flags()
-	}
-
-	if err := flagSet.Parse(args); err != nil {
-		return fmt.Errorf("failed to parse command-line arguments: %w", err)
-	}
-
-	c.args = flagSet.Args()
-
-	if err := c.checkMutuallyExclusiveFlags(c.cmd); err != nil {
-		return fmt.Errorf("%w", err)
-	}
-
-	c.cfg, err = c.parseConfig(flagSet)
-	if err != nil {
-		return fmt.Errorf("%w", err)
-	}
-
-	return nil
 }
 
 // runFirstPass does the priority actions of the program. It checks it the
@@ -264,7 +225,7 @@ func (c *CLI) runFirstPass(ctx context.Context) (bool, error) {
 
 	// The first-pass config will be replaced by the "real" config later.
 	// TODO: Add a faster parsing function for the first-pass config.
-	c.cfg, err = c.parseConfig(fs)
+	c.cfg, err = c.parseConfig(ctx, fs)
 	if err != nil {
 		return false, fmt.Errorf("failed to parse the first-pass config: %w", err)
 	}
@@ -276,7 +237,7 @@ func (c *CLI) runFirstPass(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("failed to init the logger: %w", err)
 	}
 
-	slog.Debug("logging initialized")
+	slog.InfoContext(ctx, "logging initialized")
 
 	if err = c.loadPlugins(ctx); err != nil {
 		return false, fmt.Errorf("failed to resolve plugins: %w", err)
@@ -298,13 +259,13 @@ func (c *CLI) initFirstPassFlags() *pflag.FlagSet {
 // parseConfig parses the configuration from the configuration files,
 // environment variables, and command-line flags. It returns a pointer to the
 // configuration and any errors encountered.
-func (c *CLI) parseConfig(fs *pflag.FlagSet) (*config.Config, error) {
-	cfg, err := config.Parse(fs)
+func (c *CLI) parseConfig(ctx context.Context, fs *pflag.FlagSet) (*config.Config, error) {
+	cfg, err := config.Parse(ctx, fs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse the config: %w", err)
 	}
 
-	slog.Info("config parsed", "config", cfg)
+	slog.InfoContext(ctx, "config parsed", "config", cfg)
 
 	return cfg, nil
 }
@@ -329,7 +290,7 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 		path := filepath.Join(dir, entry.Name())
 
 		if entry.IsDir() {
-			slog.Debug("plugin file is a directory", "path", path)
+			slog.DebugContext(ctx, "plugin file is a directory", "path", path)
 
 			continue
 		}
@@ -344,7 +305,7 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 		}
 
 		if info.Mode()&0o111 == 0 {
-			slog.Debug("plugin file is not executable", "path", path)
+			slog.DebugContext(ctx, "plugin file is not executable", "path", path)
 
 			continue
 		}
@@ -354,10 +315,49 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 		}
 	}
 
-	slog.Debug("performed the plugin lookup", "plugins", pluginFiles)
+	slog.DebugContext(ctx, "performed the plugin lookup", "plugins", pluginFiles)
 
 	if c.plugins, err = plugins.Load(ctx, pluginFiles); err != nil {
 		return fmt.Errorf("failed to load the plugins: %w", err)
+	}
+
+	return nil
+}
+
+// setup runs the setup phase of the program.
+func (c *CLI) setup(ctx context.Context) error {
+	var err error
+
+	args := os.Args
+
+	// Matches merging flags for commands.
+	c.flags.AddFlagSet(pflag.CommandLine)
+	slog.DebugContext(ctx, "parsing command-line arguments", "args", args)
+
+	c.cmd, args = c.findSubcommand(ctx, args)
+
+	var flagSet *pflag.FlagSet
+
+	if c.cmd == nil {
+		flagSet = c.flags
+	} else {
+		c.cmd.mergeFlags()
+		flagSet = c.cmd.Flags()
+	}
+
+	if err := flagSet.Parse(args); err != nil {
+		return fmt.Errorf("failed to parse command-line arguments: %w", err)
+	}
+
+	c.args = flagSet.Args()
+
+	if err := c.checkMutuallyExclusiveFlags(c.cmd); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	c.cfg, err = c.parseConfig(ctx, flagSet)
+	if err != nil {
+		return fmt.Errorf("%w", err)
 	}
 
 	return nil
@@ -415,7 +415,7 @@ func (c *CLI) checkMutuallyExclusiveFlags(cmd *Command) error {
 // c. It returns the final command and the command-line arguments, and
 // command-line flags. If no subcommand is found (i.e. the root command should
 // be run), this function returns nil as the first return value.
-func (c *CLI) findSubcommand(args []string) (*Command, []string) {
+func (c *CLI) findSubcommand(ctx context.Context, args []string) (*Command, []string) {
 	if len(args) <= 1 {
 		return nil, args
 	}
@@ -452,9 +452,9 @@ func (c *CLI) findSubcommand(args []string) (*Command, []string) {
 	}
 
 	if cmd == nil {
-		slog.Debug("no command found", "cmd", os.Args[0], "args", args, "flags", flags)
+		slog.DebugContext(ctx, "no command found", "cmd", os.Args[0], "args", args, "flags", flags)
 	} else {
-		slog.Debug("found subcommand", "cmd", cmd.Name(), "args", args, "flags", flags)
+		slog.DebugContext(ctx, "found subcommand", "cmd", cmd.Name(), "args", args, "flags", flags)
 	}
 
 	args = append(args, flags...)
@@ -499,16 +499,16 @@ func (c *CLI) markFlagsMutuallyExclusive(a ...string) {
 }
 
 // run runs the setup and execution of the resolved command.
-func (c *CLI) run(cmd *Command, args []string) error {
+func (c *CLI) run(ctx context.Context, cmd *Command, args []string) error {
 	if cmd == nil {
 		return nil
 	}
 
-	if err := setupCommands(cmd, cmd, args); err != nil {
+	if err := setupCommands(ctx, cmd, cmd, args); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
-	if err := cmd.Run(cmd, args); err != nil {
+	if err := cmd.Run(ctx, cmd, args); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
@@ -517,14 +517,14 @@ func (c *CLI) run(cmd *Command, args []string) error {
 
 // setupCommands runs [Command.Setup] for all of the commands, starting from the
 // root command. It exits on the first error it encounters.
-func setupCommands(c, subcmd *Command, args []string) error {
+func setupCommands(ctx context.Context, c, subcmd *Command, args []string) error {
 	if c.HasParent() {
-		if err := setupCommands(c.parent, subcmd, args); err != nil {
+		if err := setupCommands(ctx, c.parent, subcmd, args); err != nil {
 			return fmt.Errorf("%w", err)
 		}
 	}
 
-	if err := c.Setup(c, subcmd, args); err != nil {
+	if err := c.Setup(ctx, c, subcmd, args); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 

@@ -28,8 +28,6 @@ func (s *Sleep) Run(_ []string) error {
 func main() {
 	p := plugin.New("sleep", &Sleep{})
 
-	fmt.Fprintln(os.Stderr, "HELLO FROM PLUGIN")
-
 	if err := p.Serve(); err != nil {
 		fmt.Fprintf(os.Stderr, "plugin %q is going to exit with an error: %v", "sleep", err)
 		os.Exit(1)

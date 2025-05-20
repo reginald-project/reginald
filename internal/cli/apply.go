@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"log/slog"
 )
 
@@ -15,13 +16,13 @@ func NewApply() *Command {
 	return c
 }
 
-func setupApply(cmd, _ *Command, _ []string) error {
+func setupApply(_ context.Context, cmd, _ *Command, _ []string) error {
 	slog.Info("running setup", "cmd", cmd.Name())
 
 	return nil
 }
 
-func runApply(_ *Command, _ []string) error {
+func runApply(_ context.Context, _ *Command, _ []string) error {
 	slog.Info("running apply")
 
 	return nil

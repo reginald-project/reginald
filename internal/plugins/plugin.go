@@ -10,13 +10,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/panichandler"
 	"github.com/anttikivi/reginald/internal/pathname"
 	"github.com/anttikivi/reginald/pkg/rpp"
@@ -24,11 +24,8 @@ import (
 
 // Default values associated with the plugin client.
 const (
-	// PluginShutdownTimeout is the default timeout for the plugin shutdown phase.
-	DefaultPluginShutdownTimeout = 15 * time.Second
-
-	// DefaultMaxProtocolErrors is the maximum number of protocol errors that the client
-	// tolerates from a plugin.
+	DefaultHandshakeTimeout  = 5 * time.Second
+	DefaultShutdownTimeout   = 15 * time.Second
 	DefaultMaxProtocolErrors = 5
 )
 
@@ -53,9 +50,9 @@ type Plugin struct {
 	stdin          *bufio.Writer                // stdin pipe of the plugin command
 	stdout         *bufio.Reader                // buffered reader for the stdout of the plugin
 	stderr         *bufio.Scanner               // stderr pipe of the plugin command
-	writeLock      sync.Mutex                   // lock for writing to writer to serialize the messages
+	writeMu        sync.Mutex                   // lock for writing to writer to serialize the messages
 	pending        map[rpp.ID]chan *rpp.Message // read messages from the plugin waiting for processing
-	pendingLock    sync.Mutex                   // lock used with pending
+	pendingMu      sync.Mutex                   // lock used with pending
 	doneCh         chan error                   // channel to close when the plugin is done running
 	protocolErrors atomic.Uint32                // current number of protocol errors for this plugin
 }
@@ -98,9 +95,9 @@ func New(ctx context.Context, path string) (*Plugin, error) {
 	}
 
 	p := &Plugin{
-		name: filepath.Base(
-			path,
-		), // the base name of the plugin is used until the real name is received
+		// The base name of the plugin file is used until the real name is
+		// received.
+		name:           filepath.Base(path),
 		kind:           "",
 		flags:          nil,
 		cmd:            c,
@@ -108,9 +105,9 @@ func New(ctx context.Context, path string) (*Plugin, error) {
 		stdin:          bufio.NewWriter(stdin),
 		stdout:         bufio.NewReader(stdout),
 		stderr:         bufio.NewScanner(stderr),
-		writeLock:      sync.Mutex{},
+		writeMu:        sync.Mutex{},
 		pending:        make(map[rpp.ID]chan *rpp.Message),
-		pendingLock:    sync.Mutex{},
+		pendingMu:      sync.Mutex{},
 		doneCh:         nil, // this is initialized when the plugin has started
 		protocolErrors: atomic.Uint32{},
 	}
@@ -120,14 +117,22 @@ func New(ctx context.Context, path string) (*Plugin, error) {
 
 // countProtocolError adds one protocol error to the plugins counter and kills
 // the plugin if the maximum threshold for plugin protocol errors is reached.
-func (p *Plugin) countProtocolError(reason string) {
+func (p *Plugin) countProtocolError(ctx context.Context, reason string) {
 	n := p.protocolErrors.Add(1)
 
-	slog.Warn("plugin protocol error", "reason", reason)
+	slog.WarnContext(ctx, "plugin protocol error", "reason", reason)
 
 	if n >= DefaultMaxProtocolErrors {
-		fmt.Fprintf(os.Stderr, "too many protocol errors by %s, shutting the plugin down", p.name)
-		p.kill()
+		slog.ErrorContext(
+			ctx,
+			"too many protocol errors, shutting plugin down",
+			"plugin",
+			p.name,
+			"count",
+			n,
+		)
+		iostreams.Errorf("Too many protocol errors by %s, killing the process...", p.name)
+		p.kill(ctx)
 	}
 }
 
@@ -148,22 +153,24 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 		Params:  rawParams,
 	}
 
+	slog.DebugContext(ctx, "calling method", "plugin", p.name, "msg", req, "params", params)
+
 	// A channel is created for each request. It receives a values in the read loop.
 	ch := make(chan *rpp.Message, 1)
 
-	p.pendingLock.Lock()
+	p.pendingMu.Lock()
 
 	p.pending[id] = ch
 
-	p.pendingLock.Unlock()
-	p.writeLock.Lock()
+	p.pendingMu.Unlock()
+	p.writeMu.Lock()
 
 	err = rpp.Write(p.stdin, req)
 	if err == nil {
 		err = p.stdin.Flush()
 	}
 
-	p.writeLock.Unlock()
+	p.writeMu.Unlock()
 
 	if err != nil {
 		p.cleanPending(id, ch)
@@ -197,7 +204,7 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 
 		return res, nil
 	case <-ctx.Done():
-		slog.Debug("context canceled during plugin call")
+		slog.DebugContext(ctx, "context canceled during plugin call")
 		p.cleanPending(id, ch)
 
 		return nil, fmt.Errorf("%w", ctx.Err())
@@ -207,22 +214,22 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 // cleanPending safely cleans up the given ID entry from the pending message
 // channels and closes the channel.
 func (p *Plugin) cleanPending(id rpp.ID, ch chan *rpp.Message) {
-	p.pendingLock.Lock()
+	p.pendingMu.Lock()
 	delete(p.pending, id)
-	p.pendingLock.Unlock()
+	p.pendingMu.Unlock()
 	close(ch)
 }
 
 // closeAllPending closes all of the pending message channels.
 func (p *Plugin) closeAllPending() {
-	p.pendingLock.Lock()
+	p.pendingMu.Lock()
 
 	for id, ch := range p.pending {
 		close(ch)
 		delete(p.pending, id)
 	}
 
-	p.pendingLock.Unlock()
+	p.pendingMu.Unlock()
 }
 
 // handleNotification handles notifications the client receives from the server.
@@ -254,6 +261,7 @@ func (p *Plugin) handshake(ctx context.Context) error {
 		)
 	}
 
+	// TODO: Disallow unknown fields.
 	var result rpp.HandshakeResult
 	if err = json.Unmarshal(res.Result, &result); err != nil {
 		return fmt.Errorf(
@@ -286,14 +294,16 @@ func (p *Plugin) handshake(ctx context.Context) error {
 
 	p.flags = append(p.flags, result.Flags...)
 
-	slog.Info("handshake succeeded", "plugin", p.name)
+	slog.DebugContext(ctx, "handshake succeeded", "plugin", p.name)
 
 	return nil
 }
 
 // kill kills the plugin process.
-func (p *Plugin) kill() {
+func (p *Plugin) kill(ctx context.Context) {
 	if p.cmd.Process != nil {
+		slog.DebugContext(ctx, "killing plugin", "plugin", p.name)
+
 		if err := p.cmd.Process.Kill(); err != nil {
 			panic(fmt.Sprintf("failed to kill a plugin process: %v", err))
 		}
@@ -337,7 +347,7 @@ func (p *Plugin) read(ctx context.Context, panicHandler func()) {
 		if err != nil {
 			// Error when reading or EOF.
 			if !errors.Is(err, io.EOF) {
-				slog.Error("error when reading plugin output", "err", err)
+				slog.ErrorContext(ctx, "error when reading plugin output", "err", err)
 			}
 
 			p.closeAllPending()
@@ -346,7 +356,7 @@ func (p *Plugin) read(ctx context.Context, panicHandler func()) {
 		}
 
 		if msg.JSONRCP != rpp.JSONRCPVersion {
-			p.countProtocolError("JSON-RCP version mismatch")
+			p.countProtocolError(ctx, "JSON-RCP version mismatch")
 
 			continue
 		}
@@ -354,20 +364,20 @@ func (p *Plugin) read(ctx context.Context, panicHandler func()) {
 		// The message is a notification.
 		if *msg.ID == 0 {
 			if msg.Method == "" {
-				p.countProtocolError("no method in notification")
+				p.countProtocolError(ctx, "no method in notification")
 
 				continue
 			}
 
 			if err := p.handleNotification(ctx, msg); err != nil {
-				p.countProtocolError(err.Error())
+				p.countProtocolError(ctx, err.Error())
 			}
 
 			continue
 		}
 
 		// Otherwise the message is handled as a response.
-		p.pendingLock.Lock()
+		p.pendingMu.Lock()
 
 		ch, ok := p.pending[*msg.ID]
 		if ok {
@@ -377,40 +387,42 @@ func (p *Plugin) read(ctx context.Context, panicHandler func()) {
 			delete(p.pending, *msg.ID)
 		}
 
-		p.pendingLock.Unlock()
+		p.pendingMu.Unlock()
 
 		if ok {
 			ch <- msg
 			close(ch)
 		} else {
-			p.countProtocolError("response ID does not match any sent request")
+			p.countProtocolError(ctx, "response ID does not match any sent request")
 		}
 	}
 }
 
 // readStderr runs a loop for reading the standard error output of the plugin.
-func (p *Plugin) readStderr(panicHandler func()) {
+func (p *Plugin) readStderr(ctx context.Context, panicHandler func()) {
 	defer panicHandler()
 
 	for p.stderr.Scan() {
 		line := p.stderr.Text()
 
-		fmt.Fprintf(os.Stderr, "[%s:stderr] %s\n", p.name, line)
+		iostreams.PrintErrf("[%s:err] %s\n", p.name, line)
+		slog.WarnContext(ctx, "plugin printed to stderr", "plugin", p.name, "output", line)
 	}
 
 	if err := p.stderr.Err(); err != nil {
-		fmt.Fprintf(os.Stderr, "error reading the stderr for %q: %v", p.name, err)
+		slog.ErrorContext(ctx, "error reading stderr for plugin", "plugin", p.name, "err", err)
 	}
 }
 
 // shutdown tries to shut Plugin p down gracefully within the given context.
 func (p *Plugin) shutdown(ctx context.Context) error {
+	// TODO: Check the response.
 	_, err := p.call(ctx, rpp.MethodShutdown, nil)
 	if err != nil {
-		slog.Warn("error when calling shutdown", "plugin", p.name, "err", err.Error())
+		slog.WarnContext(ctx, "error when calling shutdown", "plugin", p.name, "err", err.Error())
 	}
 
-	p.writeLock.Lock()
+	p.writeMu.Lock()
 
 	err = rpp.Write(p.stdin, &rpp.Message{
 		JSONRCP: rpp.JSONRCPVersion,
@@ -421,10 +433,17 @@ func (p *Plugin) shutdown(ctx context.Context) error {
 	}
 
 	if err != nil {
-		slog.Warn("error when sending the exit notification", "plugin", p.name, "err", err.Error())
+		slog.WarnContext(
+			ctx,
+			"error when sending the exit notification",
+			"plugin",
+			p.name,
+			"err",
+			err.Error(),
+		)
 	}
 
-	p.writeLock.Unlock()
+	p.writeMu.Unlock()
 
 	select {
 	case err := <-p.doneCh:
@@ -434,7 +453,7 @@ func (p *Plugin) shutdown(ctx context.Context) error {
 
 		return nil
 	case <-ctx.Done():
-		p.kill()
+		p.kill(ctx)
 
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("%w", err)
@@ -447,20 +466,20 @@ func (p *Plugin) shutdown(ctx context.Context) error {
 // start starts the execution of the plugin process and the related reading
 // goroutines.
 func (p *Plugin) start(ctx context.Context) error {
-	slog.Debug("executing plugin", "path", p.cmd.Path)
+	slog.DebugContext(ctx, "executing plugin", "path", p.cmd.Path)
 
 	if err := p.cmd.Start(); err != nil {
 		return fmt.Errorf("plugin execution from %s failed: %w", p.cmd.Path, err)
 	}
 
-	slog.Info("started a plugin process", "path", p.cmd.Path, "pid", p.cmd.Process.Pid)
+	slog.InfoContext(ctx, "started a plugin process", "path", p.cmd.Path, "pid", p.cmd.Process.Pid)
 
 	p.doneCh = make(chan error, 1)
 
 	handlePanic := panichandler.WithStackTrace()
 
 	go p.read(ctx, handlePanic)
-	go p.readStderr(handlePanic)
+	go p.readStderr(ctx, handlePanic)
 
 	go func() {
 		defer handlePanic()

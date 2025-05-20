@@ -55,7 +55,9 @@ linters:
     varnamelen:
       max-distance: 50
       ignore-decls:
+        - eg *errgroup.Group
         - id rpp.ID
+        - mu sync.Mutex
         - wg sync.WaitGroup
 
 formatters:

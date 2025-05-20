@@ -49,8 +49,8 @@ func run() int {
 		return 1
 	}
 
-	slog.Debug("bootstrap logger initialized")
-	slog.Info("bootstrapping Reginald", "version", version.Version)
+	slog.DebugContext(ctx, "bootstrap logger initialized")
+	slog.InfoContext(ctx, "bootstrapping Reginald", "version", version.Version)
 
 	c := cli.New(version.Version)
 	if err := c.Execute(ctx); err != nil {

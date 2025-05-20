@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"log/slog"
 	"strings"
 
 	"github.com/spf13/pflag"
@@ -15,8 +14,6 @@ import (
 // user has run the program correctly, this function should return the next
 // subcommand as the first element of the argument slice.
 func collectFlags(fs *pflag.FlagSet, args, flags []string) ([]string, []string) {
-	slog.Debug("collecting flags", "args", args, "flags", flags)
-
 	if len(args) == 0 {
 		return args, flags
 	}
@@ -29,8 +26,6 @@ Loop:
 	for len(args) > 0 {
 		s := args[0]
 		args = args[1:]
-
-		slog.Debug("checking argument", "arg", s)
 
 		switch {
 		case s == "--":
@@ -74,8 +69,6 @@ Loop:
 	}
 
 	rest = append(rest, args...)
-
-	slog.Debug("collected flags", "rest", rest, "flags", flags)
 
 	return rest, flags
 }

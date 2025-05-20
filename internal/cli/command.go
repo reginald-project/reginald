@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -24,11 +25,11 @@ type Command struct {
 	// For example, the configuration should be parsed in Setup. If Command is
 	// a subcommand, the setup functions for the parent commands are run first,
 	// starting from the root command.
-	Setup func(cmd, subcmd *Command, args []string) error
+	Setup func(ctx context.Context, cmd, subcmd *Command, args []string) error
 
 	// Runs runs the command. Before running the command, Setup functions for
 	// the command and its parent commands are run.
-	Run func(cmd *Command, args []string) error
+	Run func(ctx context.Context, cmd *Command, args []string) error
 
 	cli                    *CLI           // containing CLI struct
 	commands               []*Command     // list of subcommands

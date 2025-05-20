@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"sync"
 
+	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/panichandler"
 	"golang.org/x/sync/errgroup"
 )
@@ -26,20 +26,23 @@ func Load(ctx context.Context, files []string) ([]*Plugin, error) {
 			defer handlePanic()
 
 			if err := <-p.doneCh; err != nil {
-				// TODO: Better logging or something.
-				fmt.Fprintf(os.Stderr, "plugin %q quit unexpectedly: %v\n", p.name, err)
+				slog.ErrorContext(ctx, "plugin quit unexpectedly", "plugin", p.name, "err", err)
+				iostreams.Errorf("Plugin %q quit unexpectedly", p.name)
+				iostreams.PrintErrf("Error: %v\n", err)
 			}
 		}()
 	}
+
+	slog.InfoContext(ctx, "plugins loaded", "plugins", plugins)
 
 	return plugins, nil
 }
 
 // ShutdownAll tries to gracefully shut down all of the plugins.
 func ShutdownAll(ctx context.Context, plugins []*Plugin) error {
-	slog.Info("shutting down plugins")
+	slog.InfoContext(ctx, "shutting down plugins")
 
-	eg, egctx := errgroup.WithContext(ctx)
+	eg, gctx := errgroup.WithContext(ctx)
 
 	for _, p := range plugins {
 		handlePanic := panichandler.WithStackTrace()
@@ -47,11 +50,11 @@ func ShutdownAll(ctx context.Context, plugins []*Plugin) error {
 		eg.Go(func() error {
 			defer handlePanic()
 
-			if err := p.shutdown(egctx); err != nil {
+			if err := p.shutdown(gctx); err != nil {
 				return fmt.Errorf("%w", err)
 			}
 
-			slog.Info("shutdown successful", "plugin", p.name)
+			slog.DebugContext(gctx, "shutdown successful", "plugin", p.name)
 
 			return nil
 		})
@@ -61,7 +64,7 @@ func ShutdownAll(ctx context.Context, plugins []*Plugin) error {
 		return fmt.Errorf("%w", err)
 	}
 
-	slog.Info("all plugins shut down successfully")
+	slog.InfoContext(ctx, "all plugins shut down successfully")
 
 	return nil
 }
@@ -72,7 +75,7 @@ func ShutdownAll(ctx context.Context, plugins []*Plugin) error {
 // function fails fast.
 func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin, error) {
 	var (
-		lock    sync.Mutex
+		mu      sync.Mutex
 		plugins []*Plugin
 	)
 
@@ -92,12 +95,14 @@ func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin,
 			}
 
 			// TODO: Allow configuring the timeout.
-			tctx, cancel := context.WithTimeout(gctx, 10*time.Second)
+			tctx, cancel := context.WithTimeout(gctx, DefaultHandshakeTimeout)
 			defer cancel()
 
 			if err := p.start(tctx); err != nil {
 				if ignoreErrors {
-					slog.Warn("failed to start plugin", "path", f, "err", err)
+					slog.ErrorContext(tctx, "failed to start plugin", "path", f, "err", err)
+					iostreams.Errorf("Failed to start plugin %q\n", f)
+					iostreams.PrintErrf("Error: %v\n", err)
 
 					return nil
 				}
@@ -107,7 +112,9 @@ func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin,
 
 			if err := p.handshake(tctx); err != nil {
 				if ignoreErrors {
-					slog.Warn("handshake failed", "path", f, "err", err)
+					slog.ErrorContext(tctx, "handshake failed", "path", f, "err", err)
+					iostreams.Errorf("Handshake with %q failed\n", f)
+					iostreams.PrintErrf("Error: %v\n", err)
 
 					return nil
 				}
@@ -117,11 +124,11 @@ func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin,
 
 			// I'm not sure about using locks but it's simple and gets the job
 			// done.
-			lock.Lock()
+			mu.Lock()
 
 			plugins = append(plugins, p)
 
-			lock.Unlock()
+			mu.Unlock()
 
 			return nil
 		})
