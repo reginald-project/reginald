@@ -141,6 +141,8 @@ func (p *Plugin) countProtocolError(ctx context.Context, reason string) {
 func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Message, error) {
 	id := rpp.ID(p.nextID.Add(1))
 
+	slog.DebugContext(ctx, "calling method", "plugin", p.name, "method", method, "params", params)
+
 	rawParams, err := json.Marshal(params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal params: %w", err)
@@ -152,8 +154,6 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 		Method:  method,
 		Params:  rawParams,
 	}
-
-	slog.DebugContext(ctx, "calling method", "plugin", p.name, "msg", req, "params", params)
 
 	// A channel is created for each request. It receives a values in the read loop.
 	ch := make(chan *rpp.Message, 1)
@@ -337,6 +337,43 @@ func (p *Plugin) logNotification(ctx context.Context, msg *rpp.Message) error {
 	return nil
 }
 
+// notify send a notification to the plugin.
+func (p *Plugin) notify(ctx context.Context, method string, params any) error {
+	slog.DebugContext(
+		ctx,
+		"sending notification",
+		"plugin",
+		p.name,
+		"method",
+		method,
+		"params",
+		params,
+	)
+
+	rawParams, err := json.Marshal(params)
+	if err != nil {
+		return fmt.Errorf("failed to marshal params: %w", err)
+	}
+
+	p.writeMu.Lock()
+	defer p.writeMu.Unlock()
+
+	err = rpp.Write(p.stdin, &rpp.Message{
+		JSONRCP: rpp.JSONRCPVersion,
+		Method:  method,
+		Params:  rawParams,
+	})
+	if err == nil {
+		err = p.stdin.Flush()
+	}
+
+	if err != nil {
+		return fmt.Errorf("error when sending notification: %w", err)
+	}
+
+	return nil
+}
+
 // read runs the reading loop for the plugin. It listens to the standard output
 // of the plugins and handles the messages when they come in.
 func (p *Plugin) read(ctx context.Context, panicHandler func()) {
@@ -422,16 +459,7 @@ func (p *Plugin) shutdown(ctx context.Context) error {
 		slog.WarnContext(ctx, "error when calling shutdown", "plugin", p.name, "err", err.Error())
 	}
 
-	p.writeMu.Lock()
-
-	err = rpp.Write(p.stdin, &rpp.Message{
-		JSONRCP: rpp.JSONRCPVersion,
-		Method:  rpp.MethodExit,
-	})
-	if err == nil {
-		err = p.stdin.Flush()
-	}
-
+	err = p.notify(ctx, rpp.MethodExit, nil)
 	if err != nil {
 		slog.WarnContext(
 			ctx,
@@ -442,8 +470,6 @@ func (p *Plugin) shutdown(ctx context.Context) error {
 			err.Error(),
 		)
 	}
-
-	p.writeMu.Unlock()
 
 	select {
 	case err := <-p.doneCh:
