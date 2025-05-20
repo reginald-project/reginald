@@ -59,5 +59,11 @@ func run() int {
 		return 1
 	}
 
+	if err := c.DeferredErr(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+
+		return 1
+	}
+
 	return 0
 }

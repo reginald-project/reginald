@@ -49,6 +49,7 @@ type CLI struct {
 	flags                  *pflag.FlagSet    // global command-line flags
 	mutuallyExclusiveFlags [][]string        // list of flag names that are marked as mutually exclusive
 	plugins                []*plugins.Plugin // loaded plugins
+	deferredErr            error             // error returned by the plugin shutdown not captured by the return value
 }
 
 // New creates a new CLI and returns it. It panics on errors.
@@ -63,6 +64,7 @@ func New(v string) *CLI {
 		flags:                  pflag.NewFlagSet(Name, pflag.ContinueOnError),
 		mutuallyExclusiveFlags: [][]string{},
 		plugins:                []*plugins.Plugin{},
+		deferredErr:            nil,
 	}
 
 	cli.flags.Bool("version", false, "print the version information and exit")
@@ -123,6 +125,12 @@ func New(v string) *CLI {
 	return cli
 }
 
+// DeferredErr returns the error from the CLI that was set during cleaning up
+// the execution.
+func (c *CLI) DeferredErr() error {
+	return c.deferredErr
+}
+
 // Execute executes the CLI. It parses the command-line options, finds the
 // correct command to run, and executes it. An error is returned on user errors.
 // The function panics if it is called with invalid program configuration.
@@ -133,22 +141,23 @@ func (c *CLI) Execute(ctx context.Context) error {
 		return nil
 	}
 
-	if ok, err := c.setup(); err != nil {
+	// Plugins are started in runFirstPass so defer shutting them down. We want
+	// to aim for a clean plugin shutdown in all cases.
+	defer func() {
+		timeoutCtx, cancel := context.WithTimeout(ctx, plugins.DefaultPluginShutdownTimeout)
+		defer cancel()
+
+		if err := plugins.ShutdownAll(timeoutCtx, c.plugins); err != nil {
+			c.deferredErr = fmt.Errorf("failed to shut down plugins: %w", err)
+		}
+	}()
+
+	if err := c.setup(); err != nil {
 		return fmt.Errorf("%w", err)
-	} else if !ok {
-		return nil
 	}
 
 	if err := c.run(c.cmd, c.args); err != nil {
 		return fmt.Errorf("%w", err)
-	}
-
-	// End by shutting down the plugins.
-	timeoutCtx, cancel := context.WithTimeout(ctx, plugins.DefaultPluginShutdownTimeout)
-	defer cancel()
-
-	if err := plugins.ShutdownAll(timeoutCtx, c.plugins); err != nil {
-		return fmt.Errorf("failed to shut down plugins: %w", err)
 	}
 
 	return nil
@@ -168,8 +177,8 @@ func (c *CLI) add(cmd *Command) {
 	c.commands = append(c.commands, cmd)
 }
 
-// setup runs the setup phase and the priority actions of the program. The function returns true if the execution should not return after this function.
-func (c *CLI) setup() (bool, error) {
+// setup runs the setup phase of the program.
+func (c *CLI) setup() error {
 	var err error
 
 	args := os.Args
@@ -190,21 +199,21 @@ func (c *CLI) setup() (bool, error) {
 	}
 
 	if err := flagSet.Parse(args); err != nil {
-		return false, fmt.Errorf("failed to parse command-line arguments: %w", err)
+		return fmt.Errorf("failed to parse command-line arguments: %w", err)
 	}
 
 	c.args = flagSet.Args()
 
 	if err := c.checkMutuallyExclusiveFlags(c.cmd); err != nil {
-		return false, fmt.Errorf("%w", err)
+		return fmt.Errorf("%w", err)
 	}
 
 	c.cfg, err = c.parseConfig(flagSet)
 	if err != nil {
-		return false, fmt.Errorf("%w", err)
+		return fmt.Errorf("%w", err)
 	}
 
-	return true, nil
+	return nil
 }
 
 // runFirstPass does the priority actions of the program. It checks it the
