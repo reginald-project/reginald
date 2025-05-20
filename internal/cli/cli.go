@@ -42,6 +42,8 @@ type CLI struct {
 	UsageLine string          // one-line synopsis of the program
 	Version   *semver.Version // version number of the program
 
+	args                   []string          // command-line arguments after parsing
+	cmd                    *Command          // command to run
 	cfg                    *config.Config    // parsed config of the run
 	commands               []*Command        // list of subcommands
 	flags                  *pflag.FlagSet    // global command-line flags
@@ -54,6 +56,8 @@ func New(v string) *CLI {
 	cli := &CLI{
 		UsageLine:              Name + " [--version] [-h | --help] <command> [<args>]",
 		Version:                semver.MustParse(v),
+		args:                   []string{},
+		cmd:                    nil,
 		cfg:                    nil,
 		commands:               []*Command{},
 		flags:                  pflag.NewFlagSet(Name, pflag.ContinueOnError),
@@ -123,45 +127,19 @@ func New(v string) *CLI {
 // correct command to run, and executes it. An error is returned on user errors.
 // The function panics if it is called with invalid program configuration.
 func (c *CLI) Execute(ctx context.Context) error {
-	var err error
-
 	if ok, err := c.runFirstPass(ctx); err != nil {
 		return fmt.Errorf("%w", err)
 	} else if !ok {
 		return nil
 	}
 
-	args := os.Args
-
-	// Matches merging flags for commands.
-	c.flags.AddFlagSet(pflag.CommandLine)
-	slog.Debug("starting to parse the command-line arguments", "args", args)
-
-	cmd, args := c.findSubcommand(args)
-
-	var flagSet *pflag.FlagSet
-
-	if cmd == nil {
-		flagSet = c.flags
-	} else {
-		cmd.mergeFlags()
-		flagSet = cmd.Flags()
-	}
-
-	if err := flagSet.Parse(args); err != nil {
-		return fmt.Errorf("failed to parse command-line arguments: %w", err)
-	}
-
-	if err := c.checkMutuallyExclusiveFlags(cmd); err != nil {
+	if ok, err := c.setup(); err != nil {
 		return fmt.Errorf("%w", err)
+	} else if !ok {
+		return nil
 	}
 
-	c.cfg, err = c.parseConfig(flagSet)
-	if err != nil {
-		return fmt.Errorf("%w", err)
-	}
-
-	if err = c.run(cmd, args); err != nil {
+	if err := c.run(c.cmd, c.args); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
@@ -169,7 +147,7 @@ func (c *CLI) Execute(ctx context.Context) error {
 	timeoutCtx, cancel := context.WithTimeout(ctx, plugins.DefaultPluginShutdownTimeout)
 	defer cancel()
 
-	if err = plugins.ShutdownAll(timeoutCtx, c.plugins); err != nil {
+	if err := plugins.ShutdownAll(timeoutCtx, c.plugins); err != nil {
 		return fmt.Errorf("failed to shut down plugins: %w", err)
 	}
 
@@ -188,6 +166,45 @@ func (c *CLI) add(cmd *Command) {
 	cmd.mutuallyExclusiveFlags = append(cmd.mutuallyExclusiveFlags, c.mutuallyExclusiveFlags...)
 
 	c.commands = append(c.commands, cmd)
+}
+
+// setup runs the setup phase and the priority actions of the program. The function returns true if the execution should not return after this function.
+func (c *CLI) setup() (bool, error) {
+	var err error
+
+	args := os.Args
+
+	// Matches merging flags for commands.
+	c.flags.AddFlagSet(pflag.CommandLine)
+	slog.Debug("starting to parse the command-line arguments", "args", args)
+
+	c.cmd, args = c.findSubcommand(args)
+
+	var flagSet *pflag.FlagSet
+
+	if c.cmd == nil {
+		flagSet = c.flags
+	} else {
+		c.cmd.mergeFlags()
+		flagSet = c.cmd.Flags()
+	}
+
+	if err := flagSet.Parse(args); err != nil {
+		return false, fmt.Errorf("failed to parse command-line arguments: %w", err)
+	}
+
+	c.args = flagSet.Args()
+
+	if err := c.checkMutuallyExclusiveFlags(c.cmd); err != nil {
+		return false, fmt.Errorf("%w", err)
+	}
+
+	c.cfg, err = c.parseConfig(flagSet)
+	if err != nil {
+		return false, fmt.Errorf("%w", err)
+	}
+
+	return true, nil
 }
 
 // runFirstPass does the priority actions of the program. It checks it the
@@ -478,7 +495,7 @@ func (c *CLI) run(cmd *Command, args []string) error {
 		return nil
 	}
 
-	if err := setup(cmd, cmd, args); err != nil {
+	if err := setupCommands(cmd, cmd, args); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
@@ -489,11 +506,11 @@ func (c *CLI) run(cmd *Command, args []string) error {
 	return nil
 }
 
-// setup runs [Command.Setup] for all of the commands, starting from the root
-// command. It exits on the first error it encounters.
-func setup(c, subcmd *Command, args []string) error {
+// setupCommands runs [Command.Setup] for all of the commands, starting from the
+// root command. It exits on the first error it encounters.
+func setupCommands(c, subcmd *Command, args []string) error {
 	if c.HasParent() {
-		if err := setup(c.parent, subcmd, args); err != nil {
+		if err := setupCommands(c.parent, subcmd, args); err != nil {
 			return fmt.Errorf("%w", err)
 		}
 	}
