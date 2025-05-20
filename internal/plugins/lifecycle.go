@@ -14,7 +14,7 @@ import (
 // Load creates the processes for the plugins, performs the handshakes with
 // them, returns a slice of the valid plugins.
 func Load(ctx context.Context, files []string) ([]*Plugin, error) {
-	// TODO: Provide the config value for the create function.
+	// TODO: Add a config options for ignoring the errors.
 	plugins, err := loadAll(ctx, files, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load the plugins: %w", err)
@@ -22,14 +22,14 @@ func Load(ctx context.Context, files []string) ([]*Plugin, error) {
 
 	for _, p := range plugins {
 		handlePanic := panichandler.WithStackTrace()
-		go func(p *Plugin) {
+		go func() {
 			defer handlePanic()
 
 			if err := <-p.doneCh; err != nil {
 				// TODO: Better logging or something.
 				fmt.Fprintf(os.Stderr, "plugin %q quit unexpectedly: %v\n", p.name, err)
 			}
-		}(p)
+		}()
 	}
 
 	return plugins, nil
@@ -76,9 +76,10 @@ func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin,
 		plugins []*Plugin
 	)
 
-	eg, egctx := errgroup.WithContext(ctx)
+	eg, gctx := errgroup.WithContext(ctx)
 
-	// TODO: Print the errors to actual output if they are ignored.
+	// TODO: See if the error messages should be warnings instead of errors if
+	// errors are ignored (not really that big of a difference).
 	for _, f := range files {
 		handlePanic := panichandler.WithStackTrace()
 
@@ -90,7 +91,11 @@ func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin,
 				return fmt.Errorf("failed to create a new plugin for path %s; %w", f, err)
 			}
 
-			if err := p.start(ctx); err != nil {
+			// TODO: Allow configuring the timeout.
+			tctx, cancel := context.WithTimeout(gctx, 10*time.Second)
+			defer cancel()
+
+			if err := p.start(tctx); err != nil {
 				if ignoreErrors {
 					slog.Warn("failed to start plugin", "path", f, "err", err)
 
@@ -100,14 +105,14 @@ func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin,
 				return fmt.Errorf("failed to start plugin %s: %w", p.name, err)
 			}
 
-			if err := p.handshake(egctx); err != nil {
+			if err := p.handshake(tctx); err != nil {
 				if ignoreErrors {
 					slog.Warn("handshake failed", "path", f, "err", err)
 
 					return nil
 				}
 
-				return fmt.Errorf("handshake for plugin %s failed: %w", p.name, err)
+				return fmt.Errorf("handshake with plugin %q failed: %w", p.name, err)
 			}
 
 			// I'm not sure about using locks but it's simple and gets the job
