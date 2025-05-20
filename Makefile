@@ -10,6 +10,8 @@ GOFUMPT_VERSION = 0.8.0
 GOLANGCI_LINT_VERSION = 2.1.6
 GOLINES_VERSION = 0.12.2
 
+VERSION_PACKAGE = github.com/anttikivi/reginald/pkg/version
+
 # Default target.
 .PHONY: all
 all: build plugins
@@ -48,7 +50,11 @@ fmt: tidy
 .PHONY: build
 build:
 	@commit_hash="$$(git describe --always --dirty --abbrev=40)"; \
-	build_date="$$(date -u +"%Y-%m-%dT%H:%M:%SZ")"; \
+	if [ "$$(uname)" = "Darwin" ]; then \
+		build_date="$$(date +"%Y-%m-%dT%H:%M:%S%z" | sed -E 's/([+-][0-9]{2})([0-9]{2})$$/\1:\2/')"; \
+	else \
+		build_date="$$(date +"%Y-%m-%dT%H:%M:%S%:z")"; \
+	fi; \
 	base_version="$$(cat VERSION)"; \
 	prerelease="$(PRERELEASE)"; \
 	build_metadata="$(BUILD_METADATA)"; \
@@ -74,9 +80,9 @@ build:
 	fi; \
 	\
 	ldflags="$(LDFLAGS)"; \
-	ldflags="$${ldflags} -X github.com/anttikivi/reginald/internal/version.Version=$${version}"; \
-	ldflags="$${ldflags} -X github.com/anttikivi/reginald/internal/version.Commit=$${commit_hash}"; \
-	ldflags="$${ldflags} -X github.com/anttikivi/reginald/internal/version.BuildDate=$${build_date}"; \
+	ldflags="$${ldflags} -X $(VERSION_PACKAGE).buildVersion=$${version}"; \
+	ldflags="$${ldflags} -X $(VERSION_PACKAGE).buildCommit=$${commit_hash}"; \
+	ldflags="$${ldflags} -X $(VERSION_PACKAGE).buildTime=$${build_date}"; \
 	\
 	goflags="$(GOFLAGS)"; \
 	\

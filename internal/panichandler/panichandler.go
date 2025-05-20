@@ -12,9 +12,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/anttikivi/go-semver"
 	"github.com/anttikivi/reginald/internal/iostreams"
-	"github.com/anttikivi/reginald/internal/version"
+	"github.com/anttikivi/reginald/pkg/version"
 	"golang.org/x/term"
 )
 
@@ -43,14 +42,12 @@ var panicMu sync.Mutex //nolint:gochecknoglobals
 // with them with the stack trace and a helpful message that guides the user to
 // report the bug using the issue tracker.
 func Handle() {
-	v := versionInfo()
-
 	panicMu.Lock()
 	defer panicMu.Unlock()
 
 	r := recover()
 
-	panicHandler(r, v, nil)
+	panicHandler(r, nil)
 }
 
 // WithStackTrace returns a function that is similar to Handle but it captures
@@ -58,7 +55,6 @@ func Handle() {
 // stack trace leading up to creating the panic handler with this function if a
 // panic happens outside of the main goroutine.
 func WithStackTrace() func() {
-	v := versionInfo()
 	trace := debug.Stack()
 
 	return func() {
@@ -67,20 +63,11 @@ func WithStackTrace() func() {
 
 		r := recover()
 
-		panicHandler(r, v, trace)
+		panicHandler(r, trace)
 	}
 }
 
-func versionInfo() string {
-	v, err := semver.Parse(version.Version)
-	if err != nil {
-		return fmt.Sprintf("Version: %s\nParsing the version failed: %v", version.Version, err)
-	}
-
-	return fmt.Sprint("Version: ", v)
-}
-
-func panicHandler(r any, v string, t []byte) {
+func panicHandler(r any, t []byte) {
 	if r == nil {
 		return
 	}
@@ -95,8 +82,7 @@ func panicHandler(r any, v string, t []byte) {
 	buf.WriteString("\n\n")
 	buf.WriteString(wrap(panicInfo, width))
 	buf.WriteByte('\n')
-	buf.WriteString(v)
-	buf.WriteByte('\n')
+	buf.WriteString(fmt.Sprintf("Version: %s\n", version.Version()))
 	buf.WriteString(fmt.Sprintf("Panic: %v\n\n", r))
 	buf.WriteString("Stack trace:\n\n")
 	buf.Write(debug.Stack())

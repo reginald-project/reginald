@@ -14,7 +14,7 @@ import (
 	"github.com/anttikivi/reginald/internal/cli"
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/panichandler"
-	"github.com/anttikivi/reginald/internal/version"
+	"github.com/anttikivi/reginald/pkg/version"
 )
 
 func main() {
@@ -50,9 +50,9 @@ func run() int {
 	}
 
 	slog.DebugContext(ctx, "bootstrap logger initialized")
-	slog.InfoContext(ctx, "bootstrapping Reginald", "version", version.Version)
+	slog.InfoContext(ctx, "bootstrapping Reginald", "version", version.Version(), "commit", version.BuildCommit(), "buildTime", version.BuildTime())
 
-	c := cli.New(version.Version)
+	c := cli.New()
 	if err := c.Execute(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 

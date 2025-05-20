@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/anttikivi/go-semver"
 	"github.com/anttikivi/reginald/internal/config"
 	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/logging"
@@ -39,8 +38,7 @@ var errMutuallyExclusive = errors.New("two mutually exclusive flags set at the s
 // one CLI struct instead of a CLI and a separate root command much simpler to
 // handle.
 type CLI struct {
-	UsageLine string          // one-line synopsis of the program
-	Version   *semver.Version // version number of the program
+	UsageLine string // one-line synopsis of the program
 
 	args                   []string          // command-line arguments after parsing
 	cmd                    *Command          // command to run
@@ -53,10 +51,9 @@ type CLI struct {
 }
 
 // New creates a new CLI and returns it. It panics on errors.
-func New(v string) *CLI {
+func New() *CLI {
 	cli := &CLI{
 		UsageLine:              Name + " [--version] [-h | --help] <command> [<args>]",
-		Version:                semver.MustParse(v),
 		args:                   []string{},
 		cmd:                    nil,
 		cfg:                    nil,
