@@ -12,9 +12,9 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/anttikivi/reginald/internal/flags"
 	"github.com/anttikivi/reginald/internal/pathname"
 	"github.com/pelletier/go-toml/v2"
-	"github.com/spf13/pflag"
 )
 
 // Errors returned from the configuration parser.
@@ -41,7 +41,7 @@ var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem(
 // The function also resolves the configuration file according to the standard
 // paths for the file or according the flags. The relevant flags are
 // `--directory` and `--config`.
-func Parse(ctx context.Context, flagSet *pflag.FlagSet) (*Config, error) {
+func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
 	dir, configFile, err := fileOptions(ctx, flagSet)
 	if err != nil {
 		return nil, fmt.Errorf("%w", err)
@@ -103,7 +103,7 @@ func Parse(ctx context.Context, flagSet *pflag.FlagSet) (*Config, error) {
 // configuration file. The values are checked from the environment variables and
 // command-line flags. The first return value is the working directory and the
 // second is the configuration file.
-func fileOptions(ctx context.Context, flagSet *pflag.FlagSet) (string, string, error) {
+func fileOptions(ctx context.Context, flagSet *flags.FlagSet) (string, string, error) {
 	var (
 		err      error
 		filename string
@@ -271,7 +271,7 @@ func validate(c *Config) error {
 
 // applyFlags applies the overrides of the configuration values from
 // command-line flags. It modifies cfg.
-func applyFlags(cfg *Config, flagSet *pflag.FlagSet) {
+func applyFlags(cfg *Config, flagSet *flags.FlagSet) {
 	if flagSet.Changed("color") {
 		b, err := flagSet.GetBool("color")
 		if err != nil {

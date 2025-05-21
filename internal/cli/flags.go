@@ -3,7 +3,7 @@ package cli
 import (
 	"strings"
 
-	"github.com/spf13/pflag"
+	"github.com/anttikivi/reginald/internal/flags"
 )
 
 // collectFlags removes all of the known flags from the arguments list and
@@ -13,7 +13,7 @@ import (
 // found in the flag set are treated as regular command-line arguments. If the
 // user has run the program correctly, this function should return the next
 // subcommand as the first element of the argument slice.
-func collectFlags(fs *pflag.FlagSet, args, flags []string) ([]string, []string) {
+func collectFlags(fs *flags.FlagSet, args, flags []string) ([]string, []string) {
 	if len(args) == 0 {
 		return args, flags
 	}
@@ -77,7 +77,7 @@ Loop:
 // be included. The function checks by looking up the shorthands if the string
 // starts with only one hyphen. If s contains a combination of shorthands, the
 // function will check for all of them.
-func hasFlag(fs *pflag.FlagSet, s string) bool {
+func hasFlag(fs *flags.FlagSet, s string) bool {
 	if strings.HasPrefix(s, "--") {
 		if strings.Contains(s, "=") {
 			return fs.Lookup(s[2:strings.Index(s, "=")]) != nil
@@ -110,7 +110,7 @@ func hasFlag(fs *pflag.FlagSet, s string) bool {
 }
 
 // hasNoOptDefVal checks if the given flag has a NoOptDefVal set.
-func hasNoOptDefVal(name string, fs *pflag.FlagSet) bool {
+func hasNoOptDefVal(name string, fs *flags.FlagSet) bool {
 	f := fs.Lookup(name)
 	if f == nil {
 		return false
@@ -121,7 +121,7 @@ func hasNoOptDefVal(name string, fs *pflag.FlagSet) bool {
 
 // shortHasNoOptDefVal checks if the flag for the given shorthand has a
 // NoOptDefVal set.
-func shortHasNoOptDefVal(name string, fs *pflag.FlagSet) bool {
+func shortHasNoOptDefVal(name string, fs *flags.FlagSet) bool {
 	f := fs.ShorthandLookup(name[:1])
 	if f == nil {
 		return false

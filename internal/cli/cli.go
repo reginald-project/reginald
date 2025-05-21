@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/anttikivi/reginald/internal/config"
+	"github.com/anttikivi/reginald/internal/flags"
 	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/plugins"
@@ -44,7 +45,7 @@ type CLI struct {
 	cmd                    *Command          // command to run
 	cfg                    *config.Config    // parsed config of the run
 	commands               []*Command        // list of subcommands
-	flags                  *pflag.FlagSet    // global command-line flags
+	flags                  *flags.FlagSet    // global command-line flags
 	mutuallyExclusiveFlags [][]string        // list of flag names that are marked as mutually exclusive
 	plugins                []*plugins.Plugin // loaded plugins
 	deferredErr            error             // error returned by the plugin shutdown not captured by the return value
@@ -58,14 +59,14 @@ func New() *CLI {
 		cmd:                    nil,
 		cfg:                    nil,
 		commands:               []*Command{},
-		flags:                  pflag.NewFlagSet(Name, pflag.ContinueOnError),
+		flags:                  flags.NewFlagSet(Name, pflag.ContinueOnError),
 		mutuallyExclusiveFlags: [][]string{},
 		plugins:                []*plugins.Plugin{},
 		deferredErr:            nil,
 	}
 
-	cli.flags.Bool("version", false, "print the version information and exit")
-	cli.flags.BoolP("help", "h", false, "show the help message and exit")
+	cli.flags.Bool("version", false, "print the version information and exit", "")
+	cli.flags.BoolP("help", "h", false, "show the help message and exit", "")
 
 	cli.flags.StringP(
 		"directory",
@@ -75,12 +76,14 @@ func New() *CLI {
 			"run as if %s was started in `<path>` instead of the current working directory",
 			ProgramName,
 		),
+		"",
 	)
 	cli.flags.StringP(
 		"config",
 		"c",
 		"",
 		"use `<path>` as the configuration file instead of resolving it from the standard locations",
+		"",
 	)
 
 	d, err := config.DefaultPluginsDir()
@@ -88,29 +91,30 @@ func New() *CLI {
 		panic(fmt.Sprintf("failed to get the default plugins directory: %v", err))
 	}
 
-	cli.flags.StringP("plugin-dir", "p", d, "search for plugins from `<path>`")
+	cli.flags.StringP("plugin-dir", "p", d, "search for plugins from `<path>`", "")
 
-	cli.flags.BoolP("verbose", "v", false, "make "+ProgramName+" print more output during the run")
+	cli.flags.BoolP("verbose", "v", false, "make "+ProgramName+" print more output during the run", "")
 	cli.flags.BoolP(
 		"quiet",
 		"q",
 		false,
 		"make "+ProgramName+" print only error messages during the run",
+		"",
 	)
 	cli.markFlagsMutuallyExclusive("quiet", "verbose")
 
 	isTerminal := term.IsTerminal(int(os.Stdout.Fd()))
 
-	cli.flags.Bool("color", isTerminal, "enable colors in the output")
-	cli.flags.Bool("no-color", !isTerminal, "disable colors in the output")
+	cli.flags.Bool("color", isTerminal, "enable colors in the output", "")
+	cli.flags.Bool("no-color", !isTerminal, "disable colors in the output", "")
 	cli.markFlagsMutuallyExclusive("color", "no-color")
 
 	if err := cli.flags.MarkHidden("no-color"); err != nil {
 		panic(fmt.Sprintf("failed to mark --no-color hidden: %v", err))
 	}
 
-	cli.flags.Bool("logging", false, "enable logging")
-	cli.flags.Bool("no-logging", false, "disable logging")
+	cli.flags.Bool("logging", false, "enable logging", "")
+	cli.flags.Bool("no-logging", false, "disable logging", "")
 	cli.markFlagsMutuallyExclusive("logging", "no-logging")
 
 	if err := cli.flags.MarkHidden("no-logging"); err != nil {
@@ -245,8 +249,8 @@ func (c *CLI) runFirstPass(ctx context.Context) (bool, error) {
 
 // initFirstPassFlags creates a temporary flag set for parsing the command-line
 // arguments during the first pass before loading the plugins.
-func (c *CLI) initFirstPassFlags() *pflag.FlagSet {
-	fs := pflag.NewFlagSet(c.flags.Name(), pflag.ContinueOnError)
+func (c *CLI) initFirstPassFlags() *flags.FlagSet {
+	fs := flags.NewFlagSet(c.flags.Name(), pflag.ContinueOnError)
 
 	fs.AddFlagSet(c.flags)
 
@@ -256,7 +260,7 @@ func (c *CLI) initFirstPassFlags() *pflag.FlagSet {
 // parseConfig parses the configuration from the configuration files,
 // environment variables, and command-line flags. It returns a pointer to the
 // configuration and any errors encountered.
-func (c *CLI) parseConfig(ctx context.Context, fs *pflag.FlagSet) (*config.Config, error) {
+func (c *CLI) parseConfig(ctx context.Context, fs *flags.FlagSet) (*config.Config, error) {
 	cfg, err := config.Parse(ctx, fs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse the config: %w", err)
@@ -327,13 +331,18 @@ func (c *CLI) setup(ctx context.Context) error {
 
 	args := os.Args
 
+	// TODO: Should we make sure that CommandLine is not used and should we do
+	// it this way?
+	pflag.CommandLine.VisitAll(func(f *pflag.Flag) {
+		panic(fmt.Sprintf("flag %q is set in the CommandLine flag set", f.Name))
+	})
 	// Matches merging flags for commands.
-	c.flags.AddFlagSet(pflag.CommandLine)
+	// c.flags.AddFlagSet(pflag.CommandLine)
 	slog.DebugContext(ctx, "parsing command-line arguments", "args", args)
 
 	c.cmd, args = c.findSubcommand(ctx, args)
 
-	var flagSet *pflag.FlagSet
+	var flagSet *flags.FlagSet
 
 	if c.cmd == nil {
 		flagSet = c.flags
@@ -365,7 +374,7 @@ func (c *CLI) setup(ctx context.Context) error {
 // mutually exclusive flags are set.
 func (c *CLI) checkMutuallyExclusiveFlags(cmd *Command) error {
 	var (
-		fs                     *pflag.FlagSet
+		fs                     *flags.FlagSet
 		mutuallyExclusiveFlags [][]string
 	)
 

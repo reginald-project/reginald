@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/anttikivi/reginald/internal/flags"
 	"github.com/spf13/pflag"
 )
 
@@ -33,8 +34,8 @@ type Command struct {
 
 	cli                    *CLI           // containing CLI struct
 	commands               []*Command     // list of subcommands
-	flags                  *pflag.FlagSet // all of the command-line options
-	globalFlags            *pflag.FlagSet // options that are inherited by the subcommands
+	flags                  *flags.FlagSet // all of the command-line options
+	globalFlags            *flags.FlagSet // options that are inherited by the subcommands
 	mutuallyExclusiveFlags [][]string     // list of flag names that are marked as mutually exclusive
 	parent                 *Command       // parent command of this command if it is a subcommand
 }
@@ -109,7 +110,7 @@ func (c *Command) Name() string {
 
 // Flags returns the set of command-line options that contains all of the
 // command-line options associated with this Command.
-func (c *Command) Flags() *pflag.FlagSet {
+func (c *Command) Flags() *flags.FlagSet {
 	if c.flags == nil {
 		c.flags = c.flagSet()
 	}
@@ -119,7 +120,7 @@ func (c *Command) Flags() *pflag.FlagSet {
 
 // GlobalFlags returns the set of command-line options of this command that are
 // inherited by the subcommands.
-func (c *Command) GlobalFlags() *pflag.FlagSet {
+func (c *Command) GlobalFlags() *flags.FlagSet {
 	if c.globalFlags == nil {
 		c.globalFlags = c.flagSet()
 	}
@@ -150,14 +151,19 @@ func (c *Command) VisitParents(fn func(*Command)) {
 }
 
 // flagSet returns a new flag set suitable to be used with Command.
-func (c *Command) flagSet() *pflag.FlagSet {
-	return pflag.NewFlagSet(c.Name(), pflag.ContinueOnError)
+func (c *Command) flagSet() *flags.FlagSet {
+	return flags.NewFlagSet(c.Name(), pflag.ContinueOnError)
 }
 
 // mergeFlags merges the global options of this Command to the set of all
 // options and adds the global options from parents.
 func (c *Command) mergeFlags() {
-	c.cli.flags.AddFlagSet(pflag.CommandLine)
+	// TODO: Should we make sure that CommandLine is not used and should we do
+	// it this way?
+	pflag.CommandLine.VisitAll(func(f *pflag.Flag) {
+		panic(fmt.Sprintf("flag %q is set in the CommandLine flag set", f.Name))
+	})
+	// c.cli.flags.AddFlagSet(pflag.CommandLine)
 	c.Root().GlobalFlags().AddFlagSet(c.cli.flags)
 	c.VisitParents(func(p *Command) {
 		c.GlobalFlags().AddFlagSet(p.GlobalFlags())
