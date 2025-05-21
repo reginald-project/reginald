@@ -10,6 +10,10 @@ permissions:
 jobs:
   build:
     name: Build on ${{ matrix.goos }}/${{ matrix.goarch }}
+    if:
+      "!contains(github.event.head_commit.message, '[ci skip]') &&
+      !contains(github.event.head_commit.message, '[skip ci]') &&
+      !startsWith(github.event.head_commit.message, 'docs')"
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -91,6 +95,10 @@ jobs:
 
   lint:
     name: Lint
+    if:
+      "!contains(github.event.head_commit.message, '[ci skip]') &&
+      !contains(github.event.head_commit.message, '[skip ci]') &&
+      !startsWith(github.event.head_commit.message, 'docs')"
     runs-on: ubuntu-latest
     needs: [build]
 
@@ -120,6 +128,10 @@ jobs:
 
   unit-tests:
     name: Unit tests
+    if:
+      "!contains(github.event.head_commit.message, '[ci skip]') &&
+      !contains(github.event.head_commit.message, '[skip ci]') &&
+      !startsWith(github.event.head_commit.message, 'docs')"
     runs-on: ${{ matrix.os }}
     needs: [build]
 
@@ -164,6 +176,10 @@ jobs:
 
   race-tests:
     name: Race tests
+    if:
+      "!contains(github.event.head_commit.message, '[ci skip]') &&
+      !contains(github.event.head_commit.message, '[skip ci]') &&
+      !startsWith(github.event.head_commit.message, 'docs')"
     runs-on: ${{ matrix.os }}
     needs: [build]
 
