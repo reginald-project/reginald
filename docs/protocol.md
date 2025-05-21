@@ -23,6 +23,11 @@ it can be a bit different or even dynamic, the types in this document describe
 the types that Reginald expects the JSON to decode to. They also describe the
 types from which Reginald encodes the JSON.
 
+The Reginald Plugin Protocol is loosely based on the
+[Language Server Protocol](https://microsoft.github.io/language-server-protocol/)
+by Microsoft. The Language Server Protocol is licensed under the
+[Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/).
+
 ## The Protocol
 
 A message consists of a header part and a content part. The header and the
