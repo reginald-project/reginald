@@ -141,6 +141,120 @@ interface Message {
 }
 ```
 
+#### Request
+
+A request from the client to the server. The server must respond to a request
+with a [Response](#response).
+
+```json
+{
+  "$id": "#request",
+  "title": "Request",
+  "type": "object",
+  "allOf": {
+    "$ref": "#message"
+  },
+  "properties": {
+    "id": {
+      "type": ["integer", "string"]
+    },
+    "method": {
+      "type": "string"
+    },
+    "params": {
+      "type": ["array", "object", "null"]
+    }
+  },
+  "required": ["id", "method"]
+}
+```
+
+```typescript
+interface Request extends Message {
+  id: int | string;
+  method: string;
+  params: any[] | object | null;
+}
+```
+
+#### Response
+
+A response is sent from the server to the client as the result of a
+[Request](#request). The `id` must be the same as the `id` in the request unless
+there was an error detecting the `id` from the request. If that is the case, the
+`id` must be `null`. The `result` must be present on success and omitted on
+error. The `error` must be present on error and omitted on success.
+
+```json
+{
+  "$id": "#response
+  "title": "Response",
+  "type": "object",
+  "allOf": {
+    "$ref": "#message"
+  },
+  "properties": {
+    "id": {
+      "type": ["integer", "string", "null"]
+    },
+    "result": {},
+    "error": {
+      "$ref": "#error"
+    }
+  }
+}
+```
+
+```typescript
+interface Response extends Message {
+  id: int | string | null;
+  result: any | null;
+  error: Error | null;
+}
+```
+
+#### Error
+
+Error is the `error` object in [Response](#response) if it is not successful.
+The member `code` indicates the type of the error that occured and the `message`
+contains the error message. The member `data` may contain additional information
+on the error and it may be omitted. The error codes that are currently used are
+as follows:
+
+| Code   | Message          | Meaning                                                                                              |
+| ------ | ---------------- | ---------------------------------------------------------------------------------------------------- |
+| -32700 | Parse error      | Invalid JSON was received by the server. An error occurred on the server while parsing the JSON text |
+| -32600 | Invalid Request  | The JSON sent is not a valid Request object.                                                         |
+| -32601 | Method not found | The method does not exist / is not available.                                                        |
+| -32602 | Invalid params   | Invalid method parameter(s).                                                                         |
+| -32603 | Internal error   | Internal JSON-RPC error.                                                                             |
+
+```json
+{
+  "$id": "#error
+  "title": "Error",
+  "type": "object",
+  "properties": {
+    "code": {
+      "type": "integer"
+    },
+    "message": {
+      "type": "string"
+    },
+    "data": {}
+  },
+  "required": ["code", "message"]
+}
+```
+
+```typescript
+interface Error {
+  code: int;
+  message: string;
+  data: any | null;
+}
+```
+
 ## Reginald Plugin Protocol
 
 The Reginald plugin protocol defines a set of JSON-RCP requests, responses,
