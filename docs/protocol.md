@@ -102,8 +102,10 @@ and the plugin the server to keep the naming clear.
 
 ### Base Types
 
-This document uses [JSON Schema](https://json-schema.org/) to document the
-expected types and forms of the protocol.
+This document uses [JSON Schema](https://json-schema.org/) to formally document
+the expected types and forms of the protocol. Each type is also provided as
+pseudo-code to make them easier to read. Please note that the RPP does not at
+this time provide an actual JSON Schema file.
 
 ```json
 {
@@ -121,7 +123,21 @@ RPP always uses `"2.0"` as the JSON-RCP version given as the `jsonrcp` member.
 
 ```json
 {
-  "$id": "[#/base-types/message](#/base-types/message)"
+  "$id": "#message",
+  "title": "Message",
+  "type": "object",
+  "properties": {
+    "jsonrpc": {
+      "type": "string"
+    }
+  },
+  "required": ["jsonrpc"]
+}
+```
+
+```typescript
+interface Message {
+  jsonrpc: string;
 }
 ```
 
