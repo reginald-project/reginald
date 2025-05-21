@@ -5,9 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 
-	"github.com/anttikivi/reginald/internal/pathname"
 	"golang.org/x/term"
 )
 
@@ -31,20 +29,6 @@ func DefaultDirectory() string {
 // DefaultPluginsDir returns the plugins directory to use. It takes the environment
 // variable for customizing the plugins directory and the platform into account.
 func DefaultPluginsDir() (string, error) {
-	name := strings.ToUpper(defaultEnvPrefix + "_PLUGIN_DIR")
-	if env := os.Getenv(name); env != "" {
-		path, err := pathname.Abs(env)
-		if err != nil {
-			return "", fmt.Errorf(
-				"failed to convert plugins directory path %q to absolute path: %w",
-				env,
-				err,
-			)
-		}
-
-		return path, nil
-	}
-
 	path, err := defaultPluginsDir()
 	if err != nil {
 		return "", fmt.Errorf("%w", err)

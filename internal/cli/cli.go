@@ -277,10 +277,7 @@ func (c *CLI) parseConfig(ctx context.Context, fs *flags.FlagSet) (*config.Confi
 func (c *CLI) loadPlugins(ctx context.Context) error {
 	var pluginFiles []string
 
-	dir, err := config.DefaultPluginsDir()
-	if err != nil {
-		return fmt.Errorf("failed to get the plugins directory: %w", err)
-	}
+	dir := c.cfg.PluginDir
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
