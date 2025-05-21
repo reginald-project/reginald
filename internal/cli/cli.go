@@ -93,7 +93,13 @@ func New() *CLI {
 
 	cli.flags.StringP("plugin-dir", "p", d, "search for plugins from `<path>`", "")
 
-	cli.flags.BoolP("verbose", "v", false, "make "+ProgramName+" print more output during the run", "")
+	cli.flags.BoolP(
+		"verbose",
+		"v",
+		false,
+		"make "+ProgramName+" print more output during the run",
+		"",
+	)
 	cli.flags.BoolP(
 		"quiet",
 		"q",
@@ -217,7 +223,7 @@ func (c *CLI) runFirstPass(ctx context.Context) (bool, error) {
 	}
 
 	if version {
-		if err = printVersion(c); err != nil {
+		if err = printVersion(); err != nil {
 			return false, fmt.Errorf("failed to print the version info: %w", err)
 		}
 

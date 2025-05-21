@@ -30,7 +30,7 @@ type Flag struct {
 // NewFlagSet returns a new, empty flag set with the specified name, error
 // handling property, and SortFlags set to true.
 func NewFlagSet(name string, errorHandling pflag.ErrorHandling) *FlagSet {
-	f := &FlagSet{
+	f := &FlagSet{ //nolint:exhaustruct
 		FlagSet: pflag.NewFlagSet(name, errorHandling),
 	}
 

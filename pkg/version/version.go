@@ -32,7 +32,8 @@ var (
 // Version is the parsed version number of Reginald.
 var version *semver.Version
 
-func init() {
+// TODO: Use the debug values from Go.
+func init() { //nolint:gochecknoinits
 	if buildVersion == defaultBuildVersion {
 		if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "(devel)" {
 			v := info.Main.Version
@@ -47,14 +48,17 @@ func init() {
 	version = semver.MustParse(buildVersion)
 }
 
+// BuildVersion returns the version string for the program set during the build.
 func BuildVersion() string {
 	return buildVersion
 }
 
+// BuildCommit returns the version control revision this program was built from.
 func BuildCommit() string {
 	return buildCommit
 }
 
+// BuildTime returns the program build time.
 func BuildTime() time.Time {
 	t, err := time.Parse(time.RFC3339, buildTime)
 	if err != nil {
@@ -64,6 +68,7 @@ func BuildTime() time.Time {
 	return t
 }
 
+// Version returns the version number of the program.
 func Version() *semver.Version {
 	return version
 }
