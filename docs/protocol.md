@@ -187,7 +187,7 @@ error. The `error` must be present on error and omitted on success.
 
 ```json
 {
-  "$id": "#response
+  "$id": "#response",
   "title": "Response",
   "type": "object",
   "allOf": {
@@ -231,7 +231,7 @@ as follows:
 
 ```json
 {
-  "$id": "#error
+  "$id": "#error",
   "title": "Error",
   "type": "object",
   "properties": {
