@@ -25,7 +25,7 @@ types from which Reginald encodes the JSON.
 
 The Reginald Plugin Protocol is loosely based on the
 [Language Server Protocol](https://microsoft.github.io/language-server-protocol/)
-by Microsoft. The Language Server Protocol is licensed under the
+by Microsoft. The Language Server Protocol is licensed under
 [Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/).
 
 ## The Protocol
