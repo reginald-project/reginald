@@ -260,6 +260,39 @@ interface Error {
 }
 ```
 
+#### Notification
+
+A processed notification message must not send a response back.
+
+```json
+{
+  "$id": "#notification",
+  "title": "Notification",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "#message"
+    }
+  ],
+  "properties": {
+    "method": {
+      "type": "string"
+    },
+    "params": {
+      "type": ["array", "object", "null"]
+    }
+  },
+  "required": ["method"]
+}
+```
+
+```typescript
+interface Notification extends Message {
+  method: string;
+  params: any[] | object | null;
+}
+```
+
 ## Reginald Plugin Protocol
 
 The Reginald plugin protocol defines a set of JSON-RCP requests, responses,
