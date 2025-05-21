@@ -4,41 +4,24 @@
 package version
 
 import (
-	"fmt"
 	"runtime/debug"
 	"strings"
-	"time"
 
 	"github.com/anttikivi/go-semver"
 )
 
-// The default values for the version info variables that should be set during
-// build.
-const (
-	defaultBuildVersion = "invalid"
-	defaultBuildCommit
-	defaultBuildTime
-)
-
-// Version and build information set during the build.
-//
-//nolint:gochecknoglobals
-var (
-	buildVersion = defaultBuildVersion // version number of the binary
-	buildCommit  = defaultBuildCommit  // sha of the build commit
-	buildTime    = defaultBuildTime    // time of the build
-)
+// buildVersion is the version number set at build.
+var buildVersion = "dev" //nolint:gochecknoglobals
 
 // Version is the parsed version number of Reginald.
 var version *semver.Version
 
-// TODO: Use the debug values from Go.
 func init() { //nolint:gochecknoinits
-	if buildVersion == defaultBuildVersion {
+	if buildVersion == "dev" {
 		if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "(devel)" {
 			v := info.Main.Version
 			i := strings.IndexByte(v, '-')
-			v = v[:i+1] + "0.dev.gobuild." + v[i+1:]
+			v = v[:i+1] + "0.invalid." + v[i+1:]
 			version = semver.MustParsePrefix(v, "v")
 
 			return
@@ -53,19 +36,35 @@ func BuildVersion() string {
 	return buildVersion
 }
 
-// BuildCommit returns the version control revision this program was built from.
-func BuildCommit() string {
-	return buildCommit
-}
+// Revision returns the version control revision this program was built from.
+func Revision() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		revision := ""
+		dirty := ""
 
-// BuildTime returns the program build time.
-func BuildTime() time.Time {
-	t, err := time.Parse(time.RFC3339, buildTime)
-	if err != nil {
-		panic(fmt.Sprintf("failed to parse build time: %v", err))
+		for _, s := range info.Settings {
+			if s.Key == "vcs.revision" {
+				revision = s.Value
+			}
+
+			if s.Key == "vcs.modified" && s.Value == "true" {
+				dirty = "-dirty"
+			}
+
+			if revision != "" && dirty != "" {
+				break
+			}
+		}
+
+		s := revision + dirty
+		if s != "" {
+			return s
+		}
+
+		return "no-vcs"
 	}
 
-	return t
+	return "no-buildinfo"
 }
 
 // Version returns the version number of the program.

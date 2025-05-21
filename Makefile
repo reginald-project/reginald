@@ -49,22 +49,11 @@ fmt: tidy
 
 .PHONY: build
 build:
-	@commit_hash="$$(git describe --always --dirty --abbrev=40)"; \
-	if [ "$$(uname)" = "Darwin" ]; then \
-		build_date="$$(date +"%Y-%m-%dT%H:%M:%S%z" | sed -E 's/([+-][0-9]{2})([0-9]{2})$$/\1:\2/')"; \
-	else \
-		build_date="$$(date +"%Y-%m-%dT%H:%M:%S%:z")"; \
-	fi; \
-	base_version="$$(cat VERSION)"; \
+	@base_version="$$(cat VERSION)"; \
 	prerelease="$(PRERELEASE)"; \
-	build_metadata="$(BUILD_METADATA)"; \
 	\
 	if [ -z "$${prerelease}" ]; then \
 		prerelease="0.dev.$$(date -u +"%Y%m%d%H%M%S")"; \
-	fi; \
-	\
-	if [ -z "$${build_metadata}" ]; then \
-		build_metadata="$${commit_hash}"; \
 	fi; \
 	\
 	if [ -n "$(VERSION)" ]; then \
@@ -74,15 +63,13 @@ build:
 		if [ -n "$${prerelease}" ]; then \
 			version="$${version}-$${prerelease}"; \
 		fi; \
-		if [ -n "$${build_metadata}" ]; then \
-			version="$${version}+$${build_metadata}"; \
+		if [ -n "$(BUILD_METADATA)" ]; then \
+			version="$${version}+$(BUILD_METADATA)"; \
 		fi; \
 	fi; \
 	\
 	ldflags="$(LDFLAGS)"; \
 	ldflags="$${ldflags} -X $(VERSION_PACKAGE).buildVersion=$${version}"; \
-	ldflags="$${ldflags} -X $(VERSION_PACKAGE).buildCommit=$${commit_hash}"; \
-	ldflags="$${ldflags} -X $(VERSION_PACKAGE).buildTime=$${build_date}"; \
 	\
 	goflags="$(GOFLAGS)"; \
 	\

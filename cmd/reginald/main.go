@@ -50,16 +50,7 @@ func run() int {
 	}
 
 	slog.DebugContext(ctx, "bootstrap logger initialized")
-	slog.InfoContext(
-		ctx,
-		"bootstrapping Reginald",
-		"version",
-		version.Version(),
-		"commit",
-		version.BuildCommit(),
-		"buildTime",
-		version.BuildTime(),
-	)
+	slog.InfoContext(ctx, "bootstrapping Reginald", "version", version.Version(), "commit", version.Revision())
 
 	c := cli.New()
 	if err := c.Execute(ctx); err != nil {
