@@ -141,8 +141,6 @@ func (p *Plugin) countProtocolError(ctx context.Context, reason string) {
 func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Message, error) {
 	id := rpp.ID(p.nextID.Add(1))
 
-	slog.DebugContext(ctx, "calling method", "plugin", p.name, "method", method, "params", params)
-
 	rawParams, err := json.Marshal(params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal params: %w", err)
@@ -155,8 +153,10 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 		Params:  rawParams,
 	}
 
+	slog.DebugContext(ctx, "calling method", "plugin", p.name, "method", method, "req", req)
+
 	// A channel is created for each request. It receives a values in the read loop.
-	ch := make(chan *rpp.Message, 1)
+	ch := make(chan *rpp.Message, 1) //nolint:varnamelen
 
 	p.pendingMu.Lock()
 
@@ -188,6 +188,8 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 		if !ok {
 			return nil, fmt.Errorf("%w: %s (method %s)", errNoResponse, p.name, method)
 		}
+
+		slog.DebugContext(ctx, "received response", "plugin", p.name, "res", res)
 
 		if res.Error != nil {
 			var rpcErr *rpp.Error

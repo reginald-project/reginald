@@ -17,7 +17,13 @@ type Sleep struct{}
 
 // Flags returns the flags supported by this command.
 func (s *Sleep) Flags() []rpp.Flag {
-	return nil
+	return []rpp.Flag{
+		{
+			Name:         "time",
+			Shorthand:    "t",
+			DefaultValue: 5, //nolint:mnd
+		},
+	}
 }
 
 // Run executes the command for the plugin.

@@ -181,3 +181,32 @@ func Write(w io.Writer, msg *Message) error {
 
 	return nil
 }
+
+// LogValue implements [slog.LogValuer] for message. It returns a group
+// containing the fields of the Message, so that they appear together in the log
+// output.
+func (m *Message) LogValue() slog.Value {
+	var attrs []slog.Attr
+
+	attrs = append(attrs, slog.String("jsonrcp", m.JSONRCP))
+
+	if m.ID != nil {
+		attrs = append(attrs, slog.Any("id", *m.ID))
+	}
+
+	attrs = append(attrs, slog.String("method", m.Method))
+
+	if m.Params != nil {
+		attrs = append(attrs, slog.String("params", string(m.Params)))
+	}
+
+	if m.Result != nil {
+		attrs = append(attrs, slog.String("result", string(m.Result)))
+	}
+
+	if m.Error != nil {
+		attrs = append(attrs, slog.String("error", string(m.Error)))
+	}
+
+	return slog.GroupValue(attrs...)
+}
