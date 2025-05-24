@@ -19,6 +19,7 @@ import (
 
 	"github.com/anttikivi/reginald/internal/config"
 	"github.com/anttikivi/reginald/internal/iostreams"
+	"github.com/anttikivi/reginald/internal/pathname"
 )
 
 // Default values for the logger.
@@ -29,6 +30,12 @@ const (
 	defaultTimeFormat                 = "2006-01-02T15:04:05.000-07:00"    // default time format in Go
 )
 
+// BootstrapWriter is the writer used by the bootstrap logger. It is global so
+// that in case of errors the final handler of the error can check if its type
+// is [BufferedFileWriter] and flush its contents to the given file if that is
+// the case.
+var BootstrapWriter io.Writer
+
 // Errors for logging.
 var (
 	errInvalidFormat = errors.New("given log format not supported")
@@ -37,11 +44,36 @@ var (
 // InitBootstrap initializes the bootstrap logger and sets it as the default
 // logger in [log/slog].
 func InitBootstrap() error {
+	// TODO: Document this: logs are printed when `REGINALD_DEBUG` is set to `1`
+	// or `true`, the logs are buffered when no value is given, and the logs are
+	// explicitly discarded when `REGINALD_DEBUG` is `0` or `false`.
 	debugVar := os.Getenv("REGINALD_DEBUG")
 	debugVar = strings.ToLower(debugVar)
 
-	if debugVar == "" || (debugVar != "true" && debugVar != "1") {
+	if debugVar == "false" || debugVar == "0" {
 		slog.SetDefault(slog.New(slog.DiscardHandler))
+
+		return nil
+	}
+
+	if debugVar == "" || (debugVar != "true" && debugVar != "1") {
+		// TODO: Come up with a reasonable default resolving maybe using
+		// `XDG_CACHE_HOME` and some other directory on Windows.
+		path, err := pathname.Abs("~/.cache/reginald/bootstrap.log")
+		if err != nil {
+			return fmt.Errorf("failed to create path to bootstrap log file: %w", err)
+		}
+
+		BootstrapWriter = NewBufferedFileWriter(path)
+
+		slog.SetDefault(
+			slog.New(
+				slog.NewJSONHandler(
+					BootstrapWriter,
+					&slog.HandlerOptions{AddSource: true, Level: slog.LevelDebug},
+				),
+			),
+		)
 
 		return nil
 	}

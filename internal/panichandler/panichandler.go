@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/anttikivi/reginald/internal/iostreams"
+	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/pkg/version"
 	"golang.org/x/term"
 )
@@ -92,7 +93,19 @@ func panicHandler(r any, t []byte) {
 		buf.Write(t)
 	}
 
+	if w, ok := logging.BootstrapWriter.(*logging.BufferedFileWriter); ok {
+		if err := w.Flush(); err != nil {
+			buf.WriteString(fmt.Sprintf("\nFailed to write the boostrap log to file: %v\n\n", err))
+			buf.WriteString("The bootstrap logs:\n")
+			buf.Write(w.Bytes())
+		} else {
+			buf.WriteString(fmt.Sprintf("Bootstrap logs are written to %s\n", w.File()))
+			buf.WriteString("Consider including them when opening an issue.\n")
+		}
+	}
+
 	buf.WriteString("\n" + footer)
+
 	iostreams.StdioMu.Lock()
 
 	if _, err := os.Stderr.Write(buf.Bytes()); err != nil {
