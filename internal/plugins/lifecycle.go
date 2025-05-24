@@ -26,8 +26,8 @@ func Load(ctx context.Context, files []string) ([]*Plugin, error) {
 			defer handlePanic()
 
 			if err := <-p.doneCh; err != nil {
-				slog.ErrorContext(ctx, "plugin quit unexpectedly", "plugin", p.name, "err", err)
-				iostreams.Errorf("Plugin %q quit unexpectedly", p.name)
+				slog.ErrorContext(ctx, "plugin quit unexpectedly", "plugin", p.Name, "err", err)
+				iostreams.Errorf("Plugin %q quit unexpectedly", p.Name)
 				iostreams.PrintErrf("Error: %v\n", err)
 			}
 		}()
@@ -54,7 +54,7 @@ func ShutdownAll(ctx context.Context, plugins []*Plugin) error {
 				return fmt.Errorf("%w", err)
 			}
 
-			slog.DebugContext(gctx, "shutdown successful", "plugin", p.name)
+			slog.DebugContext(gctx, "shutdown successful", "plugin", p.Name)
 
 			return nil
 		})
@@ -107,7 +107,7 @@ func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin,
 					return nil
 				}
 
-				return fmt.Errorf("failed to start plugin %s: %w", p.name, err)
+				return fmt.Errorf("failed to start plugin %s: %w", p.Name, err)
 			}
 
 			if err := p.handshake(tctx); err != nil {
@@ -119,7 +119,7 @@ func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin,
 					return nil
 				}
 
-				return fmt.Errorf("handshake with plugin %q failed: %w", p.name, err)
+				return fmt.Errorf("handshake with plugin %q failed: %w", p.Name, err)
 			}
 
 			// I'm not sure about using locks but it's simple and gets the job

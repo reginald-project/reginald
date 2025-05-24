@@ -34,7 +34,7 @@ const (
 // that in case of errors the final handler of the error can check if its type
 // is [BufferedFileWriter] and flush its contents to the given file if that is
 // the case.
-var BootstrapWriter io.Writer
+var BootstrapWriter io.Writer //nolint:gochecknoglobals
 
 // Errors for logging.
 var (
@@ -70,7 +70,10 @@ func InitBootstrap() error {
 			slog.New(
 				slog.NewJSONHandler(
 					BootstrapWriter,
-					&slog.HandlerOptions{AddSource: true, Level: slog.LevelDebug},
+					&slog.HandlerOptions{ //nolint:exhaustruct
+						AddSource: true,
+						Level:     slog.LevelDebug,
+					},
 				),
 			),
 		)

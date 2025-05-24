@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/anttikivi/reginald/internal/flags"
 	"github.com/spf13/pflag"
@@ -13,6 +12,10 @@ import (
 // subcommands, must be implemented as commands. A RootCommand can also be used
 // for the root command.
 type Command struct {
+	// Name is the name of the command as it should be written by the user when
+	// they run the command.
+	Name string
+
 	// UsageLine is the one-line usage synopsis for the command. It should start
 	// with the command name without including the parent commands.
 	UsageLine string
@@ -44,7 +47,7 @@ type Command struct {
 // parent command of cmd.
 func (c *Command) Add(cmd *Command) {
 	if c == cmd {
-		panic(fmt.Sprintf("failed to add the command %s as a subcommand of itself", cmd.Name()))
+		panic(fmt.Sprintf("failed to add the command %s as a subcommand of itself", cmd.Name))
 	}
 
 	cmd.parent = c
@@ -65,7 +68,7 @@ func (c *Command) Add(cmd *Command) {
 func (c *Command) Lookup(name string) *Command {
 	for _, cmd := range c.commands {
 		// TODO: Check for aliases.
-		if cmd.Name() == name {
+		if cmd.Name == name {
 			return cmd
 		}
 	}
@@ -94,18 +97,6 @@ func (c *Command) MarkFlagsMutuallyExclusive(a ...string) {
 	}
 
 	c.mutuallyExclusiveFlags = append(c.mutuallyExclusiveFlags, a)
-}
-
-// Name returns the commands name.
-func (c *Command) Name() string {
-	n := c.UsageLine
-
-	i := strings.Index(n, " ")
-	if i != -1 {
-		n = n[:i]
-	}
-
-	return n
 }
 
 // Flags returns the set of command-line options that contains all of the
@@ -152,7 +143,7 @@ func (c *Command) VisitParents(fn func(*Command)) {
 
 // flagSet returns a new flag set suitable to be used with Command.
 func (c *Command) flagSet() *flags.FlagSet {
-	return flags.NewFlagSet(c.Name(), pflag.ContinueOnError)
+	return flags.NewFlagSet(c.Name, pflag.ContinueOnError)
 }
 
 // mergeFlags merges the global options of this Command to the set of all

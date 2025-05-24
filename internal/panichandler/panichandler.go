@@ -99,8 +99,8 @@ func panicHandler(r any, t []byte) {
 			buf.WriteString("The bootstrap logs:\n")
 			buf.Write(w.Bytes())
 		} else {
-			buf.WriteString(fmt.Sprintf("Bootstrap logs are written to %s\n", w.File()))
-			buf.WriteString("Consider including them when opening an issue.\n")
+			buf.WriteString(fmt.Sprintf("\nBootstrap logs are written to %s\n", w.File()))
+			buf.WriteString("Consider including them when opening an issue.")
 		}
 	}
 

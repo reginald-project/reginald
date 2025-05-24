@@ -31,30 +31,65 @@ const (
 
 // Errors returned by plugin utility functions.
 var (
-	errHandshake     = errors.New("plugin handshake failed")
-	errNoParams      = errors.New("notification has no params")
-	errNoResponse    = errors.New("plugin disconnected before responding")
-	errNotFile       = errors.New("plugin path is not a file")
-	errUnknownMethod = errors.New("invalid method")
-	errWrongProtocol = errors.New("mismatch in plugin protocol info")
+	errCommandNotFound = errors.New("given command is not present in the plugin")
+	errHandshake       = errors.New("plugin handshake failed")
+	errNoParams        = errors.New("notification has no params")
+	errNoResponse      = errors.New("plugin disconnected before responding")
+	errNotFile         = errors.New("plugin path is not a file")
+	errUnknownMethod   = errors.New("invalid method")
+	errWrongProtocol   = errors.New("mismatch in plugin protocol info")
 )
 
 // A Plugin represents a plugin that acts as an RPP server and is run from this
 // client.
 type Plugin struct {
-	name           string                       // user-friendly name for the plugin
-	kind           string                       // whether this plugin is a task or a command
-	flags          []rpp.Flag                   // command-line flags defined by the plugin if it's a command
-	cmd            *exec.Cmd                    // command struct used to run the server
-	nextID         atomic.Int64                 // next ID to use in RPP call
-	stdin          *bufio.Writer                // stdin pipe of the plugin command
-	stdout         *bufio.Reader                // buffered reader for the stdout of the plugin
-	stderr         *bufio.Scanner               // stderr pipe of the plugin command
-	writeMu        sync.Mutex                   // lock for writing to writer to serialize the messages
-	pending        map[rpp.ID]chan *rpp.Message // read messages from the plugin waiting for processing
-	pendingMu      sync.Mutex                   // lock used with pending
-	doneCh         chan error                   // channel to close when the plugin is done running
-	protocolErrors atomic.Uint32                // current number of protocol errors for this plugin
+	rpp.HandshakeResult
+
+	// lastID is the ID that was last used in a method call. Even though
+	// the protocol supports both strings and ints as the ID, we just default to
+	// ints to make the client more reasonable.
+	lastID atomic.Int64
+
+	// cmd is the underlying command running the plugin process.
+	cmd *exec.Cmd
+
+	// stdin is the standard input pipe of the underlying command as a buffered
+	// writer.
+	stdin *bufio.Writer
+
+	// stdout is the standard output pipe of the underlying command as
+	// a buffered reader.
+	stdout *bufio.Reader
+
+	// stderr is the standard error pipe of the underlying command wrapped in
+	// a scanner.
+	stderr *bufio.Scanner
+
+	// writeMu is used to lock writing to the plugins standard input to
+	// serialize the message.
+	writeMu sync.Mutex
+
+	// pending is used to store channels for the method calls that when calling
+	// the method. Each method has its own channel stored by ID as
+	// an JSON-encoded string in pending. The IDs are JSON-encoded to avoid
+	// collisions between a string ID having an int in it and to avoid the fact
+	// the actual type of the IDs, any, cannot be used. The reading loop gets
+	// the channel from pending and checks if the method calling functions
+	// writes a response to it. The the read function passes the response to
+	// the channel so the method call function can return the result we got from
+	// the plugin.
+	pending map[string]chan *rpp.Message
+
+	// pendingMu is used to lock pending.
+	pendingMu sync.Mutex
+
+	// doneCh is closed when the plugin is done running.
+	doneCh chan error
+
+	// protocolErrors is a counter of protocol errors this plugin has made. If
+	// the number of protocol errors in a plugin exceeds a threshold, the plugin
+	// is shut down.
+	protocolErrors atomic.Uint32
 }
 
 // New returns a pointer to a newly created Plugin.
@@ -97,22 +132,74 @@ func New(ctx context.Context, path string) (*Plugin, error) {
 	p := &Plugin{
 		// The base name of the plugin file is used until the real name is
 		// received.
-		name:           filepath.Base(path),
-		kind:           "",
-		flags:          nil,
+		HandshakeResult: rpp.HandshakeResult{
+			Handshake: rpp.DefaultHandshakeParams().Handshake,
+			Name:      filepath.Base(path),
+			Commands:  []rpp.CommandInfo{},
+			Tasks:     []rpp.TaskInfo{},
+		},
+		lastID:         atomic.Int64{},
 		cmd:            c,
-		nextID:         atomic.Int64{},
 		stdin:          bufio.NewWriter(stdin),
 		stdout:         bufio.NewReader(stdout),
 		stderr:         bufio.NewScanner(stderr),
 		writeMu:        sync.Mutex{},
-		pending:        make(map[rpp.ID]chan *rpp.Message),
+		pending:        make(map[string]chan *rpp.Message),
 		pendingMu:      sync.Mutex{},
 		doneCh:         nil, // this is initialized when the plugin has started
 		protocolErrors: atomic.Uint32{},
 	}
 
 	return p, nil
+}
+
+// RunCmd runs a command with the given name from this plugin. It calls
+// the plugin in order to invoke the "run/<name>" method which is supposed to
+// run the commands functionality.
+func (p *Plugin) RunCmd(ctx context.Context, name string, args []string) error {
+	ok := false
+
+	for _, c := range p.Commands {
+		if c.Name == name {
+			ok = true
+
+			break
+		}
+	}
+
+	if !ok {
+		return fmt.Errorf("%w: command %q in plugin %q", errCommandNotFound, name, p.Name)
+	}
+
+	params := rpp.RunParams{
+		Args: args,
+	}
+	method := rpp.MethodRunPrefix + name
+
+	res, err := p.call(ctx, method, params)
+	if err != nil {
+		return fmt.Errorf(
+			"method call %q to plugin %s failed: %w",
+			method,
+			p.Name,
+			err,
+		)
+	}
+
+	// TODO: Add some sensible return type.
+	var result any
+	if err = json.Unmarshal(res.Result, &result); err != nil {
+		return fmt.Errorf(
+			"failed to unmarshal result for the %q method call to %s: %w",
+			method,
+			p.Name,
+			err,
+		)
+	}
+
+	slog.DebugContext(ctx, "running command succeeded", "plugin", p.Name, "result", result)
+
+	return nil
 }
 
 // countProtocolError adds one protocol error to the plugins counter and kills
@@ -127,11 +214,11 @@ func (p *Plugin) countProtocolError(ctx context.Context, reason string) {
 			ctx,
 			"too many protocol errors, shutting plugin down",
 			"plugin",
-			p.name,
+			p.Name,
 			"count",
 			n,
 		)
-		iostreams.Errorf("Too many protocol errors by %s, killing the process...", p.name)
+		iostreams.Errorf("Too many protocol errors by %s, killing the process...", p.Name)
 		p.kill(ctx)
 	}
 }
@@ -139,7 +226,7 @@ func (p *Plugin) countProtocolError(ctx context.Context, reason string) {
 // call calls the given method in the plugin over RPP. It returns the message it
 // got as response and possible errors. The message is nil on error.
 func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Message, error) {
-	id := rpp.ID(p.nextID.Add(1))
+	id := p.lastID.Add(1) //nolint:varnamelen
 
 	rawParams, err := json.Marshal(params)
 	if err != nil {
@@ -153,14 +240,15 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 		Params:  rawParams,
 	}
 
-	slog.DebugContext(ctx, "calling method", "plugin", p.name, "method", method, "req", req)
+	slog.DebugContext(ctx, "calling method", "plugin", p.Name, "method", method, "req", req)
 
-	// A channel is created for each request. It receives a values in the read loop.
+	// A channel is created for each request. It receives a values in the read
+	// loop.
 	ch := make(chan *rpp.Message, 1) //nolint:varnamelen
 
 	p.pendingMu.Lock()
 
-	p.pending[id] = ch
+	p.pending[idToKey(id)] = ch
 
 	p.pendingMu.Unlock()
 	p.writeMu.Lock()
@@ -178,7 +266,7 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 		return nil, fmt.Errorf(
 			"failed to write call to method %q to plugin %s: %w",
 			method,
-			p.name,
+			p.Name,
 			err,
 		)
 	}
@@ -186,22 +274,22 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 	select {
 	case res, ok := <-ch:
 		if !ok {
-			return nil, fmt.Errorf("%w: %s (method %s)", errNoResponse, p.name, method)
+			return nil, fmt.Errorf("%w: %s (method %s)", errNoResponse, p.Name, method)
 		}
 
-		slog.DebugContext(ctx, "received response", "plugin", p.name, "res", res)
+		slog.DebugContext(ctx, "received response", "plugin", p.Name, "res", res)
 
 		if res.Error != nil {
-			var rpcErr *rpp.Error
+			var rpcErr rpp.Error
 
 			d := json.NewDecoder(bytes.NewReader(res.Error))
 			d.DisallowUnknownFields()
 
-			if err := d.Decode(rpcErr); err != nil {
+			if err := d.Decode(&rpcErr); err != nil {
 				return nil, fmt.Errorf("invalid RPP error payload: %w", err)
 			}
 
-			return nil, rpcErr
+			return nil, &rpcErr
 		}
 
 		return res, nil
@@ -215,9 +303,9 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 
 // cleanPending safely cleans up the given ID entry from the pending message
 // channels and closes the channel.
-func (p *Plugin) cleanPending(id rpp.ID, ch chan *rpp.Message) {
+func (p *Plugin) cleanPending(id any, ch chan *rpp.Message) {
 	p.pendingMu.Lock()
-	delete(p.pending, id)
+	delete(p.pending, idToKey(id))
 	p.pendingMu.Unlock()
 	close(ch)
 }
@@ -258,7 +346,7 @@ func (p *Plugin) handshake(ctx context.Context) error {
 		return fmt.Errorf(
 			"method call %q to plugin %s failed: %w",
 			rpp.MethodHandshake,
-			p.name,
+			p.Name,
 			err,
 		)
 	}
@@ -269,7 +357,7 @@ func (p *Plugin) handshake(ctx context.Context) error {
 		return fmt.Errorf(
 			"failed to unmarshal result for the %q method call to %s: %w",
 			rpp.MethodHandshake,
-			p.name,
+			p.Name,
 			err,
 		)
 	}
@@ -282,21 +370,9 @@ func (p *Plugin) handshake(ctx context.Context) error {
 		return fmt.Errorf("%w: plugin provided no name", errHandshake)
 	}
 
-	p.name = result.Name
+	p.HandshakeResult = result
 
-	if result.Kind != "command" && result.Kind != "task" {
-		return fmt.Errorf("%w: invalid value for \"kind\": %s", errHandshake, result.Kind)
-	}
-
-	p.kind = result.Kind
-
-	if result.Kind != "command" && len(result.Flags) > 0 {
-		return fmt.Errorf("%w: plugin provided flags even though it is not a command", errHandshake)
-	}
-
-	p.flags = append(p.flags, result.Flags...)
-
-	slog.DebugContext(ctx, "handshake succeeded", "plugin", p.name)
+	slog.DebugContext(ctx, "handshake succeeded", "plugin", p.Name)
 
 	return nil
 }
@@ -304,7 +380,7 @@ func (p *Plugin) handshake(ctx context.Context) error {
 // kill kills the plugin process.
 func (p *Plugin) kill(ctx context.Context) {
 	if p.cmd.Process != nil {
-		slog.DebugContext(ctx, "killing plugin", "plugin", p.name)
+		slog.DebugContext(ctx, "killing plugin", "plugin", p.Name)
 
 		if err := p.cmd.Process.Kill(); err != nil {
 			panic(fmt.Sprintf("failed to kill a plugin process: %v", err))
@@ -317,7 +393,7 @@ func (p *Plugin) kill(ctx context.Context) {
 // logNotification handles the "log" notifications.
 func (p *Plugin) logNotification(ctx context.Context, msg *rpp.Message) error {
 	if msg.Params == nil {
-		return fmt.Errorf("%w: %s", errNoParams, p.name)
+		return fmt.Errorf("%w: %s", errNoParams, p.Name)
 	}
 
 	d := json.NewDecoder(bytes.NewReader(msg.Params))
@@ -329,7 +405,7 @@ func (p *Plugin) logNotification(ctx context.Context, msg *rpp.Message) error {
 		return fmt.Errorf("failed to decode params: %w", err)
 	}
 
-	attrs := []slog.Attr{slog.String("plugin", p.name)}
+	attrs := []slog.Attr{slog.String("plugin", p.Name)}
 	for k, v := range params.Fields {
 		attrs = append(attrs, slog.Any(k, v))
 	}
@@ -345,7 +421,7 @@ func (p *Plugin) notify(ctx context.Context, method string, params any) error {
 		ctx,
 		"sending notification",
 		"plugin",
-		p.name,
+		p.Name,
 		"method",
 		method,
 		"params",
@@ -401,7 +477,8 @@ func (p *Plugin) read(ctx context.Context, panicHandler func()) {
 		}
 
 		// The message is a notification.
-		if *msg.ID == 0 {
+		if msg.ID == nil {
+			// To be a valid notification, the message must have a method.
 			if msg.Method == "" {
 				p.countProtocolError(ctx, "no method in notification")
 
@@ -418,12 +495,12 @@ func (p *Plugin) read(ctx context.Context, panicHandler func()) {
 		// Otherwise the message is handled as a response.
 		p.pendingMu.Lock()
 
-		ch, ok := p.pending[*msg.ID]
+		ch, ok := p.pending[idToKey(msg.ID)]
 		if ok {
 			// Each request should accepts exactly one response, therefore the
 			// entry from pending is deleted when the matching response is
 			// received.
-			delete(p.pending, *msg.ID)
+			delete(p.pending, idToKey(msg.ID))
 		}
 
 		p.pendingMu.Unlock()
@@ -444,12 +521,12 @@ func (p *Plugin) readStderr(ctx context.Context, panicHandler func()) {
 	for p.stderr.Scan() {
 		line := p.stderr.Text()
 
-		iostreams.PrintErrf("[%s:err] %s\n", p.name, line)
-		slog.WarnContext(ctx, "plugin printed to stderr", "plugin", p.name, "output", line)
+		iostreams.PrintErrf("[%s:err] %s\n", p.Name, line)
+		slog.WarnContext(ctx, "plugin printed to stderr", "plugin", p.Name, "output", line)
 	}
 
 	if err := p.stderr.Err(); err != nil {
-		slog.ErrorContext(ctx, "error reading stderr for plugin", "plugin", p.name, "err", err)
+		slog.ErrorContext(ctx, "error reading stderr for plugin", "plugin", p.Name, "err", err)
 	}
 }
 
@@ -458,7 +535,7 @@ func (p *Plugin) shutdown(ctx context.Context) error {
 	// TODO: Check the response.
 	_, err := p.call(ctx, rpp.MethodShutdown, nil)
 	if err != nil {
-		slog.WarnContext(ctx, "error when calling shutdown", "plugin", p.name, "err", err.Error())
+		slog.WarnContext(ctx, "error when calling shutdown", "plugin", p.Name, "err", err.Error())
 	}
 
 	err = p.notify(ctx, rpp.MethodExit, nil)
@@ -467,7 +544,7 @@ func (p *Plugin) shutdown(ctx context.Context) error {
 			ctx,
 			"error when sending the exit notification",
 			"plugin",
-			p.name,
+			p.Name,
 			"err",
 			err.Error(),
 		)
@@ -517,4 +594,15 @@ func (p *Plugin) start(ctx context.Context) error {
 	}()
 
 	return nil
+}
+
+// idToKey is a helper function that converts the given message ID into a string
+// that can be used as a key in pending channels map of the plugin client.
+func idToKey(id any) string {
+	b, err := json.Marshal(id)
+	if err != nil {
+		panic(fmt.Sprintf("failed to convert ID %v to JSON-encoded value: %v", id, err))
+	}
+
+	return string(b)
 }

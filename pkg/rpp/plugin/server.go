@@ -5,26 +5,18 @@ package plugin
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 
 	"github.com/anttikivi/reginald/pkg/rpp"
 )
 
-// Errors returned by the server functions when there is an unrecoverable
-// failure.
-var (
-	errImplType = errors.New("failed to cast impl to the expected type")
-)
-
 // A Plugin is a plugin server that contains the information for running the
-// plugin. It holds the implementation of the plugin's task's or command's
-// functionality as Impl, which must implement either [Command] or [Task].
+// plugin. It holds the implementation of the plugin's commands and tasks.
 type Plugin struct {
 	name     string
-	impl     any
-	kind     string
+	cmds     []Command
+	tasks    []Task
 	in       *bufio.Reader
 	out      *bufio.Writer
 	shutdown bool // set to true when the plugin should start shutdown
@@ -32,23 +24,28 @@ type Plugin struct {
 }
 
 // New returns a new Plugin for the given parameters.
-func New(name string, impl any) *Plugin {
-	var kind string
+func New(name string, impls ...any) *Plugin {
+	var (
+		cmds  []Command
+		tasks []Task
+	)
 
-	switch v := impl.(type) {
-	case Command:
-		kind = "command"
-	case Task:
-		kind = "task"
-	default:
-		// TODO: Maybe panicking is too much.
-		panic(fmt.Sprintf("invalid plugin implementation type: %T", v))
+	for _, i := range impls {
+		switch v := i.(type) {
+		case Command:
+			cmds = append(cmds, v)
+		case Task:
+			tasks = append(tasks, v)
+		default:
+			// TODO: Maybe panicking is too much.
+			panic(fmt.Sprintf("invalid plugin implementation type: %T", v))
+		}
 	}
 
 	return &Plugin{
 		name:     name,
-		impl:     impl,
-		kind:     kind,
+		cmds:     cmds,
+		tasks:    tasks,
 		in:       bufio.NewReader(os.Stdin),
 		out:      bufio.NewWriter(os.Stdout),
 		shutdown: false,
@@ -66,7 +63,22 @@ func (p *Plugin) Serve() error {
 			return fmt.Errorf("%w", err)
 		}
 
-		// TODO: When shutdown has started, only "exit" will be accepted.
+		if p.shutdown && msg.Method != rpp.MethodExit {
+			err := p.respondError(msg.ID, &rpp.Error{
+				Code: rpp.InvalidRequest,
+				Message: fmt.Sprintf(
+					"method %q was called after the plugin was requested to shut down",
+					msg.Method,
+				),
+				Data: nil,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to send error response: %w", err)
+			}
+
+			return nil
+		}
+
 		if err = p.runMethod(msg); err != nil {
 			return fmt.Errorf("%w", err)
 		}
@@ -88,22 +100,33 @@ func (p *Plugin) handshake(msg *rpp.Message) error {
 		}
 	}
 
-	result := rpp.HandshakeResult{
-		Protocol:        rpp.Name,
-		ProtocolVersion: rpp.Version,
-		Kind:            p.kind,
-		Name:            p.name,
-		Flags:           nil,
+	cmdInfos := make([]rpp.CommandInfo, 0, len(p.cmds))
+	taskInfos := make([]rpp.TaskInfo, 0, len(p.tasks))
+
+	for _, c := range p.cmds {
+		info := rpp.CommandInfo{
+			Name:      c.Name(),
+			UsageLine: c.UsageLine(),
+			Flags:     c.Flags(),
+		}
+		cmdInfos = append(cmdInfos, info)
 	}
 
-	if p.kind == "command" {
-		impl, ok := p.impl.(Command)
-		if !ok {
-			// Let's assume we should not recover from this.
-			return fmt.Errorf("%w: %T", errImplType, p.impl)
+	for _, t := range p.tasks {
+		info := rpp.TaskInfo{
+			Name: t.Name(),
 		}
+		taskInfos = append(taskInfos, info)
+	}
 
-		result.Flags = append(result.Flags, impl.Flags()...)
+	result := rpp.HandshakeResult{
+		Handshake: rpp.Handshake{
+			Protocol:        rpp.Name,
+			ProtocolVersion: rpp.Version,
+		},
+		Name:     p.name,
+		Commands: cmdInfos,
+		Tasks:    taskInfos,
 	}
 
 	if err := p.respond(msg.ID, result); err != nil {
@@ -116,22 +139,6 @@ func (p *Plugin) handshake(msg *rpp.Message) error {
 // runMethod runs the requested method and responds to it. It returns an error
 // when an unrecoverable error is encountered.
 func (p *Plugin) runMethod(msg *rpp.Message) error {
-	if p.shutdown && msg.Method != rpp.MethodExit {
-		err := p.respondError(msg.ID, &rpp.Error{
-			Code: rpp.InvalidRequest,
-			Message: fmt.Sprintf(
-				"method %q was called after the plugin was requested to shut down",
-				msg.Method,
-			),
-			Data: nil,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to send error response: %w", err)
-		}
-
-		return nil
-	}
-
 	switch msg.Method {
 	case rpp.MethodExit:
 		if msg.ID != nil {
@@ -185,7 +192,7 @@ func (p *Plugin) runMethod(msg *rpp.Message) error {
 }
 
 // respond sends a response with the given information to the client.
-func (p *Plugin) respond(id *rpp.ID, result any) error {
+func (p *Plugin) respond(id, result any) error {
 	rawResult, err := json.Marshal(result)
 	if err != nil {
 		return fmt.Errorf("failed to marshal call results: %w", err)
@@ -209,7 +216,7 @@ func (p *Plugin) respond(id *rpp.ID, result any) error {
 
 // respondError sends an error response instead of the regular response if the
 // plugin has encountered an error.
-func (p *Plugin) respondError(id *rpp.ID, resErr *rpp.Error) error {
+func (p *Plugin) respondError(id any, resErr *rpp.Error) error {
 	rawErr, err := json.Marshal(resErr)
 	if err != nil {
 		return fmt.Errorf("failed to marshal error object: %w", err)

@@ -89,11 +89,11 @@ build:
 	go build $${goflags} -ldflags "$${ldflags}" -o "$${output}" ./cmd/reginald
 
 .PHONY: plugins
-plugins: sleep
+plugins: example-plugin
 
-.PHONY: sleep
-sleep:
-	go build -o reginald-sleep ./plugins/sleep
+.PHONY: example-plugin
+example-plugin:
+	go build -o reginald-example ./examples
 
 .PHONY: clean
 clean:

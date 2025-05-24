@@ -8,6 +8,7 @@ import (
 // NewApply returns a new apply command.
 func NewApply() *Command {
 	c := &Command{ //nolint:exhaustruct
+		Name:      "apply",
 		UsageLine: "apply [options]",
 		Setup:     setupApply,
 		Run:       runApply,
@@ -17,7 +18,7 @@ func NewApply() *Command {
 }
 
 func setupApply(_ context.Context, cmd, _ *Command, _ []string) error {
-	slog.Info("running setup", "cmd", cmd.Name())
+	slog.Info("running setup", "cmd", cmd.Name)
 
 	return nil
 }

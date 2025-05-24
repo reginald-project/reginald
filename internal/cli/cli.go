@@ -45,6 +45,8 @@ type CLI struct {
 	cmd                    *Command          // command to run
 	cfg                    *config.Config    // parsed config of the run
 	commands               []*Command        // list of subcommands
+	pluginCommands         []*Command        // commands received from plugins
+	allCommands            []*Command        // internal and plugin subcommands combined
 	flags                  *flags.FlagSet    // global command-line flags
 	mutuallyExclusiveFlags [][]string        // list of flag names that are marked as mutually exclusive
 	plugins                []*plugins.Plugin // loaded plugins
@@ -59,6 +61,8 @@ func New() *CLI {
 		cmd:                    nil,
 		cfg:                    nil,
 		commands:               []*Command{},
+		pluginCommands:         []*Command{},
+		allCommands:            []*Command{},
 		flags:                  flags.NewFlagSet(Name, pflag.ContinueOnError),
 		mutuallyExclusiveFlags: [][]string{},
 		plugins:                []*plugins.Plugin{},
@@ -184,6 +188,20 @@ func (c *CLI) add(cmd *Command) {
 	c.commands = append(c.commands, cmd)
 }
 
+// addPluginCmd adds the given command to the list of plugin commands of c and
+// marks c as the CLI of cmd.
+func (c *CLI) addPluginCmd(cmd *Command) {
+	cmd.cli = c
+
+	if cmd.mutuallyExclusiveFlags == nil {
+		cmd.mutuallyExclusiveFlags = [][]string{}
+	}
+
+	cmd.mutuallyExclusiveFlags = append(cmd.mutuallyExclusiveFlags, c.mutuallyExclusiveFlags...)
+
+	c.pluginCommands = append(c.pluginCommands, cmd)
+}
+
 // runFirstPass does the priority actions of the program. It checks it the
 // "--version" or "--help" flags were invoked and loads the plugins from the
 // configured location. It should run before entering the rest of the execution
@@ -248,6 +266,10 @@ func (c *CLI) runFirstPass(ctx context.Context) (bool, error) {
 
 	if err = c.loadPlugins(ctx); err != nil {
 		return false, fmt.Errorf("failed to resolve plugins: %w", err)
+	}
+
+	if err = c.addPluginCommands(); err != nil {
+		return false, fmt.Errorf("failed to add plugin commands: %w", err)
 	}
 
 	return true, nil
@@ -324,6 +346,49 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 	if c.plugins, err = plugins.Load(ctx, pluginFiles); err != nil {
 		return fmt.Errorf("failed to load the plugins: %w", err)
 	}
+
+	return nil
+}
+
+// addPluginCommands adds the commands from the loaded plugins to c.
+func (c *CLI) addPluginCommands() error {
+	for _, p := range c.plugins {
+		for _, info := range p.Commands {
+			cmd := &Command{ //nolint:exhaustruct
+				Name:      info.Name,
+				UsageLine: info.UsageLine,
+				Setup:     nil,
+				Run: func(ctx context.Context, cmd *Command, args []string) error {
+					if err := p.RunCmd(ctx, cmd.Name, args); err != nil {
+						return fmt.Errorf(
+							"failed to run command %q from plugin %q: %w",
+							cmd.Name,
+							p.Name,
+							err,
+						)
+					}
+
+					return nil
+				},
+			}
+
+			for _, f := range info.Flags {
+				if err := cmd.Flags().AddPluginFlag(f); err != nil {
+					return fmt.Errorf(
+						"failed to add flag from plugin %q and command %q: %w",
+						p.Name,
+						info.Name,
+						err,
+					)
+				}
+			}
+
+			c.addPluginCmd(cmd)
+		}
+	}
+
+	c.allCommands = append(c.allCommands, c.commands...)
+	c.allCommands = append(c.allCommands, c.pluginCommands...)
 
 	return nil
 }
@@ -456,14 +521,14 @@ func (c *CLI) findSubcommand(ctx context.Context, args []string) (*Command, []st
 		}
 	}
 
-	if len(args) > 0 && cmd != nil && args[0] == cmd.Name() {
+	if len(args) > 0 && cmd != nil && args[0] == cmd.Name {
 		args = args[1:]
 	}
 
 	if cmd == nil {
 		slog.DebugContext(ctx, "no command found", "cmd", os.Args[0], "args", args, "flags", flags)
 	} else {
-		slog.DebugContext(ctx, "found subcommand", "cmd", cmd.Name(), "args", args, "flags", flags)
+		slog.DebugContext(ctx, "found subcommand", "cmd", cmd.Name, "args", args, "flags", flags)
 	}
 
 	args = append(args, flags...)
@@ -474,9 +539,13 @@ func (c *CLI) findSubcommand(ctx context.Context, args []string) (*Command, []st
 // lookup returns the command from this CLI for the given name, if any.
 // Otherwise it returns nil.
 func (c *CLI) lookup(name string) *Command {
-	for _, cmd := range c.commands {
+	if c.allCommands == nil {
+		panic("called CLI function lookup before initializing all of the list of all commands")
+	}
+
+	for _, cmd := range c.allCommands {
 		// TODO: Check for aliases.
-		if cmd.Name() == name {
+		if cmd.Name == name {
 			return cmd
 		}
 	}
@@ -533,8 +602,10 @@ func setupCommands(ctx context.Context, c, subcmd *Command, args []string) error
 		}
 	}
 
-	if err := c.Setup(ctx, c, subcmd, args); err != nil {
-		return fmt.Errorf("%w", err)
+	if c.Setup != nil {
+		if err := c.Setup(ctx, c, subcmd, args); err != nil {
+			return fmt.Errorf("%w", err)
+		}
 	}
 
 	return nil

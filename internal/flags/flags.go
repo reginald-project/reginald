@@ -5,9 +5,17 @@
 package flags
 
 import (
+	"errors"
 	"fmt"
 
+	"github.com/anttikivi/reginald/pkg/rpp"
 	"github.com/spf13/pflag"
+)
+
+// Errors returned from flag operations.
+var (
+	errDefaultValueType = errors.New("failed to cast the plugin flag value to correct type")
+	errInvalidFlagType  = errors.New("plugin has a flag with an invalid type")
 )
 
 // A FlagSet is a wrapper of [pflag.FlagSet] that includes the [Flag] objects
@@ -68,6 +76,60 @@ func (f *FlagSet) AddFlagSet(newSet *FlagSet) {
 	}
 }
 
+// AddPluginFlag adds a flag to the flag set according to the given flag
+// specification from a plugin.
+func (f *FlagSet) AddPluginFlag(flag rpp.Flag) error {
+	switch flag.Type {
+	case rpp.FlagBool:
+		defVal, ok := flag.DefaultValue.(bool)
+		if !ok {
+			return fmt.Errorf(
+				"%w: %v (%T)",
+				errDefaultValueType,
+				flag.DefaultValue,
+				flag.DefaultValue,
+			)
+		}
+
+		f.BoolP(flag.Name, flag.Shorthand, defVal, flag.Usage, "")
+	case rpp.FlagInt:
+		switch v := flag.DefaultValue.(type) {
+		case int:
+			f.IntP(flag.Name, flag.Shorthand, v, flag.Usage, "")
+		case float64:
+			// TODO: This is probably the most unsafe way to do this, but it'll
+			// be fixed later.
+			u := int(v)
+
+			f.IntP(flag.Name, flag.Shorthand, u, flag.Usage, "")
+		default:
+			return fmt.Errorf("%w: %v (%T)", errDefaultValueType, flag.DefaultValue, flag.DefaultValue)
+		}
+	case rpp.FlagString:
+		defVal, ok := flag.DefaultValue.(string)
+		if !ok {
+			return fmt.Errorf(
+				"%w: %v (%T)",
+				errDefaultValueType,
+				flag.DefaultValue,
+				flag.DefaultValue,
+			)
+		}
+
+		f.StringP(flag.Name, flag.Shorthand, defVal, flag.Usage, "")
+	default:
+		return fmt.Errorf(
+			"%w: flag %q: %v (%T)",
+			errInvalidFlagType,
+			flag.Name,
+			flag.Type,
+			flag.DefaultValue,
+		)
+	}
+
+	return nil
+}
+
 // WrapperLookup returns the Flag structure of the named flag, returning nil if
 // none exists.
 func (f *FlagSet) WrapperLookup(name string) *Flag {
@@ -85,6 +147,31 @@ func (f *FlagSet) Bool(name string, value bool, usage, doc string) *bool {
 // a single dash.
 func (f *FlagSet) BoolP(name, shorthand string, value bool, usage, doc string) *bool {
 	p := f.FlagSet.BoolP(name, shorthand, value, usage)
+
+	flag := f.Lookup(name)
+	if flag == nil {
+		panic(fmt.Sprintf("received nil flag %q from wrapped flag set", name))
+	}
+
+	f.AddFlag(&Flag{
+		Flag: flag,
+		Doc:  doc,
+	})
+
+	return p
+}
+
+// Int defines a bool flag with specified name, default value, and usage string.
+// The return value is the address of a bool variable that stores the value of
+// the flag.
+func (f *FlagSet) Int(name string, value int, usage, doc string) *int {
+	return f.IntP(name, "", value, usage, doc)
+}
+
+// IntP is like Int, but accepts a shorthand letter that can be used after
+// a single dash.
+func (f *FlagSet) IntP(name, shorthand string, value int, usage, doc string) *int {
+	p := f.FlagSet.IntP(name, shorthand, value, usage)
 
 	flag := f.Lookup(name)
 	if flag == nil {
