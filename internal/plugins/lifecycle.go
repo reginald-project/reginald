@@ -122,6 +122,8 @@ func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin,
 				return fmt.Errorf("handshake with plugin %q failed: %w", p.Name, err)
 			}
 
+			p.populateConfigs()
+
 			// I'm not sure about using locks but it's simple and gets the job
 			// done.
 			mu.Lock()

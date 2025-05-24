@@ -45,6 +45,12 @@ var (
 type Plugin struct {
 	rpp.HandshakeResult
 
+	// ConfigEntries is the consolidated map of the plugins config options. Each
+	// entry of the map contains the list of config options under the plugin
+	// (key is the plugin name), command (key is "cmd:<command name>"), or task
+	// (key is "task:<task name>").
+	ConfigEntries map[string][]rpp.ConfigEntry
+
 	// lastID is the ID that was last used in a method call. Even though
 	// the protocol supports both strings and ints as the ID, we just default to
 	// ints to make the client more reasonable.
@@ -138,6 +144,7 @@ func New(ctx context.Context, path string) (*Plugin, error) {
 			Commands:  []rpp.CommandInfo{},
 			Tasks:     []rpp.TaskInfo{},
 		},
+		ConfigEntries:  nil,
 		lastID:         atomic.Int64{},
 		cmd:            c,
 		stdin:          bufio.NewWriter(stdin),
@@ -450,6 +457,42 @@ func (p *Plugin) notify(ctx context.Context, method string, params any) error {
 	}
 
 	return nil
+}
+
+// populateConfigs populates the ConfigEntries in p with the config values for
+// the plugin, commands, and tasks.
+func (p *Plugin) populateConfigs() {
+	m := make(map[string][]rpp.ConfigEntry)
+
+	if len(p.ConfigEntries) > 0 {
+		m[p.Name] = make([]rpp.ConfigEntry, 0, len(p.ConfigEntries))
+		m[p.Name] = append(m[p.Name], p.PluginConfigs...)
+	}
+
+	for _, info := range p.Commands {
+		var entries []rpp.ConfigEntry
+		entries = append(entries, info.Configs...)
+
+		for _, f := range info.Flags {
+			if !f.IgnoreInConfig {
+				c := rpp.ConfigEntry{
+					Key:          f.Name,
+					DefaultValue: f.DefaultValue,
+					Type:         f.Type,
+				}
+				entries = append(entries, c)
+			}
+		}
+
+		name := "cmd:" + info.Name
+		m[name] = entries
+	}
+
+	for _, info := range p.Tasks {
+		name := "cmd:" + info.Name
+		m[name] = make([]rpp.ConfigEntry, 0)
+		m[name] = append(m[name], info.Configs...)
+	}
 }
 
 // read runs the reading loop for the plugin. It listens to the standard output

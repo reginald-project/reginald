@@ -321,7 +321,7 @@ func unmarshalEnv(v reflect.Value, prefix string) error {
 			continue
 		}
 
-		if structField.Name == "ConfigFile" || structField.Name == "Directory" {
+		if structField.Name == "ConfigFile" || structField.Name == "Plugins" {
 			continue
 		}
 
@@ -396,7 +396,7 @@ func toSnakeCase(name string) string {
 		result += string(r)
 	}
 
-	return result
+	return strings.ReplaceAll(result, "-", "_")
 }
 
 // tryUnmarshalText checks if it can use [encoding.TextUnmarshaler] to unmarshal

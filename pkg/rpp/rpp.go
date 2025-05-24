@@ -140,6 +140,9 @@ type HandshakeResult struct {
 	// config entries.
 	Name string `json:"name"`
 
+	// PluginConfigs contains the plugin-level config entries.
+	PluginConfigs []ConfigEntry `json:"configs,omitempty"`
+
 	// Commands contains the information on the command types this plugin
 	// offers. If the plugin does not provide any commands, this can be either
 	// nil or an empty list.
@@ -166,6 +169,9 @@ type CommandInfo struct {
 	// Flags contains the information on the command-line flags that this
 	// command provides.
 	Flags []Flag `json:"flags,omitempty"`
+
+	// Configs contains the config entries for this command.
+	Configs []ConfigEntry `json:"configs,omitempty"`
 }
 
 // TaskInfo contains information on a task that a plugin implements. TaskInfo is
@@ -176,12 +182,17 @@ type TaskInfo struct {
 	// when they specify it in, for example, their configuration. It must not
 	// match any existing tasks either within Reginald or other plugins.
 	Name string `json:"name"`
+
+	// Configs contains the config entries for this task.
+	Configs []ConfigEntry `json:"configs,omitempty"`
 }
 
 // A ConfigEntry is an entry in the config file that can also be set using
-// an environment variable. ConfigEntry can be in the plugin (under the plugin's
-// name in the file), in a command (under the commands name in the file), or in
-// a task (in a task entry in the file).
+// an environment variable. As tasks are configured on a per-task basis,
+// the config values in tasks cannot be set using environment variables.
+// ConfigEntry can be in the plugin (under the plugin's name in the file), in
+// a command (under the commands name in the file), or in a task (in a task
+// entry in the file).
 //
 // All of the flags in commands will automatically have matching config entries
 // if not explicitly disabled. Those will be placed under the command in
