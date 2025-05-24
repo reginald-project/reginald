@@ -142,8 +142,12 @@ func (c *CLI) Execute(ctx context.Context) error {
 		return nil
 	}
 
-	// Plugins are started in runFirstPass so defer shutting them down. We want
-	// to aim for a clean plugin shutdown in all cases.
+	if err := c.loadPlugins(ctx); err != nil {
+		return fmt.Errorf("failed to resolve plugins: %w", err)
+	}
+
+	//  We want to aim for a clean plugin shutdown in all cases, so the shut
+	// down should be run in all cases where the plugins have been initialized.
 	defer func() {
 		timeoutCtx, cancel := context.WithTimeout(ctx, plugins.DefaultShutdownTimeout)
 		defer cancel()
@@ -152,6 +156,10 @@ func (c *CLI) Execute(ctx context.Context) error {
 			c.deferredErr = fmt.Errorf("failed to shut down plugins: %w", err)
 		}
 	}()
+
+	if err := c.addPluginCommands(); err != nil {
+		return fmt.Errorf("failed to add plugin commands: %w", err)
+	}
 
 	if err := c.setup(ctx); err != nil {
 		return fmt.Errorf("%w", err)
@@ -253,14 +261,6 @@ func (c *CLI) runFirstPass(ctx context.Context) (bool, error) {
 	}
 
 	slog.InfoContext(ctx, "logging initialized")
-
-	if err = c.loadPlugins(ctx); err != nil {
-		return false, fmt.Errorf("failed to resolve plugins: %w", err)
-	}
-
-	if err = c.addPluginCommands(); err != nil {
-		return false, fmt.Errorf("failed to add plugin commands: %w", err)
-	}
 
 	return true, nil
 }
