@@ -17,7 +17,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/anttikivi/reginald/internal/config"
 	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/pathname"
 )
@@ -40,6 +39,14 @@ var BootstrapWriter io.Writer //nolint:gochecknoglobals
 var (
 	errInvalidFormat = errors.New("given log format not supported")
 )
+
+// Config contains the configuration options for logging.
+type Config struct {
+	Enabled bool       `mapstructure:"enabled"` // whether logging is enabled
+	Format  string     `mapstructure:"format"`  // format of the logs, "json" or "text"
+	Level   slog.Level `mapstructure:"level"`   // logging level
+	Output  string     `mapstructure:"output"`  // destination of the logs
+}
 
 // InitBootstrap initializes the bootstrap logger and sets it as the default
 // logger in [log/slog].
@@ -96,7 +103,7 @@ func InitBootstrap() error {
 
 // Init initializes the proper logger of the program and sets it as the default
 // logger in [log/slog].
-func Init(cfg config.LoggingConfig) error {
+func Init(cfg Config) error {
 	if !cfg.Enabled {
 		slog.SetDefault(slog.New(slog.DiscardHandler))
 

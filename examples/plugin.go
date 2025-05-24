@@ -30,11 +30,12 @@ func (s *SleepCommand) UsageLine() string {
 func (s *SleepCommand) Flags() []rpp.Flag {
 	return []rpp.Flag{
 		{
-			Name:         "time",
-			Shorthand:    "t",
-			DefaultValue: 5, //nolint:mnd
-			Type:         rpp.FlagInt,
-			Usage:        "time to sleep in seconds (default 5s)",
+			Name:           "time",
+			Shorthand:      "t",
+			DefaultValue:   5, //nolint:mnd
+			Type:           rpp.ConfigInt,
+			Usage:          "time to sleep in seconds (default 5s)",
+			IgnoreInConfig: false,
 		},
 	}
 }
