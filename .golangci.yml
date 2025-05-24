@@ -30,6 +30,7 @@ linters:
             - $gostd
             - github.com/anttikivi/reginald
             - github.com/anttikivi/go-semver
+            - github.com/go-viper/mapstructure/v2
             - github.com/pelletier/go-toml/v2
             - github.com/spf13/pflag
             - golang.org/x/sync
