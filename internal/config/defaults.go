@@ -2,11 +2,7 @@ package config
 
 import (
 	"fmt"
-	"log/slog"
-	"os"
 	"path/filepath"
-
-	"golang.org/x/term"
 )
 
 const (
@@ -37,23 +33,23 @@ func defaultConfig() *Config {
 
 // defaultConfigFileValue returns the default values for the configuration
 // options that can be set using a config file.
-func defaultConfigFileValue() *File {
-	pd, err := DefaultPluginsDir()
-	if err != nil {
-		panic(fmt.Sprintf("failed to create value for the default config file: %v", err))
-	}
-
-	return &File{
-		Color: term.IsTerminal(int(os.Stdout.Fd())),
-		Logging: LoggingConfig{
-			Enabled: true,
-			Format:  "json",
-			Level:   slog.LevelInfo,
-			Output:  defaultLogOutput,
-		},
-		PluginDir: pd,
-		Quiet:     false,
-		Tasks:     []map[string]any{},
-		Verbose:   false,
-	}
-}
+// func defaultConfigFileValue() *File {
+// 	pd, err := DefaultPluginsDir()
+// 	if err != nil {
+// 		panic(fmt.Sprintf("failed to create value for the default config file: %v", err))
+// 	}
+//
+// 	return &File{
+// 		Color: term.IsTerminal(int(os.Stdout.Fd())),
+// 		Logging: logging.Config{
+// 			Enabled: true,
+// 			Format:  "json",
+// 			Level:   slog.LevelInfo,
+// 			Output:  defaultLogOutput,
+// 		},
+// 		PluginDir: pd,
+// 		Quiet:     false,
+// 		Tasks:     []map[string]any{},
+// 		Verbose:   false,
+// 	}
+// }

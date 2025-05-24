@@ -200,12 +200,12 @@ func (c *CLI) addPluginCmd(cmd *Command) {
 	c.pluginCommands = append(c.pluginCommands, cmd)
 }
 
-// runFirstPass does the priority actions of the program. It checks it the
-// "--version" or "--help" flags were invoked and loads the plugins from the
-// configured location. It should run before entering the rest of the execution
-// to have all of the command-line flags and configuration options from the
-// plugin available when the final parsing of the configuration is done. The
-// function returns true if the execution should not return after this function.
+// runFirstPass does the priority checks of the program. It checks it
+// the "--version" or "--help" flags were invoked. It should run before entering
+// the rest of the execution to have all of the command-line flags and
+// configuration options from the plugin available when the final parsing of
+// the configuration is done. The function returns true if the execution should
+// not return after this function.
 func (c *CLI) runFirstPass(ctx context.Context) (bool, error) {
 	args := os.Args
 	fs := c.initFirstPassFlags()
@@ -279,7 +279,7 @@ func (c *CLI) initFirstPassFlags() *flags.FlagSet {
 // environment variables, and command-line flags. It returns a pointer to the
 // configuration and any errors encountered.
 func (c *CLI) parseConfig(ctx context.Context, fs *flags.FlagSet) (*config.Config, error) {
-	cfg, err := config.Parse(fs)
+	cfg, err := config.Parse(fs, c.plugins)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse the config: %w", err)
 	}

@@ -80,7 +80,7 @@ func (f *FlagSet) AddFlagSet(newSet *FlagSet) {
 // specification from a plugin.
 func (f *FlagSet) AddPluginFlag(flag rpp.Flag) error {
 	switch flag.Type {
-	case rpp.FlagBool:
+	case rpp.ConfigBool:
 		defVal, ok := flag.DefaultValue.(bool)
 		if !ok {
 			return fmt.Errorf(
@@ -92,7 +92,7 @@ func (f *FlagSet) AddPluginFlag(flag rpp.Flag) error {
 		}
 
 		f.BoolP(flag.Name, flag.Shorthand, defVal, flag.Usage, "")
-	case rpp.FlagInt:
+	case rpp.ConfigInt:
 		switch v := flag.DefaultValue.(type) {
 		case int:
 			f.IntP(flag.Name, flag.Shorthand, v, flag.Usage, "")
@@ -105,7 +105,7 @@ func (f *FlagSet) AddPluginFlag(flag rpp.Flag) error {
 		default:
 			return fmt.Errorf("%w: %v (%T)", errDefaultValueType, flag.DefaultValue, flag.DefaultValue)
 		}
-	case rpp.FlagString:
+	case rpp.ConfigString:
 		defVal, ok := flag.DefaultValue.(string)
 		if !ok {
 			return fmt.Errorf(

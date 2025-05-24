@@ -41,11 +41,11 @@ const (
 	InternalError  = -32603
 )
 
-// The different type values for flags defined by the plugins.
+// The different type values for config values and flags defined by the plugins.
 const (
-	FlagBool   FlagType = "bool"
-	FlagInt    FlagType = "int"
-	FlagString FlagType = "string"
+	ConfigBool   ConfigType = "bool"
+	ConfigInt    ConfigType = "int"
+	ConfigString ConfigType = "string"
 )
 
 // Errors returned by the RPP helper functions.
@@ -53,9 +53,9 @@ var (
 	errZeroLength = errors.New("content-length is zero")
 )
 
-// FlagType is used as the type of the fields that define the type of a flag in
-// a command.
-type FlagType string
+// ConfigType is used as the type indicator of the fields that define the type
+// of a config entry or a flag.
+type ConfigType string
 
 // A Message is the Go representation of a message using RPP. It includes all of
 // the possible fields for a message. Thus, the values that are not used for a
@@ -136,6 +136,8 @@ type HandshakeResult struct {
 	// Name is the user-friendly name of the plugin that will be used in
 	// the logs and in the user output. It must be unique and loading
 	// the plugins will fail if two or more plugins have exactly the same name.
+	// It must also be a valid config key if the plugin registers plugin-wide
+	// config entries.
 	Name string `json:"name"`
 
 	// Commands contains the information on the command types this plugin
@@ -176,6 +178,29 @@ type TaskInfo struct {
 	Name string `json:"name"`
 }
 
+// A ConfigEntry is an entry in the config file that can also be set using
+// an environment variable. ConfigEntry can be in the plugin (under the plugin's
+// name in the file), in a command (under the commands name in the file), or in
+// a task (in a task entry in the file).
+//
+// All of the flags in commands will automatically have matching config entries
+// if not explicitly disabled. Those will be placed under the command in
+// the file.
+type ConfigEntry struct {
+	// Key is the key of the ConfigEntry as it would be written in the config
+	// file.
+	Key string `json:"key"`
+
+	// DefaultValue is the default value of the config entry as the type it
+	// should be defined as.
+	DefaultValue any `json:"defaultValue"`
+
+	// Type is a string representation of the type of the value that this config
+	// entry holds. The possible values can be found in the protocol description
+	// and in the constants of this package.
+	Type ConfigType `json:"type"`
+}
+
 // Flag is an entry in the handshake response for a command that defines one
 // flag. The type of the flag is inferred using the type of the default value.
 type Flag struct {
@@ -195,10 +220,17 @@ type Flag struct {
 	// Type is a string representation of the type of the value that this flag
 	// holds. The possible values can be found in the protocol description and
 	// in the constants of this package.
-	Type FlagType `json:"type"`
+	Type ConfigType `json:"type"`
 
 	// Usage is the help description of this flag.
 	Usage string `json:"usage"`
+
+	// IgnoreInConfig tells whether this flag should not be used as
+	// a traditional config value that can be used through an environment
+	// variable or in the config file. By default, all of the flags can also be
+	// set using the config file or environment variables, but if this is set to
+	// true, this will not be possible.
+	IgnoreInConfig bool `json:"ignoreInConfig"`
 }
 
 // LogParams are the parameters passed with the "log" method. Reginald uses

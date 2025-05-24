@@ -12,6 +12,8 @@ import (
 
 	"github.com/anttikivi/reginald/internal/flags"
 	"github.com/anttikivi/reginald/internal/pathname"
+	"github.com/anttikivi/reginald/internal/plugins"
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -39,43 +41,38 @@ var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem(
 // The function also resolves the configuration file according to the standard
 // paths for the file or according the flags. The relevant flags are
 // `--directory` and `--config`.
-func Parse(flagSet *flags.FlagSet) (*Config, error) {
+func Parse(flagSet *flags.FlagSet, plugins []*plugins.Plugin) (*Config, error) {
 	configFile, err := resolveFile(flagSet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve config file: %w", err)
 	}
 
-	f, err := os.Open(filepath.Clean(configFile))
+	data, err := os.ReadFile(filepath.Clean(configFile))
 	if err != nil {
-		return nil, fmt.Errorf("failed to open config file: %w", err)
+		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	d := toml.NewDecoder(f).DisallowUnknownFields()
-	cf := defaultConfigFileValue()
+	rawCfg := make(map[string]any)
 
-	if err = d.Decode(cf); err != nil {
-		var strictMissingError *toml.StrictMissingError
-		if !errors.As(err, &strictMissingError) {
-			panic(
-				fmt.Sprintf(
-					"err should have been a *toml.StrictMissingError, but got %s (%T)",
-					err,
-					err,
-				),
-			)
-		}
-
-		return nil, fmt.Errorf(
-			"failed to decode the config file: %w\n%s",
-			strictMissingError,
-			strictMissingError.String(),
-		)
+	if err = toml.Unmarshal(data, &rawCfg); err != nil {
+		return nil, fmt.Errorf("failed to decode the config file: %w", err)
 	}
 
-	cfg, err := cf.from()
+	cfg := &Config{}
+
+	d, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		DecodeHook: mapstructure.TextUnmarshallerHookFunc(),
+		Result:     cfg,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create config from the file data: %w", err)
+		return nil, fmt.Errorf("failed to create mapstructure decoder: %w", err)
 	}
+
+	if err := d.Decode(rawCfg); err != nil {
+		return nil, fmt.Errorf("failed to read environment variables for config: %w", err)
+	}
+
+	fmt.Println(cfg)
 
 	if err = applyEnv(cfg); err != nil {
 		return nil, fmt.Errorf("failed to read environment variables for config: %w", err)
