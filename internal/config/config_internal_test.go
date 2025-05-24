@@ -28,7 +28,6 @@ func Test_from(t *testing.T) {
 			want: &Config{
 				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
-				Directory:  "",
 				Logging: LoggingConfig{
 					Enabled: true,
 					Format:  "json",
@@ -52,7 +51,6 @@ func Test_from(t *testing.T) {
 			want: &Config{
 				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
-				Directory:  "",
 				Logging: LoggingConfig{
 					Enabled: false,
 					Format:  "json",
@@ -76,7 +74,6 @@ func Test_from(t *testing.T) {
 			want: &Config{
 				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
-				Directory:  "",
 				Logging: LoggingConfig{
 					Enabled: true,
 					Format:  "text",
@@ -100,7 +97,6 @@ func Test_from(t *testing.T) {
 			want: &Config{
 				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
-				Directory:  "",
 				Logging: LoggingConfig{
 					Enabled: true,
 					Format:  "json",
@@ -124,7 +120,6 @@ func Test_from(t *testing.T) {
 			want: &Config{
 				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
-				Directory:  "",
 				Logging: LoggingConfig{
 					Enabled: true,
 					Format:  "json",
@@ -148,7 +143,6 @@ func Test_from(t *testing.T) {
 			want: &Config{
 				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
-				Directory:  "",
 				Logging: LoggingConfig{
 					Enabled: true,
 					Format:  "json",
@@ -173,7 +167,6 @@ func Test_from(t *testing.T) {
 			want: &Config{
 				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
-				Directory:  "",
 				Logging: LoggingConfig{
 					Enabled: true,
 					Format:  "json",
@@ -192,7 +185,6 @@ func Test_from(t *testing.T) {
 			want: &Config{
 				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
-				Directory:  "",
 				Logging: LoggingConfig{
 					Enabled: true,
 					Format:  "json",
@@ -230,7 +222,6 @@ func Test_from(t *testing.T) {
 			want: &Config{
 				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
-				Directory:  "",
 				Logging: LoggingConfig{
 					Enabled: true,
 					Format:  "json",
@@ -286,7 +277,6 @@ func Test_from(t *testing.T) {
 			want: &Config{
 				Color:      term.IsTerminal(int(os.Stdout.Fd())),
 				ConfigFile: "",
-				Directory:  "",
 				Logging: LoggingConfig{
 					Enabled: true,
 					Format:  "json",
