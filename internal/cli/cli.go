@@ -73,16 +73,6 @@ func New() *CLI {
 	cli.flags.BoolP("help", "h", false, "show the help message and exit", "")
 
 	cli.flags.StringP(
-		"directory",
-		"C",
-		config.DefaultDirectory(),
-		fmt.Sprintf(
-			"run as if %s was started in `<path>` instead of the current working directory",
-			ProgramName,
-		),
-		"",
-	)
-	cli.flags.StringP(
 		"config",
 		"c",
 		"",
@@ -289,7 +279,7 @@ func (c *CLI) initFirstPassFlags() *flags.FlagSet {
 // environment variables, and command-line flags. It returns a pointer to the
 // configuration and any errors encountered.
 func (c *CLI) parseConfig(ctx context.Context, fs *flags.FlagSet) (*config.Config, error) {
-	cfg, err := config.Parse(ctx, fs)
+	cfg, err := config.Parse(fs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse the config: %w", err)
 	}

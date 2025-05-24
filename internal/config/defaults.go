@@ -15,17 +15,6 @@ const (
 	defaultLogOutput = "~/.local/state/reginald.log"
 )
 
-// DefaultDirectory returns the default working directory for the program. It
-// panics on errors.
-func DefaultDirectory() string {
-	pwd, err := os.Getwd()
-	if err != nil {
-		panic(fmt.Sprintf("failed to get the current working directory: %v", err))
-	}
-
-	return pwd
-}
-
 // DefaultPluginsDir returns the plugins directory to use. It takes the environment
 // variable for customizing the plugins directory and the platform into account.
 func DefaultPluginsDir() (string, error) {
@@ -43,7 +32,6 @@ func DefaultPluginsDir() (string, error) {
 func defaultConfig() *Config {
 	return &Config{ //nolint:exhaustruct // the defaults are passed from the default file
 		ConfigFile: "",
-		Directory:  "",
 	}
 }
 

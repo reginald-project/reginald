@@ -15,14 +15,26 @@ import (
 // Config the parsed configuration of the program run. There should be only one
 // effective Config per run.
 type Config struct {
-	Color      bool          // whether colors are enabled in the output
-	ConfigFile string        // path to the config file
-	Directory  string        // path to the directory passed in with '-C'
-	Logging    LoggingConfig // logging config values
-	PluginDir  string        // directory where Reginald looks for plugins
-	Quiet      bool          // whether only errors are output
-	Tasks      []task.Config // tasks configs
-	Verbose    bool          // whether verbose output is enabled
+	// Color tells whether colors should be enabled in the user output.
+	Color bool
+
+	// ConfigFile is the absolute path to the config file in use.
+	ConfigFile string
+
+	Logging LoggingConfig
+
+	// PluginDir is the directory where Reginald looks for the plugins.
+	PluginDir string
+
+	// Quiet tells the program to suppress all other output than errors.
+	Quiet bool
+
+	// Tasks contains tasks and the configs for them as given in the config
+	// file.
+	Tasks []task.Config // tasks configs
+
+	// Verbose tells the program to print more verbose output.
+	Verbose bool
 }
 
 // LoggingConfig is type of the logging configuration in Config.
@@ -81,8 +93,7 @@ func (c *Config) Equal(d *Config) bool {
 		}
 	}
 
-	return c.Color == d.Color && c.ConfigFile == d.ConfigFile && c.Directory == d.Directory &&
-		c.Logging == d.Logging &&
+	return c.Color == d.Color && c.ConfigFile == d.ConfigFile && c.Logging == d.Logging &&
 		c.PluginDir == d.PluginDir &&
 		c.Quiet == d.Quiet &&
 		c.Verbose == d.Verbose

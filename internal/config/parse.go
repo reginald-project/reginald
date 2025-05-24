@@ -1,11 +1,9 @@
 package config
 
 import (
-	"context"
 	"encoding"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -41,10 +39,10 @@ var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem(
 // The function also resolves the configuration file according to the standard
 // paths for the file or according the flags. The relevant flags are
 // `--directory` and `--config`.
-func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
-	dir, configFile, err := fileOptions(ctx, flagSet)
+func Parse(flagSet *flags.FlagSet) (*Config, error) {
+	configFile, err := resolveFile(flagSet)
 	if err != nil {
-		return nil, fmt.Errorf("%w", err)
+		return nil, fmt.Errorf("failed to resolve config file: %w", err)
 	}
 
 	f, err := os.Open(filepath.Clean(configFile))
@@ -86,7 +84,6 @@ func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
 	applyFlags(cfg, flagSet)
 
 	cfg.ConfigFile = configFile
-	cfg.Directory = dir
 
 	if err = normalize(cfg); err != nil {
 		return nil, fmt.Errorf("%w", err)
@@ -99,77 +96,44 @@ func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
 	return cfg, nil
 }
 
-// fileOptions parses and returns the values for the working directory and the
-// configuration file. The values are checked from the environment variables and
-// command-line flags. The first return value is the working directory and the
-// second is the configuration file.
-func fileOptions(ctx context.Context, flagSet *flags.FlagSet) (string, string, error) {
+// resolveFile looks up the possible paths for the configuration file and
+// returns the first one that contains a file with a valid name. The returned
+// path is absolute. If no configuration file is found, the function returns an
+// empty string and an error.
+func resolveFile(flagSet *flags.FlagSet) (string, error) {
 	var (
-		err      error
-		filename string
+		err       error
+		fileValue string
 	)
 
-	dir := DefaultDirectory()
-
-	if env := os.Getenv(defaultEnvPrefix + "_DIRECTORY"); env != "" {
-		dir = env
-	}
-
-	if flagSet.Changed("directory") {
-		dir, err = flagSet.GetString("directory")
-		if err != nil {
-			return "", "", fmt.Errorf(
-				"failed to get the value for command-line option '--directory': %w",
-				err,
-			)
-		}
-	}
-
-	if !filepath.IsAbs(dir) {
-		dir, err = pathname.Abs(dir)
-		if err != nil {
-			return "", "", fmt.Errorf("failed to make the working directory absolute: %w", err)
-		}
-	}
-
 	if env := os.Getenv(defaultEnvPrefix + "_CONFIG_FILE"); env != "" {
-		filename = env
+		fileValue = env
 	}
 
 	if flagSet.Changed("config") {
-		filename, err = flagSet.GetString("config")
+		fileValue, err = flagSet.GetString("config")
 		if err != nil {
-			return "", "", fmt.Errorf(
+			return "", fmt.Errorf(
 				"failed to get the value for command-line option '--config': %w",
 				err,
 			)
 		}
 	}
 
-	configFile, err := resolveFile(dir, filename)
-	if err != nil {
-		return "", "", fmt.Errorf("searching for config file failed: %w", err)
-	}
+	file := fileValue
 
-	slog.DebugContext(ctx, "resolved config file path", "path", configFile)
-
-	return dir, configFile, nil
-}
-
-// resolveFile looks up the possible paths for the configuration file and
-// returns the first one that contains a file with a valid name. The returned
-// path is absolute. If no configuration file is found, the function returns an
-// empty string and an error.
-func resolveFile(wd, file string) (string, error) {
-	original := file
-
-	// Use the config file f if it is an absolute path.
+	// Use the fileValue if it is an absolute path.
 	if filepath.IsAbs(file) {
 		if ok, err := pathname.IsFile(file); err != nil {
 			return "", fmt.Errorf("%w", err)
 		} else if ok {
 			return filepath.Clean(file), nil
 		}
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("%w", err)
 	}
 
 	// Check if the config file f matches a file in the working directory.
@@ -183,11 +147,12 @@ func resolveFile(wd, file string) (string, error) {
 
 	// If the config file flag is set but it didn't resolve, fail so that the
 	// program doesn't use a config file from some other location by surprise.
-	if original != "" {
-		return "", fmt.Errorf("%w: tried to resolve file with %q", errConfigFileNotFound, original)
+	if fileValue != "" {
+		return "", fmt.Errorf("%w: tried to resolve file with %q", errConfigFileNotFound, fileValue)
 	}
 
-	// TODO: Add more locations.
+	// TODO: Add more locations, at least the default location in the user home
+	// directory.
 	configDirs := []string{
 		wd,
 	}
@@ -248,14 +213,6 @@ func normalize(cfg *Config) error {
 func validate(c *Config) error {
 	if !filepath.IsAbs(c.ConfigFile) {
 		return fmt.Errorf("%w: config file is not absolute: %s", errInvalidConfig, c.ConfigFile)
-	}
-
-	if !filepath.IsAbs(c.Directory) {
-		return fmt.Errorf(
-			"%w: working directory is not absolute: %s",
-			errInvalidConfig,
-			c.Directory,
-		)
 	}
 
 	if !filepath.IsAbs(c.PluginDir) {
