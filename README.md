@@ -22,7 +22,7 @@ This project is still in early development. More info will be added later.
 
 ## License
 
-Reginald is licensed under the MIT license. See the [LICENSE](LICENSE) file for
+Reginald is licensed under the MIT License. See the [LICENSE](LICENSE) file for
 more information.
 
 Reginald the gopher valet is based on the Go gopher. Reginald the gopher valet
