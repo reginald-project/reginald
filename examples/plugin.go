@@ -34,7 +34,7 @@ func (s *SleepCommand) Flags() []rpp.Flag {
 			Shorthand:    "t",
 			DefaultValue: 5, //nolint:mnd
 			Type:         rpp.FlagInt,
-			Usage:        "set the sleep time (default 5s)",
+			Usage:        "time to sleep in seconds (default 5s)",
 		},
 	}
 }
