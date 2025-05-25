@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -31,13 +32,14 @@ const (
 
 // Errors returned by plugin utility functions.
 var (
-	errCommandNotFound = errors.New("given command is not present in the plugin")
-	errHandshake       = errors.New("plugin handshake failed")
-	errNoParams        = errors.New("notification has no params")
-	errNoResponse      = errors.New("plugin disconnected before responding")
-	errNotFile         = errors.New("plugin path is not a file")
-	errUnknownMethod   = errors.New("invalid method")
-	errWrongProtocol   = errors.New("mismatch in plugin protocol info")
+	errCommandNotFound     = errors.New("given command is not present in the plugin")
+	errHandshake           = errors.New("plugin handshake failed")
+	errInvalidPluginConfig = errors.New("invalid plugin-level config definition")
+	errNoParams            = errors.New("notification has no params")
+	errNoResponse          = errors.New("plugin disconnected before responding")
+	errNotFile             = errors.New("plugin path is not a file")
+	errUnknownMethod       = errors.New("invalid method")
+	errWrongProtocol       = errors.New("mismatch in plugin protocol info")
 )
 
 // A Plugin represents a plugin that acts as an RPP server and is run from this
@@ -461,12 +463,19 @@ func (p *Plugin) notify(ctx context.Context, method string, params any) error {
 
 // populateConfigs populates the ConfigEntries in p with the config values for
 // the plugin, commands, and tasks.
-func (p *Plugin) populateConfigs() {
+func (p *Plugin) populateConfigs() error {
 	m := make(map[string][]rpp.ConfigEntry)
 
 	if len(p.ConfigEntries) > 0 {
-		m[p.Name] = make([]rpp.ConfigEntry, 0, len(p.ConfigEntries))
-		m[p.Name] = append(m[p.Name], p.PluginConfigs...)
+		m[p.Name] = make([]rpp.ConfigEntry, 0, len(p.PluginConfigs))
+
+		for _, c := range p.PluginConfigs {
+			if strings.HasPrefix(c.Key, "cmd:") || strings.HasPrefix(c.Key, "task:") {
+				return fmt.Errorf("%w: %s", errInvalidPluginConfig, c.Key)
+			}
+
+			m[p.Name] = append(m[p.Name], c)
+		}
 	}
 
 	for _, info := range p.Commands {
@@ -489,10 +498,12 @@ func (p *Plugin) populateConfigs() {
 	}
 
 	for _, info := range p.Tasks {
-		name := "cmd:" + info.Name
+		name := "task:" + info.Name
 		m[name] = make([]rpp.ConfigEntry, 0)
 		m[name] = append(m[name], info.Configs...)
 	}
+
+	return nil
 }
 
 // read runs the reading loop for the plugin. It listens to the standard output
