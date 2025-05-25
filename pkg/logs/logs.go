@@ -35,6 +35,7 @@ func (l Level) String() string {
 		if val == 0 {
 			return base
 		}
+
 		return fmt.Sprintf("%s%+d", base, val)
 	}
 

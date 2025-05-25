@@ -80,8 +80,9 @@ func InitBootstrap() error {
 				slog.NewJSONHandler(
 					BootstrapWriter,
 					&slog.HandlerOptions{ //nolint:exhaustruct
-						AddSource: true,
-						Level:     logs.LevelTrace,
+						AddSource:   true,
+						Level:       logs.LevelTrace,
+						ReplaceAttr: replaceAttrFunc(""),
 					},
 				),
 			),
@@ -90,12 +91,15 @@ func InitBootstrap() error {
 		return nil
 	}
 
-	//nolint:exhaustruct
 	slog.SetDefault(
 		slog.New(
 			slog.NewTextHandler(
 				iostreams.NewLockedWriter(os.Stderr),
-				&slog.HandlerOptions{AddSource: true, Level: logs.LevelTrace},
+				&slog.HandlerOptions{
+					AddSource:   true,
+					Level:       logs.LevelTrace,
+					ReplaceAttr: replaceAttrFunc(""),
+				},
 			),
 		),
 	)
@@ -128,20 +132,10 @@ func Init(cfg Config) error {
 		w = fw
 	}
 
-	timeFormat := defaultJSONTimeFormat
-	if strings.ToLower(cfg.Format) == "text" {
-		timeFormat = defaultTextTimeFormat
-	}
-
-	opts := &slog.HandlerOptions{ //nolint:exhaustruct
-		Level: cfg.Level,
-		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-			if a.Key == slog.TimeKey {
-				return slog.String(slog.TimeKey, a.Value.Time().Format(timeFormat))
-			}
-
-			return a
-		},
+	opts := &slog.HandlerOptions{
+		AddSource:   true,
+		Level:       cfg.Level,
+		ReplaceAttr: replaceAttrFunc(""),
 	}
 
 	var h slog.Handler
@@ -219,4 +213,23 @@ func Log(ctx context.Context, level logs.Level, msg string, args ...any) {
 // LogAttrs calls [slog.Logger.LogAttrs] on the default logger.
 func LogAttrs(ctx context.Context, level logs.Level, msg string, attrs ...slog.Attr) {
 	slog.LogAttrs(ctx, level.Level(), msg, attrs...)
+}
+
+func replaceAttrFunc(timeFormat string) func([]string, slog.Attr) slog.Attr {
+	return func(_ []string, a slog.Attr) slog.Attr {
+		if timeFormat != "" && a.Key == slog.TimeKey {
+			return slog.String(slog.TimeKey, a.Value.Time().Format(timeFormat))
+		}
+
+		if a.Key == slog.LevelKey {
+			level, ok := a.Value.Any().(slog.Level)
+			if !ok {
+				panic(fmt.Sprintf("failed to convert level value to slog.Level: %[1]v (%[1]T)", a.Value.Any()))
+			}
+
+			return slog.String(slog.LevelKey, logs.Level(level).String())
+		}
+
+		return a
+	}
 }
