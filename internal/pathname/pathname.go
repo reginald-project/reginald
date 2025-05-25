@@ -18,40 +18,40 @@ type Path string
 // Abs returns an absolute representation of path. Relative paths will be joined
 // with the current working directory. Abs calls Clean on the result. Abs also
 // resolves user home directories and environment variables.
-func Abs(path Path) (Path, error) {
-	path = ExpandEnv(path)
+func (p Path) Abs() (Path, error) {
+	p = p.ExpandEnv()
 
 	var err error
 
-	path, err = ExpandUser(path)
+	p, err = p.ExpandUser()
 	if err != nil {
 		return "", fmt.Errorf("failed to expand user home directory: %w", err)
 	}
 
-	var p string
+	var absPath string
 
-	p, err = filepath.Abs(string(path))
+	absPath, err = filepath.Abs(string(p))
 	if err != nil {
 		return "", fmt.Errorf("%w", err)
 	}
 
-	path = Path(p)
+	p = Path(absPath)
 
-	return path, nil
+	return p, nil
 }
 
 // ExpandEnv replaces ${var} or $var and even %var% on Windows in the string
 // according to the values of the current environment variables. References to
 // undefined variables are replaced by an empty string.
-func ExpandEnv(path Path) Path {
-	return expandOSEnv(path)
+func (p Path) ExpandEnv() Path {
+	return expandOSEnv(p)
 }
 
 // ExpandUser tries to replace "~" or "~username" in the string to match the
 // correspending user's home directory. If the wanted user does not exist, this
 // function returns an error.
-func ExpandUser(path Path) (Path, error) {
-	if path == "~" {
+func (p Path) ExpandUser() (Path, error) {
+	if p == "~" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("failed to get the user home dir: %w", err)
@@ -60,29 +60,29 @@ func ExpandUser(path Path) (Path, error) {
 		return Path(home), nil
 	}
 
-	if strings.HasPrefix(string(path), "~") {
+	if strings.HasPrefix(string(p), "~") {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("failed to get the user home dir: %w", err)
 		}
 
 		// Using the current user's home directory.
-		if path[1] == '/' || path[1] == os.PathSeparator {
-			return Path(filepath.Join(home, string(path[1:]))), nil
+		if p[1] == '/' || p[1] == os.PathSeparator {
+			return Path(filepath.Join(home, string(p[1:]))), nil
 		}
 
-		path, err = expandOtherUser(path)
+		p, err = expandOtherUser(p)
 		if err != nil {
 			return "", fmt.Errorf("%w", err)
 		}
 	}
 
-	return path, nil
+	return p, nil
 }
 
 // IsFile reports whether the file name exists and is a file.
-func IsFile(name Path) (bool, error) {
-	info, err := os.Stat(string(name))
+func (p Path) IsFile() (bool, error) {
+	info, err := os.Stat(string(p))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return false, nil
@@ -96,6 +96,11 @@ func IsFile(name Path) (bool, error) {
 	}
 
 	return true, nil
+}
+
+// String returns p as a string and implements [fmt.Stringer] for [Path].
+func (p Path) String() string {
+	return string(p)
 }
 
 // expandOtherUser tries to replace "~username" in path to match the
