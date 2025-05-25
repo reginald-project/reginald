@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/anttikivi/reginald/internal/iostreams"
+	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/panichandler"
 	"github.com/anttikivi/reginald/internal/pathname"
 	"github.com/anttikivi/reginald/pkg/rpp"
@@ -206,7 +207,7 @@ func (p *Plugin) RunCmd(ctx context.Context, name string, args []string) error {
 		)
 	}
 
-	slog.DebugContext(ctx, "running command succeeded", "plugin", p.Name, "result", result)
+	logging.DebugContext(ctx, "running command succeeded", "plugin", p.Name, "result", result)
 
 	return nil
 }
@@ -216,10 +217,10 @@ func (p *Plugin) RunCmd(ctx context.Context, name string, args []string) error {
 func (p *Plugin) countProtocolError(ctx context.Context, reason string) {
 	n := p.protocolErrors.Add(1)
 
-	slog.WarnContext(ctx, "plugin protocol error", "reason", reason)
+	logging.WarnContext(ctx, "plugin protocol error", "reason", reason)
 
 	if n >= DefaultMaxProtocolErrors {
-		slog.ErrorContext(
+		logging.ErrorContext(
 			ctx,
 			"too many protocol errors, shutting plugin down",
 			"plugin",
@@ -249,7 +250,7 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 		Params:  rawParams,
 	}
 
-	slog.DebugContext(ctx, "calling method", "plugin", p.Name, "method", method, "req", req)
+	logging.DebugContext(ctx, "calling method", "plugin", p.Name, "method", method, "req", req)
 
 	// A channel is created for each request. It receives a values in the read
 	// loop.
@@ -286,7 +287,7 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 			return nil, fmt.Errorf("%w: %s (method %s)", errNoResponse, p.Name, method)
 		}
 
-		slog.DebugContext(ctx, "received response", "plugin", p.Name, "res", res)
+		logging.DebugContext(ctx, "received response", "plugin", p.Name, "res", res)
 
 		if res.Error != nil {
 			var rpcErr rpp.Error
@@ -303,7 +304,7 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 
 		return res, nil
 	case <-ctx.Done():
-		slog.DebugContext(ctx, "context canceled during plugin call")
+		logging.DebugContext(ctx, "context canceled during plugin call")
 		p.cleanPending(id, ch)
 
 		return nil, fmt.Errorf("%w", ctx.Err())
@@ -381,7 +382,7 @@ func (p *Plugin) handshake(ctx context.Context) error {
 
 	p.HandshakeResult = result
 
-	slog.DebugContext(ctx, "handshake succeeded", "plugin", p.Name)
+	logging.DebugContext(ctx, "handshake succeeded", "plugin", p.Name)
 
 	return nil
 }
@@ -389,7 +390,7 @@ func (p *Plugin) handshake(ctx context.Context) error {
 // kill kills the plugin process.
 func (p *Plugin) kill(ctx context.Context) {
 	if p.cmd.Process != nil {
-		slog.DebugContext(ctx, "killing plugin", "plugin", p.Name)
+		logging.DebugContext(ctx, "killing plugin", "plugin", p.Name)
 
 		if err := p.cmd.Process.Kill(); err != nil {
 			panic(fmt.Sprintf("failed to kill a plugin process: %v", err))
@@ -419,14 +420,14 @@ func (p *Plugin) logNotification(ctx context.Context, msg *rpp.Message) error {
 		attrs = append(attrs, slog.Any(k, v))
 	}
 
-	slog.LogAttrs(ctx, params.Level, params.Message, attrs...)
+	logging.LogAttrs(ctx, params.Level, params.Message, attrs...)
 
 	return nil
 }
 
 // notify send a notification to the plugin.
 func (p *Plugin) notify(ctx context.Context, method string, params any) error {
-	slog.DebugContext(
+	logging.DebugContext(
 		ctx,
 		"sending notification",
 		"plugin",
@@ -516,7 +517,7 @@ func (p *Plugin) read(ctx context.Context, panicHandler func()) {
 		if err != nil {
 			// Error when reading or EOF.
 			if !errors.Is(err, io.EOF) {
-				slog.ErrorContext(ctx, "error when reading plugin output", "err", err)
+				logging.ErrorContext(ctx, "error when reading plugin output", "err", err)
 			}
 
 			p.closeAllPending()
@@ -576,11 +577,11 @@ func (p *Plugin) readStderr(ctx context.Context, panicHandler func()) {
 		line := p.stderr.Text()
 
 		iostreams.PrintErrf("[%s:err] %s\n", p.Name, line)
-		slog.WarnContext(ctx, "plugin printed to stderr", "plugin", p.Name, "output", line)
+		logging.WarnContext(ctx, "plugin printed to stderr", "plugin", p.Name, "output", line)
 	}
 
 	if err := p.stderr.Err(); err != nil {
-		slog.ErrorContext(ctx, "error reading stderr for plugin", "plugin", p.Name, "err", err)
+		logging.ErrorContext(ctx, "error reading stderr for plugin", "plugin", p.Name, "err", err)
 	}
 }
 
@@ -589,12 +590,12 @@ func (p *Plugin) shutdown(ctx context.Context) error {
 	// TODO: Check the response.
 	_, err := p.call(ctx, rpp.MethodShutdown, nil)
 	if err != nil {
-		slog.WarnContext(ctx, "error when calling shutdown", "plugin", p.Name, "err", err.Error())
+		logging.WarnContext(ctx, "error when calling shutdown", "plugin", p.Name, "err", err.Error())
 	}
 
 	err = p.notify(ctx, rpp.MethodExit, nil)
 	if err != nil {
-		slog.WarnContext(
+		logging.WarnContext(
 			ctx,
 			"error when sending the exit notification",
 			"plugin",
@@ -625,13 +626,13 @@ func (p *Plugin) shutdown(ctx context.Context) error {
 // start starts the execution of the plugin process and the related reading
 // goroutines.
 func (p *Plugin) start(ctx context.Context) error {
-	slog.DebugContext(ctx, "executing plugin", "path", p.cmd.Path)
+	logging.DebugContext(ctx, "executing plugin", "path", p.cmd.Path)
 
 	if err := p.cmd.Start(); err != nil {
 		return fmt.Errorf("plugin execution from %s failed: %w", p.cmd.Path, err)
 	}
 
-	slog.InfoContext(ctx, "started a plugin process", "path", p.cmd.Path, "pid", p.cmd.Process.Pid)
+	logging.InfoContext(ctx, "started a plugin process", "path", p.cmd.Path, "pid", p.cmd.Process.Pid)
 
 	p.doneCh = make(chan error, 1)
 

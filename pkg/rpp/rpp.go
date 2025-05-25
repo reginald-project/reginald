@@ -11,6 +11,8 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+
+	"github.com/anttikivi/reginald/pkg/logs"
 )
 
 // Constant values related to the RPP version currently implemented by this
@@ -256,7 +258,7 @@ type Flag struct {
 // additional information can be given as Fields.
 type LogParams struct {
 	// Level is the logging level of the message. It should have a string value "debug", "info", "warn", or "error".
-	Level slog.Level `json:"level"`
+	Level logs.Level `json:"level"`
 
 	// Message is the logging message.
 	Message string `json:"msg"`

@@ -3,7 +3,6 @@ package logging
 import (
 	"bytes"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -78,7 +77,7 @@ func (w *BufferedFileWriter) Flush() error {
 	defer func() {
 		if err := f.Close(); err != nil {
 			// TODO: See if there is some better way to handle this error.
-			slog.Error("failed to close buffered file writer file", "err", err)
+			Error("failed to close buffered file writer file", "err", err)
 		}
 	}()
 

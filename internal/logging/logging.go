@@ -10,6 +10,7 @@
 package logging
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/pathname"
+	"github.com/anttikivi/reginald/pkg/logs"
 )
 
 // Default values for the logger.
@@ -44,7 +46,7 @@ var (
 type Config struct {
 	Enabled bool       `mapstructure:"enabled"` // whether logging is enabled
 	Format  string     `mapstructure:"format"`  // format of the logs, "json" or "text"
-	Level   slog.Level `mapstructure:"level"`   // logging level
+	Level   logs.Level `mapstructure:"level"`   // logging level
 	Output  string     `mapstructure:"output"`  // destination of the logs
 }
 
@@ -79,7 +81,7 @@ func InitBootstrap() error {
 					BootstrapWriter,
 					&slog.HandlerOptions{ //nolint:exhaustruct
 						AddSource: true,
-						Level:     slog.LevelDebug,
+						Level:     logs.LevelTrace,
 					},
 				),
 			),
@@ -93,7 +95,7 @@ func InitBootstrap() error {
 		slog.New(
 			slog.NewTextHandler(
 				iostreams.NewLockedWriter(os.Stderr),
-				&slog.HandlerOptions{AddSource: true, Level: slog.LevelDebug},
+				&slog.HandlerOptions{AddSource: true, Level: logs.LevelTrace},
 			),
 		),
 	)
@@ -156,4 +158,65 @@ func Init(cfg Config) error {
 	slog.SetDefault(slog.New(h))
 
 	return nil
+}
+
+// Trace calls [slog.Logger.Log] with level set to trace on the default logger.
+func Trace(msg string, args ...any) {
+	slog.Log(context.Background(), logs.LevelTrace.Level(), msg, args...)
+}
+
+// TraceContext calls [slog.Logger.Log] with level set to trace on the default
+// logger.
+func TraceContext(ctx context.Context, msg string, args ...any) {
+	slog.Log(ctx, logs.LevelTrace.Level(), msg, args...)
+}
+
+// Debug calls [slog.Logger.Debug] on the default logger.
+func Debug(msg string, args ...any) {
+	slog.Log(context.Background(), logs.LevelDebug.Level(), msg, args...)
+}
+
+// DebugContext calls [slog.Logger.DebugContext] on the default logger.
+func DebugContext(ctx context.Context, msg string, args ...any) {
+	slog.Log(ctx, logs.LevelDebug.Level(), msg, args...)
+}
+
+// Info calls [slog.Logger.Info] on the default logger.
+func Info(msg string, args ...any) {
+	slog.Log(context.Background(), logs.LevelInfo.Level(), msg, args...)
+}
+
+// InfoContext calls [slog.Logger.InfoContext] on the default logger.
+func InfoContext(ctx context.Context, msg string, args ...any) {
+	slog.Log(ctx, logs.LevelInfo.Level(), msg, args...)
+}
+
+// Warn calls [slog.Logger.Warn] on the default logger.
+func Warn(msg string, args ...any) {
+	slog.Log(context.Background(), logs.LevelWarn.Level(), msg, args...)
+}
+
+// WarnContext calls [slog.Logger.WarnContext] on the default logger.
+func WarnContext(ctx context.Context, msg string, args ...any) {
+	slog.Log(ctx, logs.LevelWarn.Level(), msg, args...)
+}
+
+// Error calls [slog.Logger.Error] on the default logger.
+func Error(msg string, args ...any) {
+	slog.Log(context.Background(), logs.LevelError.Level(), msg, args...)
+}
+
+// ErrorContext calls [slog.Logger.ErrorContext] on the default logger.
+func ErrorContext(ctx context.Context, msg string, args ...any) {
+	slog.Log(ctx, logs.LevelError.Level(), msg, args...)
+}
+
+// Log calls [slog.Logger.Log] on the default logger.
+func Log(ctx context.Context, level logs.Level, msg string, args ...any) {
+	slog.Log(ctx, level.Level(), msg, args...)
+}
+
+// LogAttrs calls [slog.Logger.LogAttrs] on the default logger.
+func LogAttrs(ctx context.Context, level logs.Level, msg string, attrs ...slog.Attr) {
+	slog.LogAttrs(ctx, level.Level(), msg, attrs...)
 }
