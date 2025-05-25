@@ -210,6 +210,13 @@ type ConfigEntry struct {
 	// entry holds. The possible values can be found in the protocol description
 	// and in the constants of this package.
 	Type ConfigType `json:"type"`
+
+	// EnvOverride defines a string to use in the environment variable name
+	// instead of the automatic name of the variable that will be composed using
+	// Key. It is appended after the prefix `REGINALD_` but if the override is
+	// used, the name of the plugin or the name of the command is not added to
+	// variable name automatically.
+	EnvOverride string `json:"envOverride,omitempty"`
 }
 
 // Flag is an entry in the handshake response for a command that defines one

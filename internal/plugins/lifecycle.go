@@ -122,7 +122,24 @@ func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin,
 				return fmt.Errorf("handshake with plugin %q failed: %w", p.Name, err)
 			}
 
-			p.populateConfigs()
+			if err := p.populateConfigs(); err != nil {
+				if ignoreErrors {
+					slog.ErrorContext(
+						tctx,
+						"config resolution failed",
+						"plugin",
+						p.Name,
+						"err",
+						err,
+					)
+					iostreams.Errorf("Failed to resolve configs for %q\n", p.Name)
+					iostreams.PrintErrf("Error: %v\n", err)
+
+					return nil
+				}
+
+				return fmt.Errorf("failed to resolve configs for plugin %q: %w", p.Name, err)
+			}
 
 			// I'm not sure about using locks but it's simple and gets the job
 			// done.

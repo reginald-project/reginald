@@ -4,74 +4,149 @@
 package config
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/anttikivi/reginald/internal/flags"
 	"github.com/anttikivi/reginald/internal/logging"
+	"github.com/anttikivi/reginald/internal/pathname"
 	"github.com/anttikivi/reginald/pkg/task"
+)
+
+// EnvPrefix is the prefix added to the names of the config values when reading
+// them from environment variables.
+const EnvPrefix = "REGINALD" // prefix used for the environment variables.
+
+const (
+	defaultFileName  = "reginald"
+	defaultLogOutput = "~/.local/state/reginald.log"
 )
 
 // Config is the parsed configuration of the program run. There should be only
 // one effective Config per run.
+//
+// Config has a lock for locking it when it is being parsed and written to.
+// After the parsing, Config should not be written to and, thus, the lock should
+// no longer be used.
 type Config struct {
 	// Color tells whether colors should be enabled in the user output.
 	Color bool `mapstructure:"color"`
 
-	// ConfigFile is the absolute path to the config file in use.
-	ConfigFile string `mapstructure:"config-file"`
-
+	// Logging contains the config values for logging.
 	Logging logging.Config `mapstructure:"logging"`
 
 	// PluginDir is the directory where Reginald looks for the plugins.
 	PluginDir string `mapstructure:"plugin-dir"`
 
 	// Quiet tells the program to suppress all other output than errors.
-	Quiet bool `mapstructure:"quiet"`
+	Quiet bool `flag:"," mapstructure:"quiet"`
 
 	// Tasks contains tasks and the configs for them as given in the config
 	// file.
 	Tasks []task.Config `mapstructure:"tasks"`
 
 	// Verbose tells the program to print more verbose output.
-	Verbose bool `mapstructure:"verbose"`
+	Verbose bool `flag:"," mapstructure:"verbose"`
 
 	// Plugins contains the rest of the config options which should only be
 	// plugin-defined options.
 	Plugins map[string]any `mapstructure:",remain"`
 }
 
-// Equal reports if the Config that d points to is equal to the Config that c
-// points to.
-func (c *Config) Equal(d *Config) bool {
-	if c == d {
-		return true
+// DefaultPluginsDir returns the plugins directory to use. It takes the environment
+// variable for customizing the plugins directory and the platform into account.
+func DefaultPluginsDir() (string, error) {
+	path, err := defaultPluginsDir()
+	if err != nil {
+		return "", fmt.Errorf("%w", err)
 	}
 
-	if c == nil {
-		return d == nil
+	return filepath.Clean(path), nil
+}
+
+// resolveFile looks up the possible paths for the configuration file and
+// returns the first one that contains a file with a valid name. The returned
+// path is absolute. If no configuration file is found, the function returns an
+// empty string and an error.
+func resolveFile(flagSet *flags.FlagSet) (string, error) {
+	var (
+		err       error
+		fileValue string
+	)
+
+	if env := os.Getenv(EnvPrefix + "_CONFIG_FILE"); env != "" {
+		fileValue = env
 	}
 
-	if d == nil {
-		return c == nil
-	}
-
-	if len(c.Tasks) != len(d.Tasks) {
-		return false
-	}
-
-	for i, t := range c.Tasks {
-		u := d.Tasks[i]
-
-		if t.Type != u.Type || t.ID != u.ID {
-			return false
+	if flagSet.Changed("config") {
+		fileValue, err = flagSet.GetString("config")
+		if err != nil {
+			return "", fmt.Errorf(
+				"failed to get the value for command-line option '--config': %w",
+				err,
+			)
 		}
+	}
 
-		for k, a := range t.Options {
-			if b, ok := u.Options[k]; !ok || a != b {
-				return false
+	file := fileValue
+
+	// Use the fileValue if it is an absolute path.
+	if filepath.IsAbs(file) {
+		if ok, err := pathname.IsFile(file); err != nil {
+			return "", fmt.Errorf("%w", err)
+		} else if ok {
+			return filepath.Clean(file), nil
+		}
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("%w", err)
+	}
+
+	// Check if the config file f matches a file in the working directory.
+	file = filepath.Join(wd, file)
+
+	if ok, err := pathname.IsFile(file); err != nil {
+		return "", fmt.Errorf("%w", err)
+	} else if ok {
+		return file, nil
+	}
+
+	// If the config file flag is set but it didn't resolve, fail so that the
+	// program doesn't use a config file from some other location by surprise.
+	if fileValue != "" {
+		return "", fmt.Errorf("%w: tried to resolve file with %q", errConfigFileNotFound, fileValue)
+	}
+
+	// TODO: Add more locations, at least the default location in the user home
+	// directory.
+	configDirs := []string{
+		wd,
+	}
+	configNames := []string{
+		strings.ToLower(defaultFileName),
+		"." + strings.ToLower(defaultFileName),
+	}
+	extensions := []string{
+		"toml",
+	}
+
+	// This is crazy.
+	for _, d := range configDirs {
+		for _, n := range configNames {
+			for _, e := range extensions {
+				file = filepath.Join(d, fmt.Sprintf("%s.%s", n, e))
+				if ok, err := pathname.IsFile(file); err != nil {
+					return "", fmt.Errorf("%w", err)
+				} else if ok {
+					return file, nil
+				}
 			}
 		}
 	}
 
-	return c.Color == d.Color && c.ConfigFile == d.ConfigFile && c.Logging == d.Logging &&
-		c.PluginDir == d.PluginDir &&
-		c.Quiet == d.Quiet &&
-		c.Verbose == d.Verbose
+	return "", fmt.Errorf("%w", errConfigFileNotFound)
 }

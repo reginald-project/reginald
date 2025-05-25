@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"github.com/anttikivi/reginald/internal/config"
@@ -136,18 +137,61 @@ func (c *CLI) DeferredErr() error {
 // correct command to run, and executes it. An error is returned on user errors.
 // The function panics if it is called with invalid program configuration.
 func (c *CLI) Execute(ctx context.Context) error {
-	if ok, err := c.runFirstPass(ctx); err != nil {
-		return fmt.Errorf("%w", err)
-	} else if !ok {
+	args := os.Args
+	fs := flags.NewFlagSet(c.flags.Name(), pflag.ContinueOnError)
+
+	fs.AddFlagSet(c.flags)
+
+	// Ignore errors for now as we want to get all of the flags from plugins
+	// first.
+	_ = fs.Parse(args)
+
+	help, err := fs.GetBool("help")
+	if err != nil {
+		return fmt.Errorf("failed to get the value for command-line option '--help': %w", err)
+	}
+
+	if help {
+		if err = printHelp(); err != nil {
+			return fmt.Errorf("failed to print the usage info: %w", err)
+		}
+
 		return nil
 	}
+
+	version, err := fs.GetBool("version")
+	if err != nil {
+		return fmt.Errorf("failed to get the value for command-line option '--version': %w", err)
+	}
+
+	if version {
+		if err = printVersion(); err != nil {
+			return fmt.Errorf("failed to print the version info: %w", err)
+		}
+
+		return nil
+	}
+
+	c.cfg, err = config.Parse(ctx, fs, c.plugins)
+	if err != nil {
+		return fmt.Errorf("failed to parse the config: %w", err)
+	}
+
+	// Initialize the output streams for user output.
+	iostreams.Streams = iostreams.New(c.cfg.Quiet, c.cfg.Verbose, c.cfg.Color)
+
+	if err := logging.Init(c.cfg.Logging); err != nil {
+		return fmt.Errorf("failed to init the logger: %w", err)
+	}
+
+	slog.InfoContext(ctx, "logging initialized")
 
 	if err := c.loadPlugins(ctx); err != nil {
 		return fmt.Errorf("failed to resolve plugins: %w", err)
 	}
 
-	//  We want to aim for a clean plugin shutdown in all cases, so the shut
-	// down should be run in all cases where the plugins have been initialized.
+	// We want to aim for a clean plugin shutdown in all cases, so the shut down
+	// should be run in all cases where the plugins have been initialized.
 	defer func() {
 		timeoutCtx, cancel := context.WithTimeout(ctx, plugins.DefaultShutdownTimeout)
 		defer cancel()
@@ -161,8 +205,42 @@ func (c *CLI) Execute(ctx context.Context) error {
 		return fmt.Errorf("failed to add plugin commands: %w", err)
 	}
 
-	if err := c.setup(ctx); err != nil {
+	// Reset the arguments for parsing them when all of the plugins and
+	// the correct subcommand has been loaded.
+	args = os.Args
+
+	// Make sure that `CommandLine` is not used.
+	pflag.CommandLine.VisitAll(func(f *pflag.Flag) {
+		panic(fmt.Sprintf("flag %q is set in the CommandLine flag set", f.Name))
+	})
+	slog.DebugContext(ctx, "parsing command-line arguments", "args", args)
+
+	c.cmd, args = c.findSubcommand(ctx, args)
+
+	var flagSet *flags.FlagSet
+
+	if c.cmd == nil {
+		flagSet = c.flags
+	} else {
+		c.cmd.mergeFlags()
+		flagSet = c.cmd.Flags()
+	}
+
+	if err := flagSet.Parse(args); err != nil {
+		return fmt.Errorf("failed to parse command-line arguments: %w", err)
+	}
+
+	c.args = flagSet.Args()
+
+	if err := c.checkMutuallyExclusiveFlags(c.cmd); err != nil {
 		return fmt.Errorf("%w", err)
+	}
+
+	v := reflect.ValueOf(c.cfg).Elem()
+
+	err = config.ApplyOverrides(ctx, c.cfg, v, config.EnvPrefix, flagSet, c.plugins)
+	if err != nil {
+		return fmt.Errorf("failed to apply config values: %w", err)
 	}
 
 	if err := c.run(ctx, c.cmd, c.args); err != nil {
@@ -198,95 +276,6 @@ func (c *CLI) addPluginCmd(cmd *Command) {
 	cmd.mutuallyExclusiveFlags = append(cmd.mutuallyExclusiveFlags, c.mutuallyExclusiveFlags...)
 
 	c.pluginCommands = append(c.pluginCommands, cmd)
-}
-
-// runFirstPass does the priority checks of the program. It checks it
-// the "--version" or "--help" flags were invoked. It should run before entering
-// the rest of the execution to have all of the command-line flags and
-// configuration options from the plugin available when the final parsing of
-// the configuration is done. The function returns true if the execution should
-// not return after this function.
-func (c *CLI) runFirstPass(ctx context.Context) (bool, error) {
-	args := os.Args
-	fs := c.initFirstPassFlags()
-
-	// Ignore errors for now as we want to get all of the flags from plugins
-	// first.
-	_ = fs.Parse(args)
-
-	help, err := fs.GetBool("help")
-	if err != nil {
-		return false, fmt.Errorf(
-			"failed to get the value for command-line option '--help': %w",
-			err,
-		)
-	}
-
-	if help {
-		if err = printHelp(); err != nil {
-			return false, fmt.Errorf("failed to print the usage info: %w", err)
-		}
-
-		return false, nil
-	}
-
-	version, err := fs.GetBool("version")
-	if err != nil {
-		return false, fmt.Errorf(
-			"failed to get the value for command-line option '--version': %w",
-			err,
-		)
-	}
-
-	if version {
-		if err = printVersion(); err != nil {
-			return false, fmt.Errorf("failed to print the version info: %w", err)
-		}
-
-		return false, nil
-	}
-
-	// The first-pass config will be replaced by the "real" config later.
-	// TODO: Add a faster parsing function for the first-pass config.
-	c.cfg, err = c.parseConfig(ctx, fs)
-	if err != nil {
-		return false, fmt.Errorf("failed to parse the first-pass config: %w", err)
-	}
-
-	// Initialize the output streams for user output.
-	iostreams.Streams = iostreams.New(c.cfg.Quiet, c.cfg.Verbose, c.cfg.Color)
-
-	if err := logging.Init(c.cfg.Logging); err != nil {
-		return false, fmt.Errorf("failed to init the logger: %w", err)
-	}
-
-	slog.InfoContext(ctx, "logging initialized")
-
-	return true, nil
-}
-
-// initFirstPassFlags creates a temporary flag set for parsing the command-line
-// arguments during the first pass before loading the plugins.
-func (c *CLI) initFirstPassFlags() *flags.FlagSet {
-	fs := flags.NewFlagSet(c.flags.Name(), pflag.ContinueOnError)
-
-	fs.AddFlagSet(c.flags)
-
-	return fs
-}
-
-// parseConfig parses the configuration from the configuration files,
-// environment variables, and command-line flags. It returns a pointer to the
-// configuration and any errors encountered.
-func (c *CLI) parseConfig(ctx context.Context, fs *flags.FlagSet) (*config.Config, error) {
-	cfg, err := config.Parse(fs, c.plugins)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse the config: %w", err)
-	}
-
-	slog.InfoContext(ctx, "config parsed", "config", cfg)
-
-	return cfg, nil
 }
 
 // loadPlugins finds and executes all of the plugins in the plugins directory
@@ -379,50 +368,6 @@ func (c *CLI) addPluginCommands() error {
 
 	c.allCommands = append(c.allCommands, c.commands...)
 	c.allCommands = append(c.allCommands, c.pluginCommands...)
-
-	return nil
-}
-
-// setup runs the setup phase of the program.
-func (c *CLI) setup(ctx context.Context) error {
-	var err error
-
-	args := os.Args
-
-	// TODO: Should we make sure that CommandLine is not used and should we do
-	// it this way?
-	pflag.CommandLine.VisitAll(func(f *pflag.Flag) {
-		panic(fmt.Sprintf("flag %q is set in the CommandLine flag set", f.Name))
-	})
-	// Matches merging flags for commands.
-	// c.flags.AddFlagSet(pflag.CommandLine)
-	slog.DebugContext(ctx, "parsing command-line arguments", "args", args)
-
-	c.cmd, args = c.findSubcommand(ctx, args)
-
-	var flagSet *flags.FlagSet
-
-	if c.cmd == nil {
-		flagSet = c.flags
-	} else {
-		c.cmd.mergeFlags()
-		flagSet = c.cmd.Flags()
-	}
-
-	if err := flagSet.Parse(args); err != nil {
-		return fmt.Errorf("failed to parse command-line arguments: %w", err)
-	}
-
-	c.args = flagSet.Args()
-
-	if err := c.checkMutuallyExclusiveFlags(c.cmd); err != nil {
-		return fmt.Errorf("%w", err)
-	}
-
-	c.cfg, err = c.parseConfig(ctx, flagSet)
-	if err != nil {
-		return fmt.Errorf("%w", err)
-	}
 
 	return nil
 }
