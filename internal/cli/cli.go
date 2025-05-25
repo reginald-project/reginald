@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 
 	"github.com/anttikivi/reginald/internal/config"
@@ -136,16 +135,18 @@ func (c *CLI) DeferredErr() error {
 // correct command to run, and executes it. An error is returned on user errors.
 // The function panics if it is called with invalid program configuration.
 func (c *CLI) Execute(ctx context.Context) error {
-	args := os.Args
-	fs := flags.NewFlagSet(c.flags.Name(), pflag.ContinueOnError)
+	var flagSet *flags.FlagSet
 
-	fs.AddFlagSet(c.flags)
+	args := os.Args
+	flagSet = flags.NewFlagSet(c.flags.Name(), pflag.ContinueOnError)
+
+	flagSet.AddFlagSet(c.flags)
 
 	// Ignore errors for now as we want to get all of the flags from plugins
 	// first.
-	_ = fs.Parse(args)
+	_ = flagSet.Parse(args)
 
-	help, err := fs.GetBool("help")
+	help, err := flagSet.GetBool("help")
 	if err != nil {
 		return fmt.Errorf("failed to get the value for command-line option '--help': %w", err)
 	}
@@ -158,7 +159,7 @@ func (c *CLI) Execute(ctx context.Context) error {
 		return nil
 	}
 
-	version, err := fs.GetBool("version")
+	version, err := flagSet.GetBool("version")
 	if err != nil {
 		return fmt.Errorf("failed to get the value for command-line option '--version': %w", err)
 	}
@@ -171,7 +172,7 @@ func (c *CLI) Execute(ctx context.Context) error {
 		return nil
 	}
 
-	c.cfg, err = config.Parse(ctx, fs, nil)
+	c.cfg, err = config.Parse(ctx, flagSet, nil)
 	if err != nil {
 		return fmt.Errorf("failed to parse the config: %w", err)
 	}
@@ -216,8 +217,6 @@ func (c *CLI) Execute(ctx context.Context) error {
 
 	c.cmd, args = c.findSubcommand(ctx, args)
 
-	var flagSet *flags.FlagSet
-
 	if c.cmd == nil {
 		flagSet = c.flags
 	} else {
@@ -235,12 +234,16 @@ func (c *CLI) Execute(ctx context.Context) error {
 		return fmt.Errorf("%w", err)
 	}
 
-	v := reflect.ValueOf(c.cfg).Elem()
-
-	err = config.ApplyOverrides(ctx, c.cfg, v, config.EnvPrefix, flagSet, c.plugins)
+	c.cfg, err = config.Parse(ctx, flagSet, nil)
 	if err != nil {
-		return fmt.Errorf("failed to apply config values: %w", err)
+		return fmt.Errorf("failed to parse the config: %w", err)
 	}
+
+	// v := reflect.ValueOf(c.cfg).Elem()
+	// err = config.ApplyOverrides(ctx, c.cfg, v, config.EnvPrefix, flagSet, c.plugins)
+	// if err != nil {
+	// 	return fmt.Errorf("failed to apply config values: %w", err)
+	// }
 
 	if err := c.run(ctx, c.cmd, c.args); err != nil {
 		return fmt.Errorf("%w", err)
@@ -460,7 +463,16 @@ func (c *CLI) findSubcommand(ctx context.Context, args []string) (*Command, []st
 	}
 
 	if cmd == nil {
-		logging.DebugContext(ctx, "no command found", "cmd", os.Args[0], "args", args, "flags", flags)
+		logging.DebugContext(
+			ctx,
+			"no command found",
+			"cmd",
+			os.Args[0],
+			"args",
+			args,
+			"flags",
+			flags,
+		)
 	} else {
 		logging.DebugContext(ctx, "found subcommand", "cmd", cmd.Name, "args", args, "flags", flags)
 	}

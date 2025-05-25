@@ -41,14 +41,14 @@ type Config struct {
 	PluginDir string `mapstructure:"plugin-dir"`
 
 	// Quiet tells the program to suppress all other output than errors.
-	Quiet bool `flag:"," mapstructure:"quiet"`
+	Quiet bool `mapstructure:"quiet"`
 
 	// Tasks contains tasks and the configs for them as given in the config
 	// file.
 	Tasks []task.Config `mapstructure:"tasks"`
 
 	// Verbose tells the program to print more verbose output.
-	Verbose bool `flag:"," mapstructure:"verbose"`
+	Verbose bool `mapstructure:"verbose"`
 
 	// Plugins contains the rest of the config options which should only be
 	// plugin-defined options.

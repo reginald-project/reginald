@@ -89,7 +89,7 @@ func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin,
 		eg.Go(func() error {
 			defer handlePanic()
 
-			p, err := New(ctx, f)
+			p, err := New(ctx, f) //nolint:varnamelen
 			if err != nil {
 				return fmt.Errorf("failed to create a new plugin for path %s; %w", f, err)
 			}

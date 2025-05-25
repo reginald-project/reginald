@@ -590,7 +590,14 @@ func (p *Plugin) shutdown(ctx context.Context) error {
 	// TODO: Check the response.
 	_, err := p.call(ctx, rpp.MethodShutdown, nil)
 	if err != nil {
-		logging.WarnContext(ctx, "error when calling shutdown", "plugin", p.Name, "err", err.Error())
+		logging.WarnContext(
+			ctx,
+			"error when calling shutdown",
+			"plugin",
+			p.Name,
+			"err",
+			err.Error(),
+		)
 	}
 
 	err = p.notify(ctx, rpp.MethodExit, nil)
@@ -632,7 +639,14 @@ func (p *Plugin) start(ctx context.Context) error {
 		return fmt.Errorf("plugin execution from %s failed: %w", p.cmd.Path, err)
 	}
 
-	logging.InfoContext(ctx, "started a plugin process", "path", p.cmd.Path, "pid", p.cmd.Process.Pid)
+	logging.InfoContext(
+		ctx,
+		"started a plugin process",
+		"path",
+		p.cmd.Path,
+		"pid",
+		p.cmd.Process.Pid,
+	)
 
 	p.doneCh = make(chan error, 1)
 
