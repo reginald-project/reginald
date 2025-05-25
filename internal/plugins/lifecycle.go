@@ -3,10 +3,10 @@ package plugins
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"sync"
 
 	"github.com/anttikivi/reginald/internal/iostreams"
+	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/panichandler"
 	"golang.org/x/sync/errgroup"
 )
@@ -26,21 +26,21 @@ func Load(ctx context.Context, files []string) ([]*Plugin, error) {
 			defer handlePanic()
 
 			if err := <-p.doneCh; err != nil {
-				slog.ErrorContext(ctx, "plugin quit unexpectedly", "plugin", p.Name, "err", err)
+				logging.ErrorContext(ctx, "plugin quit unexpectedly", "plugin", p.Name, "err", err)
 				iostreams.Errorf("Plugin %q quit unexpectedly", p.Name)
 				iostreams.PrintErrf("Error: %v\n", err)
 			}
 		}()
 	}
 
-	slog.InfoContext(ctx, "plugins loaded", "plugins", plugins)
+	logging.InfoContext(ctx, "plugins loaded", "plugins", plugins)
 
 	return plugins, nil
 }
 
 // ShutdownAll tries to gracefully shut down all of the plugins.
 func ShutdownAll(ctx context.Context, plugins []*Plugin) error {
-	slog.InfoContext(ctx, "shutting down plugins")
+	logging.InfoContext(ctx, "shutting down plugins")
 
 	eg, gctx := errgroup.WithContext(ctx)
 
@@ -54,7 +54,7 @@ func ShutdownAll(ctx context.Context, plugins []*Plugin) error {
 				return fmt.Errorf("%w", err)
 			}
 
-			slog.DebugContext(gctx, "shutdown successful", "plugin", p.Name)
+			logging.DebugContext(gctx, "shutdown successful", "plugin", p.Name)
 
 			return nil
 		})
@@ -64,7 +64,7 @@ func ShutdownAll(ctx context.Context, plugins []*Plugin) error {
 		return fmt.Errorf("%w", err)
 	}
 
-	slog.InfoContext(ctx, "all plugins shut down successfully")
+	logging.InfoContext(ctx, "all plugins shut down successfully")
 
 	return nil
 }
@@ -100,7 +100,7 @@ func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin,
 
 			if err := p.start(tctx); err != nil {
 				if ignoreErrors {
-					slog.ErrorContext(tctx, "failed to start plugin", "path", f, "err", err)
+					logging.ErrorContext(tctx, "failed to start plugin", "path", f, "err", err)
 					iostreams.Errorf("Failed to start plugin %q\n", f)
 					iostreams.PrintErrf("Error: %v\n", err)
 
@@ -112,7 +112,7 @@ func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin,
 
 			if err := p.handshake(tctx); err != nil {
 				if ignoreErrors {
-					slog.ErrorContext(tctx, "handshake failed", "path", f, "err", err)
+					logging.ErrorContext(tctx, "handshake failed", "path", f, "err", err)
 					iostreams.Errorf("Handshake with %q failed\n", f)
 					iostreams.PrintErrf("Error: %v\n", err)
 
@@ -124,7 +124,7 @@ func loadAll(ctx context.Context, files []string, ignoreErrors bool) ([]*Plugin,
 
 			if err := p.populateConfigs(); err != nil {
 				if ignoreErrors {
-					slog.ErrorContext(
+					logging.ErrorContext(
 						tctx,
 						"config resolution failed",
 						"plugin",

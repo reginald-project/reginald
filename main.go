@@ -6,7 +6,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -49,8 +48,10 @@ func run() int {
 		return 1
 	}
 
-	slog.DebugContext(ctx, "bootstrap logger initialized")
-	slog.InfoContext(
+	logging.TraceContext(ctx, "trace message")
+
+	logging.DebugContext(ctx, "bootstrap logger initialized")
+	logging.InfoContext(
 		ctx,
 		"bootstrapping Reginald",
 		"version",

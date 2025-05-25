@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -172,7 +171,7 @@ func (c *CLI) Execute(ctx context.Context) error {
 		return nil
 	}
 
-	c.cfg, err = config.Parse(ctx, fs, c.plugins)
+	c.cfg, err = config.Parse(ctx, fs, nil)
 	if err != nil {
 		return fmt.Errorf("failed to parse the config: %w", err)
 	}
@@ -184,7 +183,7 @@ func (c *CLI) Execute(ctx context.Context) error {
 		return fmt.Errorf("failed to init the logger: %w", err)
 	}
 
-	slog.InfoContext(ctx, "logging initialized")
+	logging.InfoContext(ctx, "logging initialized")
 
 	if err := c.loadPlugins(ctx); err != nil {
 		return fmt.Errorf("failed to resolve plugins: %w", err)
@@ -213,7 +212,7 @@ func (c *CLI) Execute(ctx context.Context) error {
 	pflag.CommandLine.VisitAll(func(f *pflag.Flag) {
 		panic(fmt.Sprintf("flag %q is set in the CommandLine flag set", f.Name))
 	})
-	slog.DebugContext(ctx, "parsing command-line arguments", "args", args)
+	logging.DebugContext(ctx, "parsing command-line arguments", "args", args)
 
 	c.cmd, args = c.findSubcommand(ctx, args)
 
@@ -295,7 +294,7 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 		path := filepath.Join(dir, entry.Name())
 
 		if entry.IsDir() {
-			slog.DebugContext(ctx, "plugin file is a directory", "path", path)
+			logging.DebugContext(ctx, "plugin file is a directory", "path", path)
 
 			continue
 		}
@@ -310,7 +309,7 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 		}
 
 		if info.Mode()&0o111 == 0 {
-			slog.DebugContext(ctx, "plugin file is not executable", "path", path)
+			logging.DebugContext(ctx, "plugin file is not executable", "path", path)
 
 			continue
 		}
@@ -320,7 +319,7 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 		}
 	}
 
-	slog.DebugContext(ctx, "performed the plugin lookup", "plugins", pluginFiles)
+	logging.DebugContext(ctx, "performed the plugin lookup", "plugins", pluginFiles)
 
 	if c.plugins, err = plugins.Load(ctx, pluginFiles); err != nil {
 		return fmt.Errorf("failed to load the plugins: %w", err)
@@ -461,9 +460,9 @@ func (c *CLI) findSubcommand(ctx context.Context, args []string) (*Command, []st
 	}
 
 	if cmd == nil {
-		slog.DebugContext(ctx, "no command found", "cmd", os.Args[0], "args", args, "flags", flags)
+		logging.DebugContext(ctx, "no command found", "cmd", os.Args[0], "args", args, "flags", flags)
 	} else {
-		slog.DebugContext(ctx, "found subcommand", "cmd", cmd.Name, "args", args, "flags", flags)
+		logging.DebugContext(ctx, "found subcommand", "cmd", cmd.Name, "args", args, "flags", flags)
 	}
 
 	args = append(args, flags...)

@@ -13,6 +13,7 @@ import (
 	"unicode"
 
 	"github.com/anttikivi/reginald/internal/flags"
+	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/plugins"
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/pelletier/go-toml/v2"
@@ -141,6 +142,8 @@ func ApplyOverrides(
 
 		value := v.Field(i)
 		field := v.Type().Field(i)
+
+		logging.TraceContext(ctx, "checking config field", "field", field.Name)
 
 		if !value.CanSet() {
 			continue

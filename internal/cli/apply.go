@@ -2,7 +2,8 @@ package cli
 
 import (
 	"context"
-	"log/slog"
+
+	"github.com/anttikivi/reginald/internal/logging"
 )
 
 // NewApply returns a new apply command.
@@ -18,13 +19,13 @@ func NewApply() *Command {
 }
 
 func setupApply(_ context.Context, cmd, _ *Command, _ []string) error {
-	slog.Info("running setup", "cmd", cmd.Name)
+	logging.Info("running setup", "cmd", cmd.Name)
 
 	return nil
 }
 
 func runApply(_ context.Context, _ *Command, _ []string) error {
-	slog.Info("running apply")
+	logging.Info("running apply")
 
 	return nil
 }
