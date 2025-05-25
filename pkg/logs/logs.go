@@ -9,10 +9,6 @@ import (
 	"strings"
 )
 
-// A Level is the importance or severity of a log event. The higher the level,
-// the more important or severe the event.
-type Level slog.Level //nolint:recvcheck // TODO: Can the receivers have the same type?
-
 // Names for common levels.
 const (
 	LevelTrace Level = -8
@@ -21,6 +17,15 @@ const (
 	LevelWarn        = Level(slog.LevelWarn)
 	LevelError       = Level(slog.LevelError)
 )
+
+// Errors for the log utilities.
+var (
+	errUnknownName = errors.New("level has unknown name")
+)
+
+// A Level is the importance or severity of a log event. The higher the level,
+// the more important or severe the event.
+type Level slog.Level //nolint:recvcheck // TODO: Can the receivers have the same type?
 
 // Level returns the [slog.Level] for l.
 func (l Level) Level() slog.Level {
@@ -121,7 +126,7 @@ func (l *Level) parse(s string) (err error) {
 	case "ERROR":
 		*l = LevelError
 	default:
-		return errors.New("unknown name")
+		return fmt.Errorf("%w: %s", errUnknownName, name)
 	}
 
 	*l += Level(offset)

@@ -142,10 +142,11 @@ func New(ctx context.Context, path string) (*Plugin, error) {
 		// The base name of the plugin file is used until the real name is
 		// received.
 		HandshakeResult: rpp.HandshakeResult{
-			Handshake: rpp.DefaultHandshakeParams().Handshake,
-			Name:      filepath.Base(path),
-			Commands:  []rpp.CommandInfo{},
-			Tasks:     []rpp.TaskInfo{},
+			Handshake:     rpp.DefaultHandshakeParams().Handshake,
+			Name:          filepath.Base(path),
+			PluginConfigs: []rpp.ConfigEntry{},
+			Commands:      []rpp.CommandInfo{},
+			Tasks:         []rpp.TaskInfo{},
 		},
 		ConfigEntries:  nil,
 		lastID:         atomic.Int64{},
@@ -489,6 +490,7 @@ func (p *Plugin) populateConfigs() error {
 					Key:          f.Name,
 					DefaultValue: f.DefaultValue,
 					Type:         f.Type,
+					EnvOverride:  "",
 				}
 				entries = append(entries, c)
 			}

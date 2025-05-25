@@ -42,6 +42,7 @@ linters:
         - '^github\.com/anttikivi/reginald/pkg/rpp\.Message$'
     funlen:
       lines: 100
+      statements: 60
       ignore-comments: true
     goconst:
       find-duplicates: true
