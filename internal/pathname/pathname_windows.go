@@ -10,17 +10,17 @@ import (
 // expandOSEnv replaces %var%, ${var}, or $var in the string according to the
 // values of the current environment variables. References to undefined
 // variables are replaced by the empty string.
-func expandOSEnv(path string) string {
-	if strings.Contains(path, "%") {
+func expandOSEnv(path Path) Path {
+	if strings.Contains(string(path), "%") {
 		path = expandWinEnv(path)
 	}
 
-	path = os.ExpandEnv(path)
+	path = Path(os.ExpandEnv(string(path)))
 
 	return path
 }
 
-func expandWinEnv(s string) string {
+func expandWinEnv(s Path) Path {
 	var buf []byte
 	// %% is all ASCII, so bytes are fine for this operation.
 	i := 0
@@ -39,7 +39,7 @@ func expandWinEnv(s string) string {
 			if k == j+1 {
 				buf = append(buf, '%')
 			} else if s[k] == '%' {
-				buf = append(buf, os.Getenv(s[j+1:k])...)
+				buf = append(buf, os.Getenv(string(s[j+1:k]))...)
 			} else {
 				buf = append(buf, s[j:k+1]...)
 			}
@@ -53,7 +53,7 @@ func expandWinEnv(s string) string {
 		return s
 	}
 
-	return string(buf) + s[i:]
+	return Path(buf) + s[i:]
 }
 
 // isAlphaNum reports whether the byte is an ASCII letter, number, or

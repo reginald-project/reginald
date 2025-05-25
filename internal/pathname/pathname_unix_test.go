@@ -12,9 +12,9 @@ import (
 
 func TestAbs(t *testing.T) {
 	tests := []struct {
-		path    string
+		path    pathname.Path
 		env     map[string]string
-		want    string
+		want    pathname.Path
 		wantErr bool
 	}{
 		{
@@ -104,7 +104,7 @@ func TestAbs(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.path, func(t *testing.T) {
+		t.Run(string(tt.path), func(t *testing.T) {
 			for k, v := range tt.env {
 				t.Setenv(k, v)
 			}
@@ -130,8 +130,8 @@ func TestExpandUser(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		path    string
-		want    string
+		path    pathname.Path
+		want    pathname.Path
 		wantErr bool
 	}{
 		{
@@ -172,7 +172,7 @@ func TestExpandUser(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.path, func(t *testing.T) {
+		t.Run(string(tt.path), func(t *testing.T) {
 			t.Parallel()
 
 			got, gotErr := pathname.Abs(tt.path)
@@ -192,20 +192,20 @@ func TestExpandUser(t *testing.T) {
 	}
 }
 
-func cwd() string {
+func cwd() pathname.Path {
 	path, _ := os.Getwd()
 
-	return path
+	return pathname.Path(path)
 }
 
-func home() string {
+func home() pathname.Path {
 	path, _ := os.UserHomeDir()
 
-	return path
+	return pathname.Path(path)
 }
 
-func currentUser() string {
+func currentUser() pathname.Path {
 	u, _ := user.Current()
 
-	return u.Username
+	return pathname.Path(u.Username)
 }
