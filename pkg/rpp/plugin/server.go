@@ -108,13 +108,15 @@ func (p *Plugin) handshake(msg *rpp.Message) error {
 			Name:      c.Name(),
 			UsageLine: c.UsageLine(),
 			Flags:     c.Flags(),
+			Configs:   nil,
 		}
 		cmdInfos = append(cmdInfos, info)
 	}
 
 	for _, t := range p.tasks {
 		info := rpp.TaskInfo{
-			Name: t.Name(),
+			Name:    t.Name(),
+			Configs: nil,
 		}
 		taskInfos = append(taskInfos, info)
 	}
@@ -124,9 +126,10 @@ func (p *Plugin) handshake(msg *rpp.Message) error {
 			Protocol:        rpp.Name,
 			ProtocolVersion: rpp.Version,
 		},
-		Name:     p.name,
-		Commands: cmdInfos,
-		Tasks:    taskInfos,
+		Name:          p.name,
+		PluginConfigs: nil,
+		Commands:      cmdInfos,
+		Tasks:         taskInfos,
 	}
 
 	if err := p.respond(msg.ID, result); err != nil {

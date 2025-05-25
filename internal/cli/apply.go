@@ -18,14 +18,14 @@ func NewApply() *Command {
 	return c
 }
 
-func setupApply(_ context.Context, cmd, _ *Command, _ []string) error {
-	logging.Info("running setup", "cmd", cmd.Name)
+func setupApply(ctx context.Context, cmd, _ *Command, _ []string) error {
+	logging.InfoContext(ctx, "running setup", "cmd", cmd.Name)
 
 	return nil
 }
 
-func runApply(_ context.Context, _ *Command, _ []string) error {
-	logging.Info("running apply")
+func runApply(ctx context.Context, _ *Command, _ []string) error {
+	logging.InfoContext(ctx, "running apply")
 
 	return nil
 }

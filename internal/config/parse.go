@@ -100,12 +100,13 @@ func Parse(
 	normalizeKeys(rawCfg)
 	logging.TraceContext(ctx, "normalized keys", "cfg", rawCfg)
 
-	cfg := &Config{}
-
-	d, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+	cfg := &Config{}                              //nolint:exhaustruct
+	decoderConfig := &mapstructure.DecoderConfig{ //nolint:exhaustruct
 		DecodeHook: mapstructure.TextUnmarshallerHookFunc(),
 		Result:     cfg,
-	})
+	}
+
+	d, err := mapstructure.NewDecoder(decoderConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create mapstructure decoder: %w", err)
 	}
@@ -118,7 +119,7 @@ func Parse(
 		fs:       flagSet,
 		plugins:  plugins,
 		value:    reflect.ValueOf(cfg).Elem(),
-		field:    reflect.StructField{},
+		field:    reflect.StructField{}, //nolint:exhaustruct
 		envName:  EnvPrefix,
 		envValue: "",
 		envOk:    false,
@@ -128,7 +129,7 @@ func Parse(
 		return nil, fmt.Errorf("%w", err)
 	}
 
-	logging.Trace("parsed config", "cfg", cfg)
+	logging.TraceContext(ctx, "parsed config", "cfg", cfg)
 
 	return cfg, nil
 }
@@ -221,7 +222,7 @@ func ApplyOverrides(ctx context.Context, parent *valueParser) error {
 			continue
 		}
 
-		err = setConfigField(parser)
+		err = setConfigField(ctx, parser)
 		if err != nil {
 			return fmt.Errorf("%w", err)
 		}
@@ -282,11 +283,11 @@ func toFlag(name string) string {
 
 // setConfigField sets the value of the given config field in the struct from
 // environment variable or command-line flag.
-func setConfigField(parser *valueParser) error {
+func setConfigField(ctx context.Context, parser *valueParser) error {
 	var err error
 
 	if parser.envValue != "" {
-		parser.envOk, err = tryUnmarshalText(parser.value, parser.field, parser.envValue)
+		parser.envOk, err = tryUnmarshalText(ctx, parser.value, parser.field, parser.envValue)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to unmarshal text from %s=%q: %w",
@@ -333,7 +334,12 @@ func setConfigField(parser *valueParser) error {
 // tryUnmarshalText checks if it can use [encoding.TextUnmarshaler] to unmarshal
 // the given value and set it to the field. The first return value tells whether
 // this was successful and the second is error.
-func tryUnmarshalText(fv reflect.Value, sf reflect.StructField, val string) (bool, error) {
+func tryUnmarshalText(
+	ctx context.Context,
+	fv reflect.Value,
+	sf reflect.StructField,
+	val string,
+) (bool, error) {
 	if reflect.PointerTo(fv.Type()).Implements(textUnmarshalerType) {
 		unmarshaler, ok := fv.Addr().Interface().(encoding.TextUnmarshaler)
 		if !ok {
@@ -349,7 +355,7 @@ func tryUnmarshalText(fv reflect.Value, sf reflect.StructField, val string) (boo
 			return false, fmt.Errorf("%w", err)
 		}
 
-		logging.Trace("unmarshaled value", "value", fv.Interface())
+		logging.TraceContext(ctx, "unmarshaled value", "value", fv.Interface())
 
 		return true, nil
 	}
