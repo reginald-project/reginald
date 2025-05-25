@@ -79,7 +79,7 @@ func InitBootstrap() error {
 			slog.New(
 				slog.NewJSONHandler(
 					BootstrapWriter,
-					&slog.HandlerOptions{ //nolint:exhaustruct
+					&slog.HandlerOptions{
 						AddSource:   true,
 						Level:       logs.LevelTrace,
 						ReplaceAttr: replaceAttrFunc(""),
@@ -224,7 +224,12 @@ func replaceAttrFunc(timeFormat string) func([]string, slog.Attr) slog.Attr {
 		if a.Key == slog.LevelKey {
 			level, ok := a.Value.Any().(slog.Level)
 			if !ok {
-				panic(fmt.Sprintf("failed to convert level value to slog.Level: %[1]v (%[1]T)", a.Value.Any()))
+				panic(
+					fmt.Sprintf(
+						"failed to convert level value to slog.Level: %[1]v (%[1]T)",
+						a.Value.Any(),
+					),
+				)
 			}
 
 			return slog.String(slog.LevelKey, logs.Level(level).String())

@@ -11,7 +11,7 @@ import (
 
 // A Level is the importance or severity of a log event. The higher the level,
 // the more important or severe the event.
-type Level slog.Level
+type Level slog.Level //nolint:recvcheck // TODO: Can the receivers have the same type?
 
 // Names for common levels.
 const (
@@ -66,8 +66,9 @@ func (l Level) MarshalJSON() ([]byte, error) {
 func (l *Level) UnmarshalJSON(data []byte) error {
 	s, err := strconv.Unquote(string(data))
 	if err != nil {
-		return err
+		return fmt.Errorf("%w", err)
 	}
+
 	return l.parse(s)
 }
 
@@ -98,13 +99,16 @@ func (l *Level) parse(s string) (err error) {
 
 	name := s
 	offset := 0
+
 	if i := strings.IndexAny(s, "+-"); i >= 0 {
 		name = s[:i]
+
 		offset, err = strconv.Atoi(s[i:])
 		if err != nil {
-			return err
+			return fmt.Errorf("%w", err)
 		}
 	}
+
 	switch strings.ToUpper(name) {
 	case "TRACE":
 		*l = LevelTrace
@@ -119,6 +123,8 @@ func (l *Level) parse(s string) (err error) {
 	default:
 		return errors.New("unknown name")
 	}
+
 	*l += Level(offset)
+
 	return nil
 }
