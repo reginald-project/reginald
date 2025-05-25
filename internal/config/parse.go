@@ -53,6 +53,8 @@ func Parse(
 		return nil, fmt.Errorf("failed to resolve config file: %w", err)
 	}
 
+	logging.TraceContext(ctx, "reading config file", "path", configFile)
+
 	data, err := os.ReadFile(filepath.Clean(configFile))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
@@ -64,7 +66,9 @@ func Parse(
 		return nil, fmt.Errorf("failed to decode the config file: %w", err)
 	}
 
+	logging.TraceContext(ctx, "unmarshaled config file", "cfg", rawCfg)
 	normalizeKeys(rawCfg)
+	logging.TraceContext(ctx, "normalized keys", "cfg", rawCfg)
 
 	cfg := &Config{}
 
@@ -80,12 +84,12 @@ func Parse(
 		return nil, fmt.Errorf("failed to read environment variables for config: %w", err)
 	}
 
-	fmt.Println(cfg)
-
 	v := reflect.ValueOf(cfg).Elem()
 	if err := ApplyOverrides(ctx, cfg, v, EnvPrefix, flagSet, plugins); err != nil {
 		return nil, fmt.Errorf("%w", err)
 	}
+
+	logging.Trace("parsed config", "cfg", cfg)
 
 	return cfg, nil
 }
@@ -117,9 +121,11 @@ func normalizeKeys(cfg map[string]any) {
 			key += strings.ToLower(string(r))
 		}
 
-		cfg[key] = v
+		if k != key {
+			delete(cfg, k)
 
-		delete(cfg, k)
+			cfg[key] = v
+		}
 
 		if m, ok := v.(map[string]any); ok {
 			normalizeKeys(m)
@@ -169,6 +175,8 @@ func ApplyOverrides(
 		flagName := toFlag(field.Name)
 		val := os.Getenv(varname)
 		ok := false
+
+		logging.TraceContext(ctx, "resolved variables for the field", "field", field.Name, "flag", flagName, "envvar", varname, "env", val)
 
 		if val != "" {
 			ok, err = tryUnmarshalText(value, field, val)
@@ -329,6 +337,8 @@ func tryUnmarshalText(fv reflect.Value, sf reflect.StructField, val string) (boo
 		if err := unmarshaler.UnmarshalText([]byte(val)); err != nil {
 			return false, fmt.Errorf("%w", err)
 		}
+
+		logging.Trace("unmarshaled value", "value", fv.Interface())
 
 		return true, nil
 	}
