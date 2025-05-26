@@ -4,6 +4,8 @@
 package config
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -19,10 +21,23 @@ import (
 // them from environment variables.
 const EnvPrefix = "REGINALD" // prefix used for the environment variables.
 
+// Possible values for [ColorMode].
+const (
+	ColorAuto ColorMode = iota
+	ColorAlways
+	ColorNever
+)
+
 const (
 	defaultFileName  = "reginald"
 	defaultLogOutput = "~/.local/state/reginald.log"
 )
+
+// errColorMode is returned when an invalid value is parsed into [ColorMode].
+var errColorMode = errors.New("invalid color mode")
+
+// ColorMode represent the color output setting of the program.
+type ColorMode int
 
 // Config is the parsed configuration of the program run. There should be only
 // one effective Config per run.
@@ -32,7 +47,7 @@ const (
 // no longer be used.
 type Config struct {
 	// Color tells whether colors should be enabled in the user output.
-	Color bool `mapstructure:"color"`
+	Color ColorMode `default:"auto" mapstructure:"color"`
 
 	// Logging contains the config values for logging.
 	Logging logging.Config `mapstructure:"logging"`
@@ -53,6 +68,78 @@ type Config struct {
 	// Plugins contains the rest of the config options which should only be
 	// plugin-defined options.
 	Plugins map[string]any `mapstructure:",remain"`
+}
+
+// String returns the string representation of c.
+func (c ColorMode) String() string {
+	switch c {
+	case ColorAlways:
+		return "always"
+	case ColorAuto:
+		return "auto"
+	case ColorNever:
+		return "never"
+	default:
+		return "invalid"
+	}
+}
+
+// Set sets the value of c from the given string s.
+func (c *ColorMode) Set(s string) error {
+	switch s = strings.ToLower(s); s {
+	case "true", "always", "yes", "1":
+		*c = ColorAlways
+	case "false", "never", "no", "0":
+		*c = ColorNever
+	case "auto", "":
+		*c = ColorAuto
+	default:
+		return fmt.Errorf("%w: %q", errColorMode, s)
+	}
+
+	return nil
+}
+
+// Type returns type of c as a string for command-line flags.
+func (c *ColorMode) Type() string {
+	return "ColorMode"
+}
+
+// MarshalJSON encodes c as a JSON value.
+func (c ColorMode) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.String())
+}
+
+// UnmarshalJSON assign the value from the given JSON representation to c.
+func (c *ColorMode) UnmarshalJSON(data []byte) error {
+	var (
+		err error
+		s   string
+	)
+
+	if err = json.Unmarshal(data, &s); err != nil {
+		return fmt.Errorf("failed to unmarshal ColorMode: %w", err)
+	}
+
+	if err = c.Set(s); err != nil {
+		return fmt.Errorf("failed to set ColorMode: %w", err)
+	}
+
+	return nil
+}
+
+// MarshalText encodes c in a textual form.
+func (c ColorMode) MarshalText() ([]byte, error) {
+	return []byte(c.String()), nil
+}
+
+// UnmarshalText assigns the value from the given textual representation to c.
+func (c *ColorMode) UnmarshalText(data []byte) error {
+	if err := c.Set(string(data)); err != nil {
+		return fmt.Errorf("failed to set ColorMode: %w", err)
+	}
+
+	return nil
 }
 
 // DefaultPluginsDir returns the plugins directory to use. It takes the environment
