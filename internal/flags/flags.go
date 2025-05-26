@@ -239,6 +239,28 @@ func (f *FlagSet) StringP(name, shorthand, value, usage, doc string) *string {
 	return p
 }
 
+// Var defines a flag with the specified name and usage string. The type and
+// value of the flag are represented by the first argument, of type
+// [pflag.Value], which typically holds a user-defined implementation of
+// [pflag.Value]. For instance, the caller could create a flag that turns
+// a comma-separated string into a slice of strings by giving the slice
+// the methods of [pflag.Value]; in particular, Set would decompose
+// the comma-separated string into the slice.
+func (f *FlagSet) Var(value pflag.Value, name, usage, doc string) {
+	f.VarP(value, name, "", usage, doc)
+}
+
+// VarP is like Var, but accepts a shorthand letter that can be used after
+// a single dash.
+func (f *FlagSet) VarP(value pflag.Value, name, shorthand, usage, doc string) {
+	flag := f.VarPF(value, name, shorthand, usage)
+
+	f.AddFlag(&Flag{
+		Flag: flag,
+		Doc:  doc,
+	})
+}
+
 // GetPath returns the string value of a flag with the given name and converts
 // it to [fspath.Path].
 func (f *FlagSet) GetPath(name string) (fspath.Path, error) {
