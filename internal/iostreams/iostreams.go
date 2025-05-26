@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"golang.org/x/term"
 )
 
 // escape is the escape character for the escape sequences.
@@ -47,14 +49,27 @@ type IOStreams struct {
 }
 
 // New returns a new IOStreams for the given settings.
-func New(quiet, verbose, colors bool) *IOStreams {
+func New(quiet, verbose bool, colors ColorMode) *IOStreams {
+	var colorsEnabled bool
+
+	switch colors {
+	case ColorAlways:
+		colorsEnabled = true
+	case ColorNever:
+		colorsEnabled = false
+	case ColorAuto:
+		fallthrough
+	default:
+		colorsEnabled = term.IsTerminal(int(os.Stdout.Fd()))
+	}
+
 	s := &IOStreams{ //nolint:exhaustruct // buf is set later
 		errs:          nil,
 		out:           NewLockedWriter(os.Stdout),
 		errOut:        NewLockedWriter(os.Stderr),
 		quiet:         quiet,
 		verbose:       verbose,
-		colorsEnabled: colors,
+		colorsEnabled: colorsEnabled,
 	}
 
 	s.buf = bufio.NewWriter(s.out)
