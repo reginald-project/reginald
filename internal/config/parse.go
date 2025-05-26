@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -17,6 +16,7 @@ import (
 	"github.com/anttikivi/reginald/internal/plugins"
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/pelletier/go-toml/v2"
+	"github.com/spf13/afero"
 )
 
 // Errors returned from the configuration parser.
@@ -75,17 +75,18 @@ type valueParser struct {
 // `--directory` and `--config`.
 func Parse(
 	ctx context.Context,
+	fs afero.Fs,
 	flagSet *flags.FlagSet,
 	plugins []*plugins.Plugin,
 ) (*Config, error) {
-	configFile, err := resolveFile(flagSet)
+	configFile, err := resolveFile(fs, flagSet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve config file: %w", err)
 	}
 
 	logging.TraceContext(ctx, "reading config file", "path", configFile)
 
-	data, err := os.ReadFile(filepath.Clean(configFile))
+	data, err := configFile.Clean().ReadFile(fs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}

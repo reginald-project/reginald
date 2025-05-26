@@ -15,6 +15,7 @@ import (
 	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/pkg/version"
+	"github.com/spf13/afero"
 	"golang.org/x/term"
 )
 
@@ -94,7 +95,9 @@ func panicHandler(r any, t []byte) {
 	}
 
 	if w, ok := logging.BootstrapWriter.(*logging.BufferedFileWriter); ok {
-		if err := w.Flush(); err != nil {
+		// TODO: See if this should use the actual file system in use instead of
+		// defaulting to the OS file system.
+		if err := w.Flush(afero.NewOsFs()); err != nil {
 			buf.WriteString(fmt.Sprintf("\nFailed to write the boostrap log to file: %v\n\n", err))
 			buf.WriteString("The bootstrap logs:\n")
 			buf.Write(w.Bytes())

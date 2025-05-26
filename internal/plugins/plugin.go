@@ -11,17 +11,17 @@ import (
 	"io"
 	"log/slog"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/anttikivi/reginald/internal/fspath"
 	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/panichandler"
-	"github.com/anttikivi/reginald/internal/pathname"
 	"github.com/anttikivi/reginald/pkg/rpp"
+	"github.com/spf13/afero"
 )
 
 // Default values associated with the plugin client.
@@ -102,20 +102,20 @@ type Plugin struct {
 }
 
 // New returns a pointer to a newly created Plugin.
-func New(ctx context.Context, path string) (*Plugin, error) {
-	if ok, err := pathname.IsFile(path); err != nil {
+func New(ctx context.Context, fs afero.Fs, path fspath.Path) (*Plugin, error) {
+	if ok, err := path.IsFile(fs); err != nil {
 		return nil, fmt.Errorf("failed to check if %s is a file: %w", path, err)
 	} else if !ok {
 		return nil, fmt.Errorf("%w: %s", errNotFile, path)
 	}
 
-	c := exec.CommandContext(ctx, filepath.Clean(path)) // #nosec G204 -- sanitized earlier
+	c := exec.CommandContext(ctx, string(path.Clean())) // #nosec G204 -- sanitized earlier
 
 	stdin, err := c.StdinPipe()
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to create standard input pipe for %s: %w",
-			filepath.Base(path),
+			path.Base(),
 			err,
 		)
 	}
@@ -124,7 +124,7 @@ func New(ctx context.Context, path string) (*Plugin, error) {
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to create standard output pipe for %s: %w",
-			filepath.Base(path),
+			path.Base(),
 			err,
 		)
 	}
@@ -133,7 +133,7 @@ func New(ctx context.Context, path string) (*Plugin, error) {
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to create standard error pipe for %s: %w",
-			filepath.Base(path),
+			path.Base(),
 			err,
 		)
 	}
@@ -143,7 +143,7 @@ func New(ctx context.Context, path string) (*Plugin, error) {
 		// received.
 		HandshakeResult: rpp.HandshakeResult{
 			Handshake:     rpp.DefaultHandshakeParams().Handshake,
-			Name:          filepath.Base(path),
+			Name:          string(path.Base()),
 			PluginConfigs: []rpp.ConfigEntry{},
 			Commands:      []rpp.CommandInfo{},
 			Tasks:         []rpp.TaskInfo{},

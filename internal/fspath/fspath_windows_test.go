@@ -1,21 +1,21 @@
 //go:build windows
 
-package pathname_test
+package fspath_test
 
 import (
 	"os"
 	"strings"
 	"testing"
 
-	"github.com/anttikivi/reginald/internal/pathname"
+	"github.com/anttikivi/reginald/internal/fspath"
 )
 
 func TestAbs(t *testing.T) {
-	drive := cwd()[:strings.IndexByte(cwd(), ':')+1]
+	drive := cwd()[:strings.IndexByte(string(cwd()), ':')+1]
 	tests := []struct {
-		path    string
+		path    fspath.Path
 		env     map[string]string
-		want    string
+		want    fspath.Path
 		wantErr bool
 	}{
 		{
@@ -87,12 +87,12 @@ func TestAbs(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.path, func(t *testing.T) {
+		t.Run(string(tt.path), func(t *testing.T) {
 			for k, v := range tt.env {
 				t.Setenv(k, v)
 			}
 
-			got, gotErr := pathname.Abs(tt.path)
+			got, gotErr := tt.path.Abs()
 
 			if gotErr == nil && tt.wantErr {
 				t.Fatal("Abs() succeeded unexpectedly")
@@ -111,9 +111,9 @@ func TestAbs(t *testing.T) {
 
 func TestExpandEnv(t *testing.T) {
 	tests := []struct {
-		path string
+		path fspath.Path
 		env  map[string]string
-		want string
+		want fspath.Path
 	}{
 		{
 			"some/path/%WITHVAR%/here",
@@ -158,12 +158,12 @@ func TestExpandEnv(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.path, func(t *testing.T) {
+		t.Run(string(tt.path), func(t *testing.T) {
 			for k, v := range tt.env {
 				t.Setenv(k, v)
 			}
 
-			got := pathname.ExpandEnv(tt.path)
+			got := tt.path.ExpandEnv()
 
 			if got != tt.want {
 				t.Errorf("ExpandEnv(%q) = %v, want %q", tt.path, got, tt.want)
@@ -176,8 +176,8 @@ func TestExpandUser(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		path    string
-		want    string
+		path    fspath.Path
+		want    fspath.Path
 		wantErr bool
 	}{
 		{
@@ -203,10 +203,10 @@ func TestExpandUser(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.path, func(t *testing.T) {
+		t.Run(string(tt.path), func(t *testing.T) {
 			t.Parallel()
 
-			got, gotErr := pathname.Abs(tt.path)
+			got, gotErr := tt.path.Abs()
 
 			if gotErr == nil && tt.wantErr {
 				t.Fatal("ExpandUser() succeeded unexpectedly")
@@ -223,14 +223,14 @@ func TestExpandUser(t *testing.T) {
 	}
 }
 
-func cwd() string {
+func cwd() fspath.Path {
 	path, _ := os.Getwd()
 
-	return path
+	return fspath.Path(path)
 }
 
-func home() string {
+func home() fspath.Path {
 	path, _ := os.UserHomeDir()
 
-	return path
+	return fspath.Path(path)
 }

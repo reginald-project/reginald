@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sync"
+
+	"github.com/anttikivi/reginald/internal/fspath"
+	"github.com/spf13/afero"
 )
 
 // Default values for the BufferedFileWriter.
@@ -22,14 +24,14 @@ const (
 type BufferedFileWriter struct {
 	buf  *bytes.Buffer
 	mu   sync.Mutex
-	file string
+	file fspath.Path
 }
 
 // NewBufferedFileWriter returns a new bootstrap writer for the given file.
 // The given file must be a valid and absolute path. If it does not exist when
 // the writer flushes, the file will be created.
-func NewBufferedFileWriter(file string) *BufferedFileWriter {
-	if !filepath.IsAbs(file) {
+func NewBufferedFileWriter(file fspath.Path) *BufferedFileWriter {
+	if !file.IsAbs() {
 		panic("tried to set an invalid path to bootstrap writer")
 	}
 
@@ -54,22 +56,22 @@ func (w *BufferedFileWriter) Bytes() []byte {
 }
 
 // File returns path to the file where the logs are written.
-func (w *BufferedFileWriter) File() string {
+func (w *BufferedFileWriter) File() fspath.Path {
 	return w.file
 }
 
 // Flush writes the underlying buffer to the given file, creating the file and
 // the intermediate directories if they don't exist.
-func (w *BufferedFileWriter) Flush() error {
+func (w *BufferedFileWriter) Flush(fs afero.Fs) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	dir := filepath.Dir(w.file)
-	if err := os.MkdirAll(dir, defaultBufFileWriterDirPerm); err != nil {
+	dir := w.file.Dir()
+	if err := dir.MkdirAll(fs, defaultBufFileWriterDirPerm); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
-	f, err := os.OpenFile(w.file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, defaultBufFileWriterPerm)
+	f, err := w.file.OpenFile(fs, os.O_CREATE|os.O_WRONLY|os.O_APPEND, defaultBufFileWriterPerm)
 	if err != nil {
 		return fmt.Errorf("%w", err)
 	}

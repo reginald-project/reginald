@@ -4,15 +4,12 @@ package config
 
 import (
 	"fmt"
-	"path/filepath"
 
-	"github.com/anttikivi/reginald/internal/pathname"
+	"github.com/anttikivi/reginald/internal/fspath"
 )
 
-func defaultPluginsDir() (string, error) {
-	path := filepath.Join("%LOCALAPPDATA%", defaultFileName, "plugins")
-
-	path, err := pathname.Abs(path)
+func defaultPluginsDir() (fspath.Path, error) {
+	path, err := fspath.NewAbs("%LOCALAPPDATA%", defaultFileName, "plugins")
 	if err != nil {
 		return "", fmt.Errorf(
 			"failed to convert Windows plugins directory to absolute path: %w",

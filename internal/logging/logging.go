@@ -18,8 +18,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/anttikivi/reginald/internal/fspath"
 	"github.com/anttikivi/reginald/internal/iostreams"
-	"github.com/anttikivi/reginald/internal/pathname"
 	"github.com/anttikivi/reginald/pkg/logs"
 )
 
@@ -68,7 +68,7 @@ func InitBootstrap() error {
 	if debugVar == "" || (debugVar != "true" && debugVar != "1") {
 		// TODO: Come up with a reasonable default resolving maybe using
 		// `XDG_CACHE_HOME` and some other directory on Windows.
-		path, err := pathname.Abs("~/.cache/reginald/bootstrap.log")
+		path, err := fspath.New("~/.cache/reginald/bootstrap.log").Abs()
 		if err != nil {
 			return fmt.Errorf("failed to create path to bootstrap log file: %w", err)
 		}
@@ -124,6 +124,7 @@ func Init(cfg Config) error {
 	case "stdout":
 		w = iostreams.NewLockedWriter(os.Stdout)
 	default:
+		// TODO: This does not respect the file system in use. Should it?
 		fw, err := os.OpenFile(cfg.Output, os.O_WRONLY|os.O_APPEND|os.O_CREATE, defaultFilePerm)
 		if err != nil {
 			return fmt.Errorf("failed to open log file at %s: %w", cfg.Output, err)
