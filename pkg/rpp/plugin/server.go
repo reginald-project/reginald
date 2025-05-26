@@ -163,6 +163,23 @@ func (p *Plugin) runMethod(msg *rpp.Message) error {
 		if err := p.handshake(msg); err != nil {
 			return fmt.Errorf("%w", err)
 		}
+	case rpp.MethodRunCommand:
+		if msg.ID == nil {
+			err := p.respondError(msg.ID, &rpp.Error{
+				Code:    rpp.InvalidRequest,
+				Message: fmt.Sprintf("method %q was called using a notification", msg.Method),
+				Data:    nil,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to send error response: %w", err)
+			}
+		}
+
+		fmt.Fprintln(os.Stderr, "RUNNING COMMAND")
+
+		if err := p.respond(msg.ID, nil); err != nil {
+			return fmt.Errorf("failed to send response: %w", err)
+		}
 	case rpp.MethodShutdown:
 		if msg.ID == nil {
 			err := p.respondError(msg.ID, &rpp.Error{
