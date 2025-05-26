@@ -12,11 +12,11 @@
 
 <div align="center">
 
+👔 the personal workstation valet
+
 [![CI](https://github.com/anttikivi/reginald/actions/workflows/ci.yml/badge.svg)](https://github.com/anttikivi/reginald/actions/workflows/ci.yml)
 
 </div>
-
-👔 the personal workstation valet
 
 This project is still in early development. More info will be added later.
 
