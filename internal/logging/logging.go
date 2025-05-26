@@ -44,10 +44,10 @@ var (
 
 // Config contains the configuration options for logging.
 type Config struct {
-	Enabled bool       `mapstructure:"enabled"` // whether logging is enabled
-	Format  string     `mapstructure:"format"`  // format of the logs, "json" or "text"
-	Level   logs.Level `mapstructure:"level"`   // logging level
-	Output  string     `mapstructure:"output"`  // destination of the logs
+	Enabled bool       `default:"true" mapstructure:"enabled"` // whether logging is enabled
+	Format  string     `default:"json" mapstructure:"format"`  // format of the logs, "json" or "text"
+	Level   logs.Level `default:"info" mapstructure:"level"`   // logging level
+	Output  string     `mapstructure:"output"`                 // destination of the logs
 }
 
 // InitBootstrap initializes the bootstrap logger and sets it as the default

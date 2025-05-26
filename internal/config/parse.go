@@ -48,18 +48,16 @@ type valueParser struct {
 	// field is the currently parsed struct field.
 	field reflect.StructField
 
+	// defaultValue is the default value of the field as string. It is read from
+	// the "default" struct tag.
+	defaultValue string
+
 	// envName is the name of the environment variable for checking the value
 	// for the current field.
 	envName string
 
 	// envValue is the value of the environment variable for the current field.
 	envValue string
-
-	// envOk tells whether the value from the environment variable has been set.
-	// It is used to check if the unmarshaling using TextUnmarshaler was
-	// successful and the string from the environment doesn't need manual
-	// parsing.
-	envOk bool
 
 	// flagName is the name of the command-line flag for checking the value for
 	// the current field.
@@ -86,9 +84,9 @@ func (p *valueParser) LogValue() slog.Value {
 	attrs = append(attrs, slog.Any("plugins", pluginNames))
 	attrs = append(attrs, slog.Group("value", slog.String("type", p.value.Type().Name()), slog.Any("value", p.value.Interface())))
 	attrs = append(attrs, slog.Group("field", slog.String("name", p.field.Name), slog.String("type", p.field.Type.Name())))
+	attrs = append(attrs, slog.String("defaultValue", p.defaultValue))
 	attrs = append(attrs, slog.String("envName", p.envName))
 	attrs = append(attrs, slog.String("envValue", p.envValue))
-	attrs = append(attrs, slog.Bool("envOk", p.envOk))
 	attrs = append(attrs, slog.String("flagName", p.flagName))
 
 	return slog.GroupValue(attrs...)
@@ -103,12 +101,7 @@ func (p *valueParser) LogValue() slog.Value {
 // The function also resolves the configuration file according to the standard
 // paths for the file or according the flags. The relevant flags are
 // `--directory` and `--config`.
-func Parse(
-	ctx context.Context,
-	fs afero.Fs,
-	flagSet *flags.FlagSet,
-	plugins []*plugins.Plugin,
-) (*Config, error) {
+func Parse(ctx context.Context, fs afero.Fs, flagSet *flags.FlagSet, plugins []*plugins.Plugin) (*Config, error) {
 	configFile, err := resolveFile(fs, flagSet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve config file: %w", err)
@@ -147,14 +140,14 @@ func Parse(
 	}
 
 	parser := &valueParser{
-		flagSet:  flagSet,
-		plugins:  plugins,
-		value:    reflect.ValueOf(cfg).Elem(),
-		field:    reflect.StructField{}, //nolint:exhaustruct
-		envName:  EnvPrefix,
-		envValue: "",
-		envOk:    false,
-		flagName: "",
+		flagSet:      flagSet,
+		plugins:      plugins,
+		value:        reflect.ValueOf(cfg).Elem(),
+		field:        reflect.StructField{}, //nolint:exhaustruct
+		defaultValue: "",
+		envName:      EnvPrefix,
+		envValue:     "",
+		flagName:     "",
 	}
 	if err := ApplyOverrides(ctx, parser); err != nil {
 		return nil, fmt.Errorf("%w", err)
@@ -212,15 +205,16 @@ func ApplyOverrides(ctx context.Context, parent *valueParser) error {
 
 		// TODO: Check the struct tags for env and flags.
 		parser := &valueParser{
-			flagSet:  parent.flagSet,
-			plugins:  parent.plugins,
-			value:    parent.value.Field(i),
-			field:    parent.value.Type().Field(i),
-			envName:  "",
-			envValue: "",
-			envOk:    false,
-			flagName: "",
+			flagSet:      parent.flagSet,
+			plugins:      parent.plugins,
+			value:        parent.value.Field(i),
+			field:        parent.value.Type().Field(i),
+			defaultValue: "",
+			envName:      "",
+			envValue:     "",
+			flagName:     "",
 		}
+		parser.defaultValue = parser.field.Tag.Get("default")
 		parser.envName = toEnv(parser.field.Name, parent.envName)
 		parser.envValue = os.Getenv(parser.envName)
 		parser.flagName = toFlag(parser.field.Name)
@@ -246,12 +240,41 @@ func ApplyOverrides(ctx context.Context, parent *valueParser) error {
 			continue
 		}
 
-		err = setConfigField(ctx, parser)
-		if err != nil {
-			return fmt.Errorf("%w", err)
+		// TODO: Implement the types as they are needed.
+		switch parser.value.Kind() { //nolint:exhaustive
+		case reflect.Bool:
+			err = parser.setBool()
+		case reflect.Int:
+			err = parser.setInt()
+		case reflect.String:
+			if parser.value.Type().Name() == "Path" {
+				err = parser.setPath()
+			} else {
+				err = parser.setString()
+			}
+		case reflect.Struct:
+			panic(
+				fmt.Sprintf(
+					"reached the struct check when converting environment variable to config value in %s: %s",
+					parser.field.Name,
+					parser.value.Kind(),
+				),
+			)
+		default:
+			panic(
+				fmt.Sprintf(
+					"unsupported config field type for %s: %s",
+					parser.field.Name,
+					parser.value.Kind(),
+				),
+			)
 		}
 
-		logging.TraceContext(ctx, "value checked", "parser", parser)
+		if err != nil {
+			return fmt.Errorf("failed to set config value: %w", err)
+		}
+
+		logging.TraceContext(ctx, "config value set", "parser", parser)
 	}
 
 	// TODO: Apply the plugin values to the plugin fields as it is not done
@@ -296,166 +319,112 @@ func toFlag(name string) string {
 	return strings.ToLower(result)
 }
 
-// setConfigField sets the value of the given config field in the struct from
-// environment variable or command-line flag.
-func setConfigField(ctx context.Context, parser *valueParser) error {
-	var err error
+// setBool sets a boolean value from the environment variable or
+// the command-line flag to the currently parsed value.
+func (p *valueParser) setBool() error {
+	var (
+		err         error
+		unmarshaler encoding.TextUnmarshaler
+		x           bool
+	)
 
-	if parser.envValue != "" {
-		parser.envOk, err = tryUnmarshalText(ctx, parser.value, parser.field, parser.envValue)
-		if err != nil {
-			return fmt.Errorf(
-				"failed to unmarshal text from %s=%q: %w",
-				parser.envName,
-				parser.envValue,
-				err,
-			)
+	unmarshal := reflect.PointerTo(p.value.Type()).Implements(textUnmarshalerType)
+	if unmarshal {
+		var ok bool
+
+		unmarshaler, ok = p.value.Addr().Interface().(encoding.TextUnmarshaler)
+		if !ok {
+			panic(fmt.Sprintf("casting field %q to TextUnmarshaler", p.field.Name))
 		}
 	}
 
-	// TODO: Implement the types as they are needed.
-	switch parser.value.Kind() { //nolint:exhaustive
-	case reflect.Bool:
-		err = setBool(parser)
-	case reflect.Int:
-		err = setInt(parser)
-	case reflect.String:
-		if parser.value.Type().Name() == "Path" {
-			err = setPath(parser)
-		} else {
-			err = setString(parser)
-		}
-	case reflect.Struct:
-		panic(
-			fmt.Sprintf(
-				"reached the struct check when converting environment variable to config value in %s: %s",
-				parser.field.Name,
-				parser.value.Kind(),
-			),
-		)
-	default:
-		panic(
-			fmt.Sprintf(
-				"unsupported config field type for %s: %s",
-				parser.field.Name,
-				parser.value.Kind(),
-			),
-		)
+	if unmarshaler != nil {
+		err = unmarshaler.UnmarshalText([]byte(p.defaultValue))
+	} else {
+		x, err = strconv.ParseBool(p.defaultValue)
 	}
 
 	if err != nil {
-		return fmt.Errorf("failed to set config value: %w", err)
+		return fmt.Errorf("parsing %q to %s: %w", p.defaultValue, p.field.Name, err)
 	}
 
-	return nil
-}
-
-// tryUnmarshalText checks if it can use [encoding.TextUnmarshaler] to unmarshal
-// the given value and set it to the field. The first return value tells whether
-// this was successful and the second is error.
-func tryUnmarshalText(
-	ctx context.Context,
-	fv reflect.Value,
-	sf reflect.StructField,
-	val string,
-) (bool, error) {
-	if reflect.PointerTo(fv.Type()).Implements(textUnmarshalerType) {
-		unmarshaler, ok := fv.Addr().Interface().(encoding.TextUnmarshaler)
-		if !ok {
-			panic(
-				fmt.Sprintf(
-					"failed to cast field %q to encoding.TextUnmarshaler",
-					sf.Name,
-				),
-			)
+	if p.envValue != "" {
+		if unmarshaler != nil {
+			err = unmarshaler.UnmarshalText([]byte(p.envValue))
+		} else {
+			x, err = strconv.ParseBool(p.envValue)
 		}
-
-		if err := unmarshaler.UnmarshalText([]byte(val)); err != nil {
-			return false, fmt.Errorf("%w", err)
-		}
-
-		logging.TraceContext(ctx, "unmarshaled value", "value", fv.Interface())
-
-		return true, nil
 	}
 
-	return false, nil
-}
-
-// setBool sets a boolean value from the environment variable or
-// the command-line flag to the currently parsed value.
-func setBool(parser *valueParser) error {
-	var (
-		err error
-		x   bool
-	)
-
-	changed := false
-
-	if !parser.envOk && parser.envValue != "" {
-		switch strings.ToLower(strings.TrimSpace(parser.envValue)) {
-		case "true", "1":
-			x = true
-		case "false", "0":
-			x = false
-		default:
-			return fmt.Errorf("%w: %s=%q", errInvalidEnvVar, parser.envName, parser.envValue)
-		}
-
-		changed = true
+	if err != nil {
+		return fmt.Errorf("%s=%q, %w", p.envName, p.envValue, err)
 	}
 
-	if parser.flagSet.Changed(parser.flagName) {
-		x, err = parser.flagSet.GetBool(parser.flagName)
+	if p.flagSet.Changed(p.flagName) {
+		x, err = p.flagSet.GetBool(p.flagName)
 		if err != nil {
-			return fmt.Errorf("failed to get value for --%s: %w", parser.flagName, err)
+			return fmt.Errorf("failed to get value for --%s: %w", p.flagName, err)
 		}
-
-		changed = true
 	}
 
-	if changed {
-		parser.value.SetBool(x)
-	}
+	p.value.SetBool(x)
 
 	return nil
 }
 
 // setInt sets an integer value from the environment variable or
 // the command-line flag to the currently parsed value.
-func setInt(parser *valueParser) error {
+func (p *valueParser) setInt() error {
 	var (
-		err error
-		x   int64
+		err         error
+		unmarshaler encoding.TextUnmarshaler
+		x           int64
 	)
 
-	changed := false
+	unmarshal := reflect.PointerTo(p.value.Type()).Implements(textUnmarshalerType)
+	if unmarshal {
+		var ok bool
 
-	if !parser.envOk && parser.envValue != "" {
-		x, err = strconv.ParseInt(parser.envValue, 10, 0)
+		unmarshaler, ok = p.value.Addr().Interface().(encoding.TextUnmarshaler)
+		if !ok {
+			panic(fmt.Sprintf("casting field %q to TextUnmarshaler", p.field.Name))
+		}
+	}
+
+	if unmarshaler != nil {
+		err = unmarshaler.UnmarshalText([]byte(p.defaultValue))
+	} else {
+		x, err = strconv.ParseInt(p.defaultValue, 10, 0)
+	}
+
+	if err != nil {
+		return fmt.Errorf("parsing %q to %s: %w", p.defaultValue, p.field.Name, err)
+	}
+
+	if p.envValue != "" {
+		if unmarshaler != nil {
+			err = unmarshaler.UnmarshalText([]byte(p.envValue))
+		} else {
+			x, err = strconv.ParseInt(p.envValue, 10, 0)
+		}
+	}
+
+	if err != nil {
+		return fmt.Errorf("%s=%q, %w", p.envName, p.envValue, err)
+	}
+
+	if p.flagSet.Changed(p.flagName) {
+		var n int
+
+		n, err = p.flagSet.GetInt(p.flagName)
 		if err != nil {
-			return fmt.Errorf("%w: %s=%q", errInvalidEnvVar, parser.envName, parser.envValue)
+			return fmt.Errorf("failed to get value for --%s: %w", p.flagName, err)
 		}
 
-		changed = true
+		x = int64(n)
 	}
 
-	if parser.flagSet.Changed(parser.flagName) {
-		var i int
-
-		i, err = parser.flagSet.GetInt(parser.flagName)
-		if err != nil {
-			return fmt.Errorf("failed to get value for --%s: %w", parser.flagName, err)
-		}
-
-		x = int64(i)
-
-		changed = true
-	}
-
-	if changed {
-		parser.value.SetInt(x)
-	}
+	p.value.SetInt(x)
 
 	return nil
 }
@@ -463,66 +432,51 @@ func setInt(parser *valueParser) error {
 // setPath sets a string value from the environment variable or
 // the command-line flag to the currently parsed value as an [fspath.Path]. It
 // also cleans the path and possibly makes it absolute.
-func setPath(parser *valueParser) error {
-	var (
-		err error
-		x   fspath.Path
-	)
+func (p *valueParser) setPath() error {
+	var err error
 
-	changed := false
+	x := fspath.Path(p.defaultValue)
 
-	if !parser.envOk && parser.envValue != "" {
-		x, err = fspath.NewAbs(parser.envValue)
+	if p.envValue != "" {
+		x = fspath.Path(p.envValue)
+	}
+
+	if p.flagSet.Changed(p.flagName) {
+		x, err = p.flagSet.GetPath(p.flagName)
 		if err != nil {
-			return fmt.Errorf("failed to create path from %q: %w", parser.envValue, err)
+			return fmt.Errorf("failed to get value for --%s: %w", p.flagName, err)
 		}
-
-		changed = true
 	}
 
-	if parser.flagSet.Changed(parser.flagName) {
-		x, err = parser.flagSet.GetPath(parser.flagName)
-		if err != nil {
-			return fmt.Errorf("failed to get value for --%s: %w", parser.flagName, err)
-		}
-
-		changed = true
+	x, err = x.Abs()
+	if err != nil {
+		return fmt.Errorf("%w", err)
 	}
 
-	if changed {
-		parser.value.SetString(string(x))
-	}
+	p.value.SetString(string(x))
 
 	return nil
 }
 
 // setString sets a string value from the environment variable or
 // the command-line flag to the currently parsed value.
-func setString(parser *valueParser) error {
-	var (
-		err error
-		x   string
-	)
+func (p *valueParser) setString() error {
+	x := p.defaultValue
 
-	changed := false
-
-	if !parser.envOk && parser.envValue != "" {
-		x = parser.envValue
-		changed = true
+	if p.envValue != "" {
+		x = p.envValue
 	}
 
-	if parser.flagSet.Changed(parser.flagName) {
-		x, err = parser.flagSet.GetString(parser.flagName)
+	if p.flagSet.Changed(p.flagName) {
+		var err error
+
+		x, err = p.flagSet.GetString(p.flagName)
 		if err != nil {
-			return fmt.Errorf("failed to get value for --%s: %w", parser.flagName, err)
+			return fmt.Errorf("failed to get value for --%s: %w", p.flagName, err)
 		}
-
-		changed = true
 	}
 
-	if changed {
-		parser.value.SetString(x)
-	}
+	p.value.SetString(x)
 
 	return nil
 }

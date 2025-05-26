@@ -42,14 +42,16 @@ type Config struct {
 	PluginDir fspath.Path `mapstructure:"plugin-dir"`
 
 	// Quiet tells the program to suppress all other output than errors.
-	Quiet bool `mapstructure:"quiet"`
+	Quiet bool `default:"false" mapstructure:"quiet"`
 
 	// Tasks contains tasks and the configs for them as given in the config
 	// file.
 	Tasks []task.Config `mapstructure:"tasks"`
 
 	// Verbose tells the program to print more verbose output.
-	Verbose bool `mapstructure:"verbose"`
+	//
+	// TODO: Change the default.
+	Verbose bool `default:"true" mapstructure:"verbose"`
 
 	// Plugins contains the rest of the config options which should only be
 	// plugin-defined options.
