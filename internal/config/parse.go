@@ -5,6 +5,7 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"reflect"
 	"strconv"
@@ -63,6 +64,34 @@ type valueParser struct {
 	// flagName is the name of the command-line flag for checking the value for
 	// the current field.
 	flagName string
+}
+
+// LogValue implements [slog.LogValuer] for [valueParser]. It returns a group
+// containing the fields of the parser that are relevant for logging.
+func (p *valueParser) LogValue() slog.Value {
+	var attrs []slog.Attr
+
+	if p.flagSet == nil {
+		attrs = append(attrs, slog.String("flagSet", "nil"))
+	} else {
+		attrs = append(attrs, slog.String("flagSet", "set"))
+	}
+
+	pluginNames := make([]string, 0, len(p.plugins))
+
+	for _, plugin := range p.plugins {
+		pluginNames = append(pluginNames, plugin.Name)
+	}
+
+	attrs = append(attrs, slog.Any("plugins", pluginNames))
+	attrs = append(attrs, slog.Group("value", slog.String("type", p.value.Type().Name()), slog.Any("value", p.value.Interface())))
+	attrs = append(attrs, slog.Group("field", slog.String("name", p.field.Name), slog.String("type", p.field.Type.Name())))
+	attrs = append(attrs, slog.String("envName", p.envName))
+	attrs = append(attrs, slog.String("envValue", p.envValue))
+	attrs = append(attrs, slog.Bool("envOk", p.envOk))
+	attrs = append(attrs, slog.String("flagName", p.flagName))
+
+	return slog.GroupValue(attrs...)
 }
 
 // Parse parses the configuration according to the configuration given with
@@ -196,14 +225,7 @@ func ApplyOverrides(ctx context.Context, parent *valueParser) error {
 		parser.envValue = os.Getenv(parser.envName)
 		parser.flagName = toFlag(parser.field.Name)
 
-		logging.TraceContext(
-			ctx,
-			"checking config field",
-			"name",
-			parser.field.Name,
-			"parser",
-			parser,
-		)
+		logging.TraceContext(ctx, "checking config field", "parser", parser)
 
 		if !parser.value.CanSet() {
 			continue
@@ -229,16 +251,7 @@ func ApplyOverrides(ctx context.Context, parent *valueParser) error {
 			return fmt.Errorf("%w", err)
 		}
 
-		logging.TraceContext(
-			ctx,
-			"value checked",
-			"name",
-			parser.field.Name,
-			"value",
-			parser.value.Interface(),
-			"parser",
-			parser,
-		)
+		logging.TraceContext(ctx, "value checked", "parser", parser)
 	}
 
 	// TODO: Apply the plugin values to the plugin fields as it is not done
