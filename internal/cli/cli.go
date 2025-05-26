@@ -16,7 +16,6 @@ import (
 	"github.com/anttikivi/reginald/internal/plugins"
 	"github.com/spf13/afero"
 	"github.com/spf13/pflag"
-	"golang.org/x/term"
 )
 
 // Program-related constants.
@@ -105,15 +104,9 @@ func New() *CLI {
 	)
 	cli.markFlagsMutuallyExclusive("quiet", "verbose")
 
-	isTerminal := term.IsTerminal(int(os.Stdout.Fd()))
+	colorMode := iostreams.ColorAuto
 
-	cli.flags.Bool("color", isTerminal, "enable colors in the output", "")
-	cli.flags.Bool("no-color", !isTerminal, "disable colors in the output", "")
-	cli.markFlagsMutuallyExclusive("color", "no-color")
-
-	if err := cli.flags.MarkHidden("no-color"); err != nil {
-		panic(fmt.Sprintf("failed to mark --no-color hidden: %v", err))
-	}
+	cli.flags.Var(&colorMode, "color", "enable colors in the output", "")
 
 	cli.flags.Bool("logging", false, "enable logging", "")
 	cli.flags.Bool("no-logging", false, "disable logging", "")
