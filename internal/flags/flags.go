@@ -190,14 +190,14 @@ func (f *FlagSet) IntP(name, shorthand string, value int, usage, doc string) *in
 // Path defines a path flag with specified name, default value, and usage
 // string. The return value is the address of a path variable that stores
 // the value of the flag.
-func (f *FlagSet) Path(name string, value fspath.Path, usage, doc string) {
-	f.PathP(name, "", value, usage, doc)
+func (f *FlagSet) Path(name string, value fspath.Path, usage, doc string) *fspath.Path {
+	return f.PathP(name, "", value, usage, doc)
 }
 
 // PathP is like Path, but accepts a shorthand letter that can be used after
 // a single dash.
-func (f *FlagSet) PathP(name, shorthand string, value fspath.Path, usage, doc string) {
-	f.FlagSet.StringP(name, shorthand, string(value), usage)
+func (f *FlagSet) PathP(name, shorthand string, value fspath.Path, usage, doc string) *fspath.Path {
+	p := f.FlagSet.StringP(name, shorthand, string(value), usage)
 
 	flag := f.Lookup(name)
 	if flag == nil {
@@ -208,6 +208,10 @@ func (f *FlagSet) PathP(name, shorthand string, value fspath.Path, usage, doc st
 		Flag: flag,
 		Doc:  doc,
 	})
+
+	path := fspath.Path(*p)
+
+	return &path
 }
 
 // String defines a string flag with specified name, default value, and usage
