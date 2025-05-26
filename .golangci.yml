@@ -55,6 +55,10 @@ linters:
         - name: (*github.com/pelletier/go-toml/v2.Decoder).Decode
           tag: toml
           arg-pos: 0
+    nolintlint:
+      allow-unused: false
+      require-explanation: true
+      require-specific: true
     varnamelen:
       max-distance: 50
       ignore-decls:
