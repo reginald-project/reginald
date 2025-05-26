@@ -234,3 +234,14 @@ func (f *FlagSet) StringP(name, shorthand, value, usage, doc string) *string {
 
 	return p
 }
+
+// GetPath returns the string value of a flag with the given name and converts
+// it to [fspath.Path].
+func (f *FlagSet) GetPath(name string) (fspath.Path, error) {
+	val, err := f.GetString(name)
+	if err != nil {
+		return "", fmt.Errorf("%w", err)
+	}
+
+	return fspath.Path(val), nil
+}

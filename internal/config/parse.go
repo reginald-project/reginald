@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/anttikivi/reginald/internal/flags"
+	"github.com/anttikivi/reginald/internal/fspath"
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/plugins"
 	"github.com/go-viper/mapstructure/v2"
@@ -34,8 +35,8 @@ var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem(
 // A valueParser is a helper type that holds the current values for the config
 // value that is currently being parsed.
 type valueParser struct {
-	// fs is the flag used for checking the values.
-	fs *flags.FlagSet
+	// flagSet is the flag used for checking the values.
+	flagSet *flags.FlagSet
 
 	// plugins are the loaded plugins.
 	plugins []*plugins.Plugin
@@ -117,7 +118,7 @@ func Parse(
 	}
 
 	parser := &valueParser{
-		fs:       flagSet,
+		flagSet:  flagSet,
 		plugins:  plugins,
 		value:    reflect.ValueOf(cfg).Elem(),
 		field:    reflect.StructField{}, //nolint:exhaustruct
@@ -182,7 +183,7 @@ func ApplyOverrides(ctx context.Context, parent *valueParser) error {
 
 		// TODO: Check the struct tags for env and flags.
 		parser := &valueParser{
-			fs:       parent.fs,
+			flagSet:  parent.flagSet,
 			plugins:  parent.plugins,
 			value:    parent.value.Field(i),
 			field:    parent.value.Type().Field(i),
@@ -306,7 +307,11 @@ func setConfigField(ctx context.Context, parser *valueParser) error {
 	case reflect.Int:
 		err = setInt(parser)
 	case reflect.String:
-		err = setString(parser)
+		if parser.value.Type().Name() == "Path" {
+			err = setPath(parser)
+		} else {
+			err = setString(parser)
+		}
 	case reflect.Struct:
 		panic(
 			fmt.Sprintf(
@@ -364,8 +369,8 @@ func tryUnmarshalText(
 	return false, nil
 }
 
-// setBool set a boolean value from the environment variable or the command-line
-// flag to the currently parsed value.
+// setBool sets a boolean value from the environment variable or
+// the command-line flag to the currently parsed value.
 func setBool(parser *valueParser) error {
 	var (
 		err error
@@ -387,8 +392,8 @@ func setBool(parser *valueParser) error {
 		changed = true
 	}
 
-	if parser.fs.Changed(parser.flagName) {
-		x, err = parser.fs.GetBool(parser.flagName)
+	if parser.flagSet.Changed(parser.flagName) {
+		x, err = parser.flagSet.GetBool(parser.flagName)
 		if err != nil {
 			return fmt.Errorf("failed to get value for --%s: %w", parser.flagName, err)
 		}
@@ -403,8 +408,8 @@ func setBool(parser *valueParser) error {
 	return nil
 }
 
-// setInt set an integer value from the environment variable or the command-line
-// flag to the currently parsed value.
+// setInt sets an integer value from the environment variable or
+// the command-line flag to the currently parsed value.
 func setInt(parser *valueParser) error {
 	var (
 		err error
@@ -422,10 +427,10 @@ func setInt(parser *valueParser) error {
 		changed = true
 	}
 
-	if parser.fs.Changed(parser.flagName) {
+	if parser.flagSet.Changed(parser.flagName) {
 		var i int
 
-		i, err = parser.fs.GetInt(parser.flagName)
+		i, err = parser.flagSet.GetInt(parser.flagName)
 		if err != nil {
 			return fmt.Errorf("failed to get value for --%s: %w", parser.flagName, err)
 		}
@@ -442,7 +447,43 @@ func setInt(parser *valueParser) error {
 	return nil
 }
 
-// setString set a string value from the environment variable or
+// setPath sets a string value from the environment variable or
+// the command-line flag to the currently parsed value as an [fspath.Path]. It
+// also cleans the path and possibly makes it absolute.
+func setPath(parser *valueParser) error {
+	var (
+		err error
+		x   fspath.Path
+	)
+
+	changed := false
+
+	if !parser.envOk && parser.envValue != "" {
+		x, err = fspath.NewAbs(parser.envValue)
+		if err != nil {
+			return fmt.Errorf("failed to create path from %q: %w", parser.envValue, err)
+		}
+
+		changed = true
+	}
+
+	if parser.flagSet.Changed(parser.flagName) {
+		x, err = parser.flagSet.GetPath(parser.flagName)
+		if err != nil {
+			return fmt.Errorf("failed to get value for --%s: %w", parser.flagName, err)
+		}
+
+		changed = true
+	}
+
+	if changed {
+		parser.value.SetString(string(x))
+	}
+
+	return nil
+}
+
+// setString sets a string value from the environment variable or
 // the command-line flag to the currently parsed value.
 func setString(parser *valueParser) error {
 	var (
@@ -457,8 +498,8 @@ func setString(parser *valueParser) error {
 		changed = true
 	}
 
-	if parser.fs.Changed(parser.flagName) {
-		x, err = parser.fs.GetString(parser.flagName)
+	if parser.flagSet.Changed(parser.flagName) {
+		x, err = parser.flagSet.GetString(parser.flagName)
 		if err != nil {
 			return fmt.Errorf("failed to get value for --%s: %w", parser.flagName, err)
 		}
