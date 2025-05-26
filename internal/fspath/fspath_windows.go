@@ -1,6 +1,6 @@
 //go:build windows
 
-package pathname
+package fspath
 
 import (
 	"os"

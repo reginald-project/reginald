@@ -1,20 +1,20 @@
 //go:build !windows
 
-package pathname_test
+package fspath_test
 
 import (
 	"os"
 	"os/user"
 	"testing"
 
-	"github.com/anttikivi/reginald/internal/pathname"
+	"github.com/anttikivi/reginald/internal/fspath"
 )
 
 func TestAbs(t *testing.T) {
 	tests := []struct {
-		path    pathname.Path
+		path    fspath.Path
 		env     map[string]string
-		want    pathname.Path
+		want    fspath.Path
 		wantErr bool
 	}{
 		{
@@ -109,7 +109,7 @@ func TestAbs(t *testing.T) {
 				t.Setenv(k, v)
 			}
 
-			got, gotErr := pathname.Abs(tt.path)
+			got, gotErr := tt.path.Abs()
 
 			if gotErr == nil && tt.wantErr {
 				t.Fatal("Abs() succeeded unexpectedly")
@@ -130,8 +130,8 @@ func TestExpandUser(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		path    pathname.Path
-		want    pathname.Path
+		path    fspath.Path
+		want    fspath.Path
 		wantErr bool
 	}{
 		{
@@ -175,7 +175,7 @@ func TestExpandUser(t *testing.T) {
 		t.Run(string(tt.path), func(t *testing.T) {
 			t.Parallel()
 
-			got, gotErr := pathname.Abs(tt.path)
+			got, gotErr := tt.path.Abs()
 
 			if gotErr == nil && tt.wantErr {
 				t.Fatal("ExpandUser() succeeded unexpectedly")
@@ -192,20 +192,20 @@ func TestExpandUser(t *testing.T) {
 	}
 }
 
-func cwd() pathname.Path {
+func cwd() fspath.Path {
 	path, _ := os.Getwd()
 
-	return pathname.Path(path)
+	return fspath.Path(path)
 }
 
-func home() pathname.Path {
+func home() fspath.Path {
 	path, _ := os.UserHomeDir()
 
-	return pathname.Path(path)
+	return fspath.Path(path)
 }
 
-func currentUser() pathname.Path {
+func currentUser() fspath.Path {
 	u, _ := user.Current()
 
-	return pathname.Path(u.Username)
+	return fspath.Path(u.Username)
 }

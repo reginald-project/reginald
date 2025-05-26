@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/anttikivi/reginald/internal/fspath"
 	"github.com/anttikivi/reginald/pkg/rpp"
 	"github.com/spf13/pflag"
 )
@@ -184,6 +185,29 @@ func (f *FlagSet) IntP(name, shorthand string, value int, usage, doc string) *in
 	})
 
 	return p
+}
+
+// Path defines a path flag with specified name, default value, and usage
+// string. The return value is the address of a path variable that stores
+// the value of the flag.
+func (f *FlagSet) Path(name string, value fspath.Path, usage, doc string) {
+	f.PathP(name, "", value, usage, doc)
+}
+
+// PathP is like Path, but accepts a shorthand letter that can be used after
+// a single dash.
+func (f *FlagSet) PathP(name, shorthand string, value fspath.Path, usage, doc string) {
+	f.FlagSet.StringP(name, shorthand, string(value), usage)
+
+	flag := f.Lookup(name)
+	if flag == nil {
+		panic(fmt.Sprintf("received nil flag %q from wrapped flag set", name))
+	}
+
+	f.AddFlag(&Flag{
+		Flag: flag,
+		Doc:  doc,
+	})
 }
 
 // String defines a string flag with specified name, default value, and usage

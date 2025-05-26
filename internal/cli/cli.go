@@ -6,14 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/anttikivi/reginald/internal/config"
 	"github.com/anttikivi/reginald/internal/flags"
+	"github.com/anttikivi/reginald/internal/fspath"
 	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/plugins"
+	"github.com/spf13/afero"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
 )
@@ -41,6 +42,7 @@ type CLI struct {
 	UsageLine string // one-line synopsis of the program
 
 	args                   []string          // command-line arguments after parsing
+	fs                     afero.Fs          // file system in use
 	cmd                    *Command          // command to run
 	cfg                    *config.Config    // parsed config of the run
 	commands               []*Command        // list of subcommands
@@ -57,6 +59,7 @@ func New() *CLI {
 	cli := &CLI{
 		UsageLine:              Name + " [--version] [-h | --help] <command> [<args>]",
 		args:                   []string{},
+		fs:                     afero.NewOsFs(), // TODO: Use different file systems for different purposes
 		cmd:                    nil,
 		cfg:                    nil,
 		commands:               []*Command{},
@@ -84,7 +87,7 @@ func New() *CLI {
 		panic(fmt.Sprintf("failed to get the default plugins directory: %v", err))
 	}
 
-	cli.flags.StringP("plugin-dir", "p", d, "search for plugins from `<path>`", "")
+	cli.flags.PathP("plugin-dir", "p", d, "search for plugins from `<path>`", "")
 
 	cli.flags.BoolP(
 		"verbose",
@@ -172,7 +175,7 @@ func (c *CLI) Execute(ctx context.Context) error { //nolint:funlen
 		return nil
 	}
 
-	c.cfg, err = config.Parse(ctx, flagSet, nil)
+	c.cfg, err = config.Parse(ctx, c.fs, flagSet, nil)
 	if err != nil {
 		return fmt.Errorf("failed to parse the config: %w", err)
 	}
@@ -234,7 +237,7 @@ func (c *CLI) Execute(ctx context.Context) error { //nolint:funlen
 		return fmt.Errorf("%w", err)
 	}
 
-	c.cfg, err = config.Parse(ctx, flagSet, nil)
+	c.cfg, err = config.Parse(ctx, c.fs, flagSet, nil)
 	if err != nil {
 		return fmt.Errorf("failed to parse the config: %w", err)
 	}
@@ -284,17 +287,17 @@ func (c *CLI) addPluginCmd(cmd *Command) {
 // found in the configuration in c. It sets plugins in c to a slice of pointers
 // to the found and executed plugins.
 func (c *CLI) loadPlugins(ctx context.Context) error {
-	var pluginFiles []string
+	var pluginFiles []fspath.Path
 
 	dir := c.cfg.PluginDir
 
-	entries, err := os.ReadDir(dir)
+	entries, err := dir.ReadDir(c.fs)
 	if err != nil {
 		return fmt.Errorf("failed to read plugins directory %s: %w", dir, err)
 	}
 
 	for _, entry := range entries {
-		path := filepath.Join(dir, entry.Name())
+		path := dir.Join(entry.Name())
 
 		if entry.IsDir() {
 			logging.DebugContext(ctx, "plugin file is a directory", "path", path)
@@ -302,11 +305,7 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 			continue
 		}
 
-		if !entry.Type().IsRegular() {
-			continue
-		}
-
-		info, err := os.Stat(path)
+		info, err := c.fs.Stat(string(path))
 		if err != nil {
 			return fmt.Errorf("failed to check the file info for %s: %w", path, err)
 		}
@@ -324,7 +323,7 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 
 	logging.DebugContext(ctx, "performed the plugin lookup", "plugins", pluginFiles)
 
-	if c.plugins, err = plugins.Load(ctx, pluginFiles); err != nil {
+	if c.plugins, err = plugins.Load(ctx, c.fs, pluginFiles); err != nil {
 		return fmt.Errorf("failed to load the plugins: %w", err)
 	}
 

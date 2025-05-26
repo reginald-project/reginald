@@ -6,13 +6,13 @@ package config
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/anttikivi/reginald/internal/flags"
+	"github.com/anttikivi/reginald/internal/fspath"
 	"github.com/anttikivi/reginald/internal/logging"
-	"github.com/anttikivi/reginald/internal/pathname"
 	"github.com/anttikivi/reginald/pkg/task"
+	"github.com/spf13/afero"
 )
 
 // EnvPrefix is the prefix added to the names of the config values when reading
@@ -38,7 +38,7 @@ type Config struct {
 	Logging logging.Config `mapstructure:"logging"`
 
 	// PluginDir is the directory where Reginald looks for the plugins.
-	PluginDir string `mapstructure:"plugin-dir"`
+	PluginDir fspath.Path `mapstructure:"plugin-dir"`
 
 	// Quiet tells the program to suppress all other output than errors.
 	Quiet bool `mapstructure:"quiet"`
@@ -57,20 +57,20 @@ type Config struct {
 
 // DefaultPluginsDir returns the plugins directory to use. It takes the environment
 // variable for customizing the plugins directory and the platform into account.
-func DefaultPluginsDir() (string, error) {
+func DefaultPluginsDir() (fspath.Path, error) {
 	path, err := defaultPluginsDir()
 	if err != nil {
 		return "", fmt.Errorf("%w", err)
 	}
 
-	return filepath.Clean(path), nil
+	return path.Clean(), nil
 }
 
 // resolveFile looks up the possible paths for the configuration file and
 // returns the first one that contains a file with a valid name. The returned
 // path is absolute. If no configuration file is found, the function returns an
 // empty string and an error.
-func resolveFile(flagSet *flags.FlagSet) (string, error) {
+func resolveFile(fs afero.Fs, flagSet *flags.FlagSet) (fspath.Path, error) {
 	var (
 		err       error
 		fileValue string
@@ -90,14 +90,14 @@ func resolveFile(flagSet *flags.FlagSet) (string, error) {
 		}
 	}
 
-	file := fileValue
+	file := fspath.Path(fileValue)
 
 	// Use the fileValue if it is an absolute path.
-	if filepath.IsAbs(file) {
-		if ok, err := pathname.IsFile(file); err != nil {
+	if file.IsAbs() {
+		if ok, err := file.IsFile(fs); err != nil {
 			return "", fmt.Errorf("%w", err)
 		} else if ok {
-			return filepath.Clean(file), nil
+			return file.Clean(), nil
 		}
 	}
 
@@ -107,9 +107,9 @@ func resolveFile(flagSet *flags.FlagSet) (string, error) {
 	}
 
 	// Check if the config file f matches a file in the working directory.
-	file = filepath.Join(wd, file)
+	file = fspath.New(wd, string(file))
 
-	if ok, err := pathname.IsFile(file); err != nil {
+	if ok, err := file.IsFile(fs); err != nil {
 		return "", fmt.Errorf("%w", err)
 	} else if ok {
 		return file, nil
@@ -138,8 +138,8 @@ func resolveFile(flagSet *flags.FlagSet) (string, error) {
 	for _, d := range configDirs {
 		for _, n := range configNames {
 			for _, e := range extensions {
-				file = filepath.Join(d, fmt.Sprintf("%s.%s", n, e))
-				if ok, err := pathname.IsFile(file); err != nil {
+				file = fspath.New(d, fmt.Sprintf("%s.%s", n, e))
+				if ok, err := file.IsFile(fs); err != nil {
 					return "", fmt.Errorf("%w", err)
 				} else if ok {
 					return file, nil
