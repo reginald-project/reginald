@@ -182,10 +182,11 @@ func (p *Plugin) RunCmd(ctx context.Context, name string, args []string) error {
 		return fmt.Errorf("%w: command %q in plugin %q", errCommandNotFound, name, p.Name)
 	}
 
-	params := rpp.RunParams{
+	params := rpp.RunCmdParams{
+		Name: name,
 		Args: args,
 	}
-	method := rpp.MethodRunPrefix + name
+	method := rpp.MethodRunCommand
 
 	res, err := p.call(ctx, method, params)
 	if err != nil {

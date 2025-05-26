@@ -30,7 +30,8 @@ const (
 	MethodHandshake  = "handshake"
 	MethodInitialize = "initialize"
 	MethodLog        = "log"
-	MethodRunPrefix  = "run/" // full method name will have the called command after this prefix
+	MethodRunCommand = "runCommand"
+	MethodRunTask    = "runTask"
 	MethodShutdown   = "shutdown"
 )
 
@@ -269,9 +270,12 @@ type LogParams struct {
 	Fields map[string]any `json:"fields,omitempty"`
 }
 
-// RunParams are the parameters passed when the client runs a command from
+// RunCmdParams are the parameters passed when the client runs a command from
 // a plugin.
-type RunParams struct {
+type RunCmdParams struct {
+	// Name is the name of the command that should be run.
+	Name string `json:"name"`
+
 	// Args are the command-line arguments after parsing the commands and flags.
 	// It should contain the positional arguments required by the command.
 	Args []string `json:"args"`
