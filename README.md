@@ -6,9 +6,7 @@
   </picture>
 </p>
 
-<h1 align="center">
-  Reginald
-</h1>
+<h1 align="center">Reginald</h1>
 
 <div align="center">
 
@@ -23,6 +21,30 @@
 > This project is still in early development. More info on the project will be
 > added later and the current features don’t just yet match this README.
 <!-- prettier-ignore-end -->
+
+As a developer, I have tried to find a satisfactory way to manage my dotfiles
+and have a workstation set up so that, ideally, I can get a new machine up and
+running with a single command. However, I haven’t found any existing tool that
+would fill these needs: they may not easily support all of the required
+features, you might need to install some runtime (for example Python) before you
+can run them, or you have to follow their bespoke workflow in order to use the
+tool effectively. I find that these traits get in your way when you really just
+want to have symbolic links to your dotfiles in a Git repository, install the
+tools you need, and have a free hand to extend the tool’s workflow in the way
+you want to. Also, using Bash scripts for this get convoluted as the steps to
+run and the requirements grow. Ansible and Nix might be too involved for your
+needs.
+
+Reginald uses a simple, single config file to define a set of idempotent,
+system-wide tasks describing how your system should look. By default, it can set
+up links to your dotfiles in the directory of your choosing and install tools
+using your system’s (or some other) package manager.
+
+Even though Reginald is splendid already as is (see the picture of Reginald at
+the start of the README), they can always do more. That’s why Reginald has a
+language-agnostic plugin system. You can use it to teach Reginald to do
+effectively anything. Just install the plugins you need and use the same config
+file to configure them.
 
 ## License
 
