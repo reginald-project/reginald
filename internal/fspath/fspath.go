@@ -179,7 +179,7 @@ func (p Path) MkdirAll(fs afero.Fs, perm os.FileMode) error {
 // OpenFile wraps [afero.Fs.OpenFile], and the caller must call
 // [afero.File.Close] on the returned file.
 //
-//nolint:ireturn
+//nolint:ireturn // implementation also return an interface and the type depends on the filesystem
 func (p Path) OpenFile(fs afero.Fs, flag int, perm os.FileMode) (afero.File, error) {
 	f, err := fs.OpenFile(string(p), flag, perm)
 	if err != nil {

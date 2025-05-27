@@ -57,8 +57,14 @@ linters:
           arg-pos: 0
     nolintlint:
       allow-unused: false
+      allow-no-explanation:
+        - lll
+        - varnamelen
       require-explanation: true
       require-specific: true
+    tagalign:
+      align: false
+      sort: true
     varnamelen:
       max-distance: 50
       ignore-decls:

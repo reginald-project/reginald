@@ -29,7 +29,7 @@ const (
 
 // Streams is the global IO streams instance for the program. It must be
 // initialized before use.
-var Streams *IOStreams //nolint:gochecknoglobals
+var Streams *IOStreams //nolint:gochecknoglobals // global IO instance
 
 // code is the type for the ANSI color codes.
 type code int

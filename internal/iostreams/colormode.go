@@ -18,7 +18,7 @@ const (
 var errColorMode = errors.New("invalid color mode")
 
 // ColorMode represent the color output setting of the program.
-type ColorMode int
+type ColorMode int //nolint:recvcheck // needs different receiver types
 
 // String returns the string representation of c.
 func (c ColorMode) String() string {
@@ -57,7 +57,12 @@ func (c *ColorMode) Type() string {
 
 // MarshalJSON encodes c as a JSON value.
 func (c ColorMode) MarshalJSON() ([]byte, error) {
-	return json.Marshal(c.String())
+	data, err := json.Marshal(c.String())
+	if err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+
+	return data, nil
 }
 
 // UnmarshalJSON assign the value from the given JSON representation to c.

@@ -38,7 +38,7 @@ Thank you for helping Reginald!
 // panicMu is a mutex used to lock the panic handler in case multiple goroutines
 // panic simultaneously. It ensures that only the first one recovers, prints the
 // message, and exits the program.
-var panicMu sync.Mutex //nolint:gochecknoglobals
+var panicMu sync.Mutex //nolint:gochecknoglobals // used be multiple goroutines
 
 // Handle recovers the panics of the program and prints the information included
 // with them with the stack trace and a helpful message that guides the user to

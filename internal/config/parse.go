@@ -24,13 +24,12 @@ import (
 // Errors returned from the configuration parser.
 var (
 	errConfigFileNotFound = errors.New("config file not found")
-	errInvalidEnvVar      = errors.New("invalid config value in environment variable")
 )
 
 // textUnmarshalerType is a helper variable for checking if types of fields in
 // Config implement [encoding.TextUnmarshaler].
 //
-//nolint:gochecknoglobals
+//nolint:gochecknoglobals // used like constant
 var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
 
 // A valueParser is a helper type that holds the current values for the config
@@ -82,8 +81,22 @@ func (p *valueParser) LogValue() slog.Value {
 	}
 
 	attrs = append(attrs, slog.Any("plugins", pluginNames))
-	attrs = append(attrs, slog.Group("value", slog.String("type", p.value.Type().Name()), slog.Any("value", p.value.Interface())))
-	attrs = append(attrs, slog.Group("field", slog.String("name", p.field.Name), slog.String("type", p.field.Type.Name())))
+	attrs = append(
+		attrs,
+		slog.Group(
+			"value",
+			slog.String("type", p.value.Type().Name()),
+			slog.Any("value", p.value.Interface()),
+		),
+	)
+	attrs = append(
+		attrs,
+		slog.Group(
+			"field",
+			slog.String("name", p.field.Name),
+			slog.String("type", p.field.Type.Name()),
+		),
+	)
 	attrs = append(attrs, slog.String("defaultValue", p.defaultValue))
 	attrs = append(attrs, slog.String("envName", p.envName))
 	attrs = append(attrs, slog.String("envValue", p.envValue))
@@ -101,7 +114,12 @@ func (p *valueParser) LogValue() slog.Value {
 // The function also resolves the configuration file according to the standard
 // paths for the file or according the flags. The relevant flags are
 // `--directory` and `--config`.
-func Parse(ctx context.Context, fs afero.Fs, flagSet *flags.FlagSet, plugins []*plugins.Plugin) (*Config, error) {
+func Parse(
+	ctx context.Context,
+	fs afero.Fs,
+	flagSet *flags.FlagSet,
+	plugins []*plugins.Plugin,
+) (*Config, error) {
 	configFile, err := resolveFile(fs, flagSet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve config file: %w", err)
@@ -124,8 +142,8 @@ func Parse(ctx context.Context, fs afero.Fs, flagSet *flags.FlagSet, plugins []*
 	normalizeKeys(rawCfg)
 	logging.TraceContext(ctx, "normalized keys", "cfg", rawCfg)
 
-	cfg := &Config{}                              //nolint:exhaustruct
-	decoderConfig := &mapstructure.DecoderConfig{ //nolint:exhaustruct
+	cfg := &Config{}                              //nolint:exhaustruct // TODO: will switch to different init
+	decoderConfig := &mapstructure.DecoderConfig{ //nolint:exhaustruct // default values for the rest
 		DecodeHook: mapstructure.TextUnmarshallerHookFunc(),
 		Result:     cfg,
 	}
@@ -143,7 +161,7 @@ func Parse(ctx context.Context, fs afero.Fs, flagSet *flags.FlagSet, plugins []*
 		flagSet:      flagSet,
 		plugins:      plugins,
 		value:        reflect.ValueOf(cfg).Elem(),
-		field:        reflect.StructField{}, //nolint:exhaustruct
+		field:        reflect.StructField{}, //nolint:exhaustruct // zero value wanted
 		defaultValue: "",
 		envName:      EnvPrefix,
 		envValue:     "",
@@ -240,8 +258,7 @@ func ApplyOverrides(ctx context.Context, parent *valueParser) error {
 			continue
 		}
 
-		// TODO: Implement the types as they are needed.
-		switch parser.value.Kind() { //nolint:exhaustive
+		switch parser.value.Kind() { //nolint:exhaustive // TODO: implemented as needed
 		case reflect.Bool:
 			err = parser.setBool()
 		case reflect.Int:
