@@ -6,7 +6,9 @@ package config
 import (
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
+	"unicode"
 
 	"github.com/anttikivi/reginald/internal/flags"
 	"github.com/anttikivi/reginald/internal/fspath"
@@ -37,7 +39,7 @@ type Config struct {
 	Color iostreams.ColorMode `mapstructure:"color"`
 
 	// Logging contains the config values for logging.
-	Logging logging.Config `mapstructure:"logging"`
+	Logging logging.Config `flag:"log" mapstructure:"logging"`
 
 	// PluginDir is the directory where Reginald looks for the plugins.
 	PluginDir fspath.Path `mapstructure:"plugin-dir"`
@@ -90,6 +92,152 @@ func DefaultPluginsDir() (fspath.Path, error) {
 	}
 
 	return path.Clean(), nil
+}
+
+// FlagName returns the command-line flag name for the given Config field s.
+// The field name should be given as you would write it in Go syntax, for
+// example "Logging.Output".
+//
+// Flag name is primarily resolved from the "flag" tag in the struct tags for
+// the field. The tag should be written as `flag:"<regular>,<inverted>"`where
+// regular is the normal name of the flag that is used to either give the value
+// or set the value as true. The inverted is available only for boolean types
+// and it is used for getting the name of a flag that explicitly set the value
+// of the field to false. The inverted name and the comma before it may be
+// omitted.
+//
+// If the field has no "flag" tag, the flag name will be calculated from
+// the field name. The function converts the field's name to lower case (and to
+// "kebab-case") and adds the names of the parent fields before the field name
+// separated with hyphen.
+func FlagName(s string) string {
+	return genFlagName(s, false)
+}
+
+// InvertedFlagName returns the command-line flag for the given Config field for
+// a flag that explicitly sets the value of the boolean to false. The field name
+// should be given as you would write it in Go syntax, for example
+// "Logging.Output".
+//
+// Flag name is primarily resolved from the "flag" tag in the struct tags for
+// the field. The tag should be written as `flag:"<regular>,<inverted>"`where
+// regular is the normal name of the flag that is used to either give the value
+// or set the value as true. The inverted is available only for boolean types
+// and it is used for getting the name of a flag that explicitly set the value
+// of the field to false. The inverted name and the comma before it may be
+// omitted.
+//
+// If the field has no inverted flag name in the "flag" tag, this function will
+// panic.
+func InvertedFlagName(s string) string {
+	return genFlagName(s, true)
+}
+
+// HasInvertedFlagName reports whether the given config value has an inverted
+// flag name tag.
+func HasInvertedFlagName(s string) bool {
+	if s == "" {
+		return false
+	}
+
+	cfg := Config{} //nolint:exhaustruct // used only for reflection
+	fieldNames := strings.Split(s, ".")
+	typ := reflect.TypeOf(cfg)
+
+	for _, name := range fieldNames {
+		f, ok := typ.FieldByName(name)
+		if !ok {
+			return false
+		}
+
+		if f.Type.Kind() == reflect.Struct {
+			typ = f.Type
+
+			continue
+		}
+
+		if f.Type.Kind() != reflect.Bool {
+			return false
+		}
+
+		t := strings.ToLower(f.Tag.Get("flag"))
+		tags := strings.FieldsFunc(t, func(r rune) bool {
+			return r == ','
+		})
+
+		if len(tags) < 2 { //nolint:mnd // only the flag and the inverted flag are allowed
+			return false
+		}
+
+		if tags[1] != "" {
+			return true
+		}
+	}
+
+	return false
+}
+
+// genFlagName resolves the flag name or the name of the inverted tag for
+// the Config field. The process is documented with [FlagName].
+func genFlagName(s string, invert bool) string {
+	cfg := Config{} //nolint:exhaustruct // used only for reflection
+	fieldNames := strings.Split(s, ".")
+	typ := reflect.TypeOf(cfg)
+	flagName := ""
+
+	for _, name := range fieldNames {
+		f, ok := typ.FieldByName(name)
+		if !ok {
+			panic(fmt.Sprintf("field in %q with name %q not found", typ.Name(), name))
+		}
+
+		t := strings.ToLower(f.Tag.Get("flag"))
+		tags := strings.FieldsFunc(t, func(r rune) bool {
+			return r == ','
+		})
+
+		if f.Type.Kind() != reflect.Bool && len(tags) > 1 {
+			panic(fmt.Sprintf("field %q (%s) has invert flag tag: %q", f.Name, f.Type.Kind(), t))
+		}
+
+		if f.Type.Kind() != reflect.Struct && invert && len(tags) < 2 {
+			panic(fmt.Sprintf("field %q has no invert flag tag: %q", f.Name, t))
+		}
+
+		if len(tags) > 2 { //nolint:mnd // only the flag and the inverted flag are allowed
+			panic(fmt.Sprintf("field %q has invalid flag tag: %q", f.Name, t))
+		}
+
+		j := 0
+
+		if invert && len(tags) > 1 {
+			j = 1
+		}
+
+		if len(tags) > 0 && tags[j] != "" {
+			// If the field has a "flag" tag, it overrides the whole tag thus
+			// far.
+			flagName = tags[j]
+		} else {
+			if len(flagName) > 0 {
+				flagName += "-"
+			}
+
+			for i, r := range f.Name {
+				if i > 0 && unicode.IsUpper(r) {
+					flagName += "-"
+				}
+
+				flagName += string(r)
+			}
+		}
+
+		if f.Type.Kind() == reflect.Struct {
+			typ = f.Type
+		}
+	}
+
+	return strings.ToLower(flagName)
 }
 
 // resolveFile looks up the possible paths for the configuration file and

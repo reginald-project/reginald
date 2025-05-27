@@ -49,6 +49,10 @@ type ValueParser struct {
 	// Field is the currently parsed struct Field.
 	Field reflect.StructField
 
+	// FullName is the name of the field including the names of the parent
+	// fields before it separated by dots.
+	FullName string
+
 	// EnvName is the name of the environment variable for checking the value
 	// for the current field.
 	EnvName string
@@ -95,6 +99,7 @@ func (p *ValueParser) LogValue() slog.Value {
 			slog.String("type", p.Field.Type.Name()),
 		),
 	)
+	attrs = append(attrs, slog.String("FullName", p.FullName))
 	attrs = append(attrs, slog.String("envName", p.EnvName))
 	attrs = append(attrs, slog.String("envValue", p.EnvValue))
 	attrs = append(attrs, slog.String("flagName", p.FlagName))
@@ -159,6 +164,7 @@ func Parse(
 		Plugins:  plugins,
 		Value:    reflect.ValueOf(cfg).Elem(),
 		Field:    reflect.StructField{}, //nolint:exhaustruct // zero value wanted
+		FullName: "",
 		EnvName:  EnvPrefix,
 		EnvValue: "",
 		FlagName: "",
@@ -223,13 +229,21 @@ func (p *ValueParser) ApplyOverrides(ctx context.Context) error {
 			Plugins:  p.Plugins,
 			Value:    p.Value.Field(i),
 			Field:    p.Value.Type().Field(i),
+			FullName: "",
 			EnvName:  "",
 			EnvValue: "",
 			FlagName: "",
 		}
+
+		if p.FullName != "" {
+			parser.FullName += p.FullName + "."
+		}
+
+		parser.FullName += parser.Field.Name
+
 		parser.EnvName = toEnv(parser.Field.Name, p.EnvName)
 		parser.EnvValue = os.Getenv(parser.EnvName)
-		parser.FlagName = toFlag(parser.Field.Name)
+		parser.FlagName = FlagName(parser.FullName)
 
 		logging.TraceContext(ctx, "checking config field", "parser", parser)
 
@@ -317,23 +331,6 @@ func toEnv(name, prefix string) string {
 	return strings.ToUpper(fmt.Sprintf("%s_%s", prefix, result))
 }
 
-// toFlag converts a struct field from camel case to lower case and "kebab-case"
-// in order to have it match command-line flag name if no flag name is provided
-// manually.
-func toFlag(name string) string {
-	result := ""
-
-	for i, r := range name {
-		if i > 0 && unicode.IsUpper(r) {
-			result += "-"
-		}
-
-		result += string(r)
-	}
-
-	return strings.ToLower(result)
-}
-
 // setBool sets a boolean value from the environment variable or
 // the command-line flag to the currently parsed value.
 func (p *ValueParser) setBool() error {
@@ -362,6 +359,18 @@ func (p *ValueParser) setBool() error {
 		x, err = p.FlagSet.GetBool(p.FlagName)
 		if err != nil {
 			return fmt.Errorf("failed to get value for --%s: %w", p.FlagName, err)
+		}
+	}
+
+	if HasInvertedFlagName(p.FullName) {
+		inverted := InvertedFlagName(p.FullName)
+		if p.FlagSet.Changed(inverted) {
+			x, err = p.FlagSet.GetBool(p.FlagName)
+			if err != nil {
+				return fmt.Errorf("failed to get value for --%s: %w", inverted, err)
+			}
+
+			x = !x
 		}
 	}
 

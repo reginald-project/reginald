@@ -70,6 +70,8 @@ func New() *CLI {
 		deferredErr:            nil,
 	}
 
+	defaults := config.DefaultConfig()
+
 	cli.flags.Bool("version", false, "print the version information and exit", "")
 	cli.flags.BoolP("help", "h", false, "show the help message and exit", "")
 
@@ -81,39 +83,47 @@ func New() *CLI {
 		"",
 	)
 
-	d, err := config.DefaultPluginsDir()
-	if err != nil {
-		panic(fmt.Sprintf("failed to get the default plugins directory: %v", err))
-	}
+	cli.flags.PathP(
+		config.FlagName("PluginDir"),
+		"p",
+		defaults.PluginDir,
+		"search for plugins from `<path>`",
+		"",
+	)
 
-	cli.flags.PathP("plugin-dir", "p", d, "search for plugins from `<path>`", "")
+	verboseName := config.FlagName("Verbose")
+	quietName := config.FlagName("Quiet")
 
 	cli.flags.BoolP(
-		"verbose",
+		verboseName,
 		"v",
-		false,
+		defaults.Verbose,
 		"make "+ProgramName+" print more output during the run",
 		"",
 	)
 	cli.flags.BoolP(
-		"quiet",
+		quietName,
 		"q",
-		false,
+		defaults.Quiet,
 		"make "+ProgramName+" print only error messages during the run",
 		"",
 	)
-	cli.markFlagsMutuallyExclusive("quiet", "verbose")
+	cli.markFlagsMutuallyExclusive(quietName, verboseName)
 
-	colorMode := iostreams.ColorAuto
+	colorMode := defaults.Color
 
-	cli.flags.Var(&colorMode, "color", "enable colors in the output", "")
+	cli.flags.Var(&colorMode, config.FlagName("Color"), "enable colors in the output", "")
 
-	cli.flags.Bool("logging", false, "enable logging", "")
-	cli.flags.Bool("no-logging", false, "disable logging", "")
-	cli.markFlagsMutuallyExclusive("logging", "no-logging")
+	logName := config.FlagName("Logging.Enabled")
+	noLogName := config.InvertedFlagName("Logging.Enabled")
+	hiddenLogFlag := logName
 
-	if err := cli.flags.MarkHidden("no-logging"); err != nil {
-		panic(fmt.Sprintf("failed to mark --no-logging hidden: %v", err))
+	cli.flags.Bool(logName, defaults.Logging.Enabled, "enable logging", "")
+	cli.flags.Bool(noLogName, !defaults.Logging.Enabled, "disable logging", "")
+	cli.markFlagsMutuallyExclusive(logName, noLogName)
+
+	if err := cli.flags.MarkHidden(hiddenLogFlag); err != nil {
+		panic(fmt.Sprintf("failed to mark --%s hidden: %v", hiddenLogFlag, err))
 	}
 
 	cli.add(NewApply())
