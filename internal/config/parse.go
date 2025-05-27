@@ -47,10 +47,6 @@ type valueParser struct {
 	// field is the currently parsed struct field.
 	field reflect.StructField
 
-	// defaultValue is the default value of the field as string. It is read from
-	// the "default" struct tag.
-	defaultValue string
-
 	// envName is the name of the environment variable for checking the value
 	// for the current field.
 	envName string
@@ -97,7 +93,6 @@ func (p *valueParser) LogValue() slog.Value {
 			slog.String("type", p.field.Type.Name()),
 		),
 	)
-	attrs = append(attrs, slog.String("defaultValue", p.defaultValue))
 	attrs = append(attrs, slog.String("envName", p.envName))
 	attrs = append(attrs, slog.String("envValue", p.envValue))
 	attrs = append(attrs, slog.String("flagName", p.flagName))
@@ -142,7 +137,7 @@ func Parse(
 	normalizeKeys(rawCfg)
 	logging.TraceContext(ctx, "normalized keys", "cfg", rawCfg)
 
-	cfg := &Config{}                              //nolint:exhaustruct // TODO: will switch to different init
+	cfg := DefaultConfig()
 	decoderConfig := &mapstructure.DecoderConfig{ //nolint:exhaustruct // default values for the rest
 		DecodeHook: mapstructure.TextUnmarshallerHookFunc(),
 		Result:     cfg,
@@ -158,14 +153,13 @@ func Parse(
 	}
 
 	parser := &valueParser{
-		flagSet:      flagSet,
-		plugins:      plugins,
-		value:        reflect.ValueOf(cfg).Elem(),
-		field:        reflect.StructField{}, //nolint:exhaustruct // zero value wanted
-		defaultValue: "",
-		envName:      EnvPrefix,
-		envValue:     "",
-		flagName:     "",
+		flagSet:  flagSet,
+		plugins:  plugins,
+		value:    reflect.ValueOf(cfg).Elem(),
+		field:    reflect.StructField{}, //nolint:exhaustruct // zero value wanted
+		envName:  EnvPrefix,
+		envValue: "",
+		flagName: "",
 	}
 	if err := ApplyOverrides(ctx, parser); err != nil {
 		return nil, fmt.Errorf("%w", err)
@@ -223,16 +217,14 @@ func ApplyOverrides(ctx context.Context, parent *valueParser) error {
 
 		// TODO: Check the struct tags for env and flags.
 		parser := &valueParser{
-			flagSet:      parent.flagSet,
-			plugins:      parent.plugins,
-			value:        parent.value.Field(i),
-			field:        parent.value.Type().Field(i),
-			defaultValue: "",
-			envName:      "",
-			envValue:     "",
-			flagName:     "",
+			flagSet:  parent.flagSet,
+			plugins:  parent.plugins,
+			value:    parent.value.Field(i),
+			field:    parent.value.Type().Field(i),
+			envName:  "",
+			envValue: "",
+			flagName: "",
 		}
-		parser.defaultValue = parser.field.Tag.Get("default")
 		parser.envName = toEnv(parser.field.Name, parent.envName)
 		parser.envValue = os.Getenv(parser.envName)
 		parser.flagName = toFlag(parser.field.Name)
@@ -339,34 +331,17 @@ func toFlag(name string) string {
 // setBool sets a boolean value from the environment variable or
 // the command-line flag to the currently parsed value.
 func (p *valueParser) setBool() error {
-	var (
-		err         error
-		unmarshaler encoding.TextUnmarshaler
-		x           bool
-	)
+	var err error
 
-	unmarshal := reflect.PointerTo(p.value.Type()).Implements(textUnmarshalerType)
-	if unmarshal {
-		var ok bool
-
-		unmarshaler, ok = p.value.Addr().Interface().(encoding.TextUnmarshaler)
-		if !ok {
-			panic(fmt.Sprintf("casting field %q to TextUnmarshaler", p.field.Name))
-		}
-	}
-
-	if unmarshaler != nil {
-		err = unmarshaler.UnmarshalText([]byte(p.defaultValue))
-	} else {
-		x, err = strconv.ParseBool(p.defaultValue)
-	}
-
-	if err != nil {
-		return fmt.Errorf("parsing %q to %s: %w", p.defaultValue, p.field.Name, err)
-	}
+	x := p.value.Bool()
 
 	if p.envValue != "" {
-		if unmarshaler != nil {
+		if reflect.PointerTo(p.value.Type()).Implements(textUnmarshalerType) {
+			unmarshaler, ok := p.value.Addr().Interface().(encoding.TextUnmarshaler)
+			if !ok {
+				panic(fmt.Sprintf("casting field %q to TextUnmarshaler", p.field.Name))
+			}
+
 			err = unmarshaler.UnmarshalText([]byte(p.envValue))
 		} else {
 			x, err = strconv.ParseBool(p.envValue)
@@ -392,34 +367,17 @@ func (p *valueParser) setBool() error {
 // setInt sets an integer value from the environment variable or
 // the command-line flag to the currently parsed value.
 func (p *valueParser) setInt() error {
-	var (
-		err         error
-		unmarshaler encoding.TextUnmarshaler
-		x           int64
-	)
+	var err error
 
-	unmarshal := reflect.PointerTo(p.value.Type()).Implements(textUnmarshalerType)
-	if unmarshal {
-		var ok bool
-
-		unmarshaler, ok = p.value.Addr().Interface().(encoding.TextUnmarshaler)
-		if !ok {
-			panic(fmt.Sprintf("casting field %q to TextUnmarshaler", p.field.Name))
-		}
-	}
-
-	if unmarshaler != nil {
-		err = unmarshaler.UnmarshalText([]byte(p.defaultValue))
-	} else {
-		x, err = strconv.ParseInt(p.defaultValue, 10, 0)
-	}
-
-	if err != nil {
-		return fmt.Errorf("parsing %q to %s: %w", p.defaultValue, p.field.Name, err)
-	}
+	x := p.value.Int()
 
 	if p.envValue != "" {
-		if unmarshaler != nil {
+		if reflect.PointerTo(p.value.Type()).Implements(textUnmarshalerType) {
+			unmarshaler, ok := p.value.Addr().Interface().(encoding.TextUnmarshaler)
+			if !ok {
+				panic(fmt.Sprintf("casting field %q to TextUnmarshaler", p.field.Name))
+			}
+
 			err = unmarshaler.UnmarshalText([]byte(p.envValue))
 		} else {
 			x, err = strconv.ParseInt(p.envValue, 10, 0)
@@ -452,7 +410,7 @@ func (p *valueParser) setInt() error {
 func (p *valueParser) setPath() error {
 	var err error
 
-	x := fspath.Path(p.defaultValue)
+	x := fspath.Path(p.value.String())
 
 	if p.envValue != "" {
 		x = fspath.Path(p.envValue)
@@ -478,7 +436,7 @@ func (p *valueParser) setPath() error {
 // setString sets a string value from the environment variable or
 // the command-line flag to the currently parsed value.
 func (p *valueParser) setString() error {
-	x := p.defaultValue
+	x := p.value.String()
 
 	if p.envValue != "" {
 		x = p.envValue

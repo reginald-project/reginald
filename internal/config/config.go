@@ -12,6 +12,7 @@ import (
 	"github.com/anttikivi/reginald/internal/fspath"
 	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/logging"
+	"github.com/anttikivi/reginald/pkg/logs"
 	"github.com/anttikivi/reginald/pkg/task"
 	"github.com/spf13/afero"
 )
@@ -33,7 +34,7 @@ const (
 // no longer be used.
 type Config struct {
 	// Color tells whether colors should be enabled in the user output.
-	Color iostreams.ColorMode `default:"auto" mapstructure:"color"`
+	Color iostreams.ColorMode `mapstructure:"color"`
 
 	// Logging contains the config values for logging.
 	Logging logging.Config `mapstructure:"logging"`
@@ -42,20 +43,42 @@ type Config struct {
 	PluginDir fspath.Path `mapstructure:"plugin-dir"`
 
 	// Quiet tells the program to suppress all other output than errors.
-	Quiet bool `default:"false" mapstructure:"quiet"`
+	Quiet bool `mapstructure:"quiet"`
 
 	// Tasks contains tasks and the configs for them as given in the config
 	// file.
 	Tasks []task.Config `mapstructure:"tasks"`
 
 	// Verbose tells the program to print more verbose output.
-	//
-	// TODO: Change the default.
-	Verbose bool `default:"true" mapstructure:"verbose"`
+	Verbose bool `mapstructure:"verbose"`
 
 	// Plugins contains the rest of the config options which should only be
 	// plugin-defined options.
 	Plugins map[string]any `mapstructure:",remain"`
+}
+
+// DefaultConfig returns the default values for configuration. The function
+// panics on errors.
+func DefaultConfig() *Config {
+	pluginDir, err := DefaultPluginsDir()
+	if err != nil {
+		panic(fmt.Sprintf("failed to get default plugin directory: %v", err))
+	}
+
+	return &Config{
+		Color: iostreams.ColorAuto,
+		Logging: logging.Config{
+			Enabled: true,
+			Format:  "json",
+			Level:   logs.LevelInfo,
+			Output:  "stdout",
+		},
+		PluginDir: pluginDir,
+		Quiet:     false,
+		Tasks:     []task.Config{},
+		Verbose:   false,
+		Plugins:   map[string]any{},
+	}
 }
 
 // DefaultPluginsDir returns the plugins directory to use. It takes the environment
