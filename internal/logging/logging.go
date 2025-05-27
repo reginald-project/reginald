@@ -35,7 +35,7 @@ const (
 // that in case of errors the final handler of the error can check if its type
 // is [BufferedFileWriter] and flush its contents to the given file if that is
 // the case.
-var BootstrapWriter io.Writer //nolint:gochecknoglobals
+var BootstrapWriter io.Writer //nolint:gochecknoglobals // needed by the panic handler
 
 // Errors for logging.
 var (
@@ -47,7 +47,7 @@ type Config struct {
 	Enabled bool       `default:"true" mapstructure:"enabled"` // whether logging is enabled
 	Format  string     `default:"json" mapstructure:"format"`  // format of the logs, "json" or "text"
 	Level   logs.Level `default:"info" mapstructure:"level"`   // logging level
-	Output  string     `mapstructure:"output"`                 // destination of the logs
+	Output  string     `               mapstructure:"output"`  // destination of the logs
 }
 
 // InitBootstrap initializes the bootstrap logger and sets it as the default

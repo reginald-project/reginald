@@ -130,7 +130,7 @@ func (c *CLI) DeferredErr() error {
 // Execute executes the CLI. It parses the command-line options, finds the
 // correct command to run, and executes it. An error is returned on user errors.
 // The function panics if it is called with invalid program configuration.
-func (c *CLI) Execute(ctx context.Context) error { //nolint:funlen
+func (c *CLI) Execute(ctx context.Context) error { //nolint:funlen // one function to rule them all
 	var flagSet *flags.FlagSet
 
 	args := os.Args
@@ -327,7 +327,7 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 func (c *CLI) addPluginCommands() error {
 	for _, p := range c.plugins {
 		for _, info := range p.Commands {
-			cmd := &Command{ //nolint:exhaustruct
+			cmd := &Command{ //nolint:exhaustruct // private fields have zero values
 				Name:      info.Name,
 				UsageLine: info.UsageLine,
 				Setup:     nil,
@@ -495,7 +495,7 @@ func (c *CLI) lookup(name string) *Command {
 // that the program returns an error if the user tries to set them at the same
 // time.
 func (c *CLI) markFlagsMutuallyExclusive(a ...string) {
-	if len(a) < 2 { //nolint:mnd
+	if len(a) < 2 { //nolint:mnd // obvious
 		panic("only one flag cannot be marked as mutually exclusive")
 	}
 

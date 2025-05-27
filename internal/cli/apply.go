@@ -8,7 +8,7 @@ import (
 
 // NewApply returns a new apply command.
 func NewApply() *Command {
-	c := &Command{ //nolint:exhaustruct
+	c := &Command{ //nolint:exhaustruct // private fields need zero values
 		Name:      "apply",
 		UsageLine: "apply [options]",
 		Setup:     setupApply,

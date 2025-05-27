@@ -82,7 +82,7 @@ func (c *Command) Lookup(name string) *Command {
 func (c *Command) MarkFlagsMutuallyExclusive(a ...string) {
 	c.mergeFlags()
 
-	if len(a) < 2 { //nolint:mnd
+	if len(a) < 2 { //nolint:mnd // obvious
 		panic("only one flag cannot be marked as mutually exclusive")
 	}
 

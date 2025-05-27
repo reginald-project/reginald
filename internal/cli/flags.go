@@ -87,11 +87,11 @@ func hasFlag(fs *flags.FlagSet, s string) bool {
 	}
 
 	if strings.HasPrefix(s, "-") {
-		if len(s) == 2 { //nolint:mnd
+		if len(s) == 2 { //nolint:mnd // obvious
 			return fs.ShorthandLookup(s[1:]) != nil
 		}
 
-		if strings.Index(s, "=") == 2 { //nolint:mnd
+		if strings.Index(s, "=") == 2 { //nolint:mnd // obvious
 			return fs.ShorthandLookup(s[1:2]) != nil
 		}
 
