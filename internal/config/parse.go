@@ -14,6 +14,7 @@ import (
 
 	"github.com/anttikivi/reginald/internal/flags"
 	"github.com/anttikivi/reginald/internal/fspath"
+	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/plugins"
 	"github.com/go-viper/mapstructure/v2"
@@ -24,6 +25,7 @@ import (
 // Errors returned from the configuration parser.
 var (
 	errConfigFileNotFound = errors.New("config file not found")
+	errInvalidCast        = errors.New("cannot convert type")
 )
 
 // textUnmarshalerType is a helper variable for checking if types of fields in
@@ -254,7 +256,11 @@ func ApplyOverrides(ctx context.Context, parent *valueParser) error {
 		case reflect.Bool:
 			err = parser.setBool()
 		case reflect.Int:
-			err = parser.setInt()
+			if parser.value.Type().Name() == "ColorMode" {
+				err = parser.setColorMode()
+			} else {
+				err = parser.setInt()
+			}
 		case reflect.String:
 			if parser.value.Type().Name() == "Path" {
 				err = parser.setPath()
@@ -336,20 +342,20 @@ func (p *valueParser) setBool() error {
 	x := p.value.Bool()
 
 	if p.envValue != "" {
-		if reflect.PointerTo(p.value.Type()).Implements(textUnmarshalerType) {
-			unmarshaler, ok := p.value.Addr().Interface().(encoding.TextUnmarshaler)
-			if !ok {
-				panic(fmt.Sprintf("casting field %q to TextUnmarshaler", p.field.Name))
+		if p.canUnmarshal() {
+			v, err := p.unmarshal(p.envValue)
+			if err != nil {
+				return fmt.Errorf("%s=%q: %w", p.envName, p.envValue, err)
 			}
 
-			err = unmarshaler.UnmarshalText([]byte(p.envValue))
+			x = v.Bool()
 		} else {
 			x, err = strconv.ParseBool(p.envValue)
 		}
 	}
 
 	if err != nil {
-		return fmt.Errorf("%s=%q, %w", p.envName, p.envValue, err)
+		return fmt.Errorf("%s=%q: %w", p.envName, p.envValue, err)
 	}
 
 	if p.flagSet.Changed(p.flagName) {
@@ -364,6 +370,46 @@ func (p *valueParser) setBool() error {
 	return nil
 }
 
+// setColorMode sets a color mode value from the environment variable or
+// the command-line flag to the currently parsed value.
+func (p *valueParser) setColorMode() error {
+	// TODO: Unsafe conversion.
+	x := iostreams.ColorMode(p.value.Int())
+
+	if !p.canUnmarshal() {
+		panic(fmt.Sprintf("casting type of field %q to TextUnmarshaler", p.field.Name))
+	}
+
+	if p.envValue != "" {
+		v, err := p.unmarshal(p.envValue)
+		if err != nil {
+			return fmt.Errorf("%s=%q: %w", p.envName, p.envValue, err)
+		}
+
+		// TODO: Unsafe conversion.
+		x = iostreams.ColorMode(v.Int())
+	}
+
+	if p.flagSet.Changed(p.flagName) {
+		f := p.flagSet.Lookup(p.flagName)
+		if f == nil {
+			panic("failed to get value for --" + p.flagName)
+		}
+
+		v, err := p.unmarshal(f.Value.String())
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal color mode %q: %w", f.Value.String(), err)
+		}
+
+		// TODO: Unsafe conversion.
+		x = iostreams.ColorMode(v.Int())
+	}
+
+	p.value.SetInt(int64(x))
+
+	return nil
+}
+
 // setInt sets an integer value from the environment variable or
 // the command-line flag to the currently parsed value.
 func (p *valueParser) setInt() error {
@@ -372,20 +418,20 @@ func (p *valueParser) setInt() error {
 	x := p.value.Int()
 
 	if p.envValue != "" {
-		if reflect.PointerTo(p.value.Type()).Implements(textUnmarshalerType) {
-			unmarshaler, ok := p.value.Addr().Interface().(encoding.TextUnmarshaler)
-			if !ok {
-				panic(fmt.Sprintf("casting field %q to TextUnmarshaler", p.field.Name))
+		if p.canUnmarshal() {
+			v, err := p.unmarshal(p.envValue)
+			if err != nil {
+				return fmt.Errorf("%s=%q: %w", p.envName, p.envValue, err)
 			}
 
-			err = unmarshaler.UnmarshalText([]byte(p.envValue))
+			x = v.Int()
 		} else {
 			x, err = strconv.ParseInt(p.envValue, 10, 0)
 		}
 	}
 
 	if err != nil {
-		return fmt.Errorf("%s=%q, %w", p.envName, p.envValue, err)
+		return fmt.Errorf("%s=%q: %w", p.envName, p.envValue, err)
 	}
 
 	if p.flagSet.Changed(p.flagName) {
@@ -454,4 +500,32 @@ func (p *valueParser) setString() error {
 	p.value.SetString(x)
 
 	return nil
+}
+
+// canUnmarshal reports whether the field can be cast to
+// [encoding.TextUnmarshaler] and unmarshaled using it.
+func (p *valueParser) canUnmarshal() bool {
+	return reflect.PointerTo(p.value.Type()).Implements(textUnmarshalerType)
+}
+
+// unmarshal converts the string s to the type of the value that is currently
+// being parsed by calling the type's UnmarshalText function. It returns
+// the actual value instead of a pointer to the value.
+func (p *valueParser) unmarshal(s string) (reflect.Value, error) {
+	ptr := reflect.New(p.value.Type())
+
+	unmarshaler, ok := ptr.Interface().(encoding.TextUnmarshaler)
+	if !ok {
+		return reflect.Value{}, fmt.Errorf(
+			"%w: type of %q to TextUnmarshaler",
+			errInvalidCast,
+			p.field.Name,
+		)
+	}
+
+	if err := unmarshaler.UnmarshalText([]byte(s)); err != nil {
+		return reflect.Value{}, fmt.Errorf("failed to unmarshal %q: %w", s, err)
+	}
+
+	return ptr.Elem(), nil
 }
