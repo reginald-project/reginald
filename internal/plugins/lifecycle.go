@@ -75,12 +75,7 @@ func ShutdownAll(ctx context.Context, plugins []*Plugin) error {
 // handshake with them. If ignoreErrors is true, the function simply drops
 // plugins that cause errors when starting or fail the handshake. Otherwise the
 // function fails fast.
-func loadAll(
-	ctx context.Context,
-	fs afero.Fs,
-	files []fspath.Path,
-	ignoreErrors bool,
-) ([]*Plugin, error) {
+func loadAll(ctx context.Context, fs afero.Fs, files []fspath.Path, ignoreErrors bool) ([]*Plugin, error) {
 	var (
 		mu      sync.Mutex
 		plugins []*Plugin
@@ -129,32 +124,14 @@ func loadAll(
 				return fmt.Errorf("handshake with plugin %q failed: %w", p.Name, err)
 			}
 
-			if err := p.populateConfigs(); err != nil {
-				if ignoreErrors {
-					logging.ErrorContext(
-						tctx,
-						"config resolution failed",
-						"plugin",
-						p.Name,
-						"err",
-						err,
-					)
-					iostreams.Errorf("Failed to resolve configs for %q\n", p.Name)
-					iostreams.PrintErrf("Error: %v\n", err)
-
-					return nil
-				}
-
-				return fmt.Errorf("failed to resolve configs for plugin %q: %w", p.Name, err)
-			}
+			logging.DebugContext(gctx, "plugin loaded", "plugin", p)
 
 			// I'm not sure about using locks but it's simple and gets the job
 			// done.
 			mu.Lock()
+			defer mu.Unlock()
 
 			plugins = append(plugins, p)
-
-			mu.Unlock()
 
 			return nil
 		})
