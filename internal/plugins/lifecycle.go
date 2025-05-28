@@ -35,7 +35,7 @@ func Load(ctx context.Context, fs afero.Fs, files []fspath.Path) ([]*Plugin, err
 		}()
 	}
 
-	logging.InfoContext(ctx, "plugins loaded", "plugins", plugins)
+	logging.InfoContext(ctx, "plugins loaded", "plugins", len(plugins))
 
 	return plugins, nil
 }
@@ -75,7 +75,12 @@ func ShutdownAll(ctx context.Context, plugins []*Plugin) error {
 // handshake with them. If ignoreErrors is true, the function simply drops
 // plugins that cause errors when starting or fail the handshake. Otherwise the
 // function fails fast.
-func loadAll(ctx context.Context, fs afero.Fs, files []fspath.Path, ignoreErrors bool) ([]*Plugin, error) {
+func loadAll(
+	ctx context.Context,
+	fs afero.Fs,
+	files []fspath.Path,
+	ignoreErrors bool,
+) ([]*Plugin, error) {
 	var (
 		mu      sync.Mutex
 		plugins []*Plugin
@@ -91,7 +96,7 @@ func loadAll(ctx context.Context, fs afero.Fs, files []fspath.Path, ignoreErrors
 		eg.Go(func() error {
 			defer handlePanic()
 
-			p, err := New(ctx, fs, f) //nolint:varnamelen
+			p, err := New(ctx, fs, f)
 			if err != nil {
 				return fmt.Errorf("failed to create a new plugin for path %s; %w", f, err)
 			}
