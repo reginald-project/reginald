@@ -86,7 +86,7 @@ build:
 	fi; \
 	\
 	echo "building Reginald version $${version}"; \
-	go build $${goflags} -ldflags "$${ldflags}" -o "$${output}" ./cmd/reginald
+	go build $${goflags} -ldflags "$${ldflags}" -o "$${output}"
 
 .PHONY: plugins
 plugins: example-plugin
