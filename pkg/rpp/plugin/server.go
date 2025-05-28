@@ -107,7 +107,6 @@ func (p *Plugin) handshake(msg *rpp.Message) error {
 		info := rpp.CommandInfo{
 			Name:      c.Name(),
 			UsageLine: c.UsageLine(),
-			Flags:     c.Flags(),
 			Configs:   nil,
 		}
 		cmdInfos = append(cmdInfos, info)

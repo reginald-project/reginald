@@ -109,10 +109,6 @@ type CommandInfo struct {
 	// UsageLine is the one-line usage synopsis of the command.
 	UsageLine string `json:"usage"`
 
-	// Flags contains the information on the command-line flags that this
-	// command provides.
-	Flags []Flag `json:"flags,omitempty"`
-
 	// Configs contains the config entries for this command.
 	Configs []ConfigEntry `json:"configs,omitempty"`
 }
@@ -157,6 +153,12 @@ type ConfigEntry struct {
 	// and in the constants of this package.
 	Type ConfigType `json:"type"`
 
+	// Flags contains the information on the possible command-line flag that is
+	// associated with this ConfigEntry. Flag must be nil if the ConfigEntry has
+	// no associated flag. Otherwise, its type must match [Flag]. If
+	// the ConfigEntry is associated with a task, it must not have a flag.
+	Flag any `json:"flag,omitempty"`
+
 	// EnvOverride defines a string to use in the environment variable name
 	// instead of the automatic name of the variable that will be composed using
 	// Key. It is appended after the prefix `REGINALD_` but if the override is
@@ -188,6 +190,8 @@ type Flag struct {
 
 	// Usage is the help description of this flag.
 	Usage string `json:"usage"`
+
+	// TODO: Add invert and remove IgnoreInConfig.
 
 	// IgnoreInConfig tells whether this flag should not be used as
 	// a traditional config value that can be used through an environment

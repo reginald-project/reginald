@@ -11,17 +11,10 @@ func NewApply() *Command {
 	c := &Command{ //nolint:exhaustruct // private fields need zero values
 		Name:      "apply",
 		UsageLine: "apply [options]",
-		Setup:     setupApply,
 		Run:       runApply,
 	}
 
 	return c
-}
-
-func setupApply(ctx context.Context, cmd, _ *Command, _ []string) error {
-	logging.InfoContext(ctx, "running setup", "cmd", cmd.Name)
-
-	return nil
 }
 
 func runApply(ctx context.Context, _ *Command, _ []string) error {
