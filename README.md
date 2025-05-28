@@ -22,29 +22,32 @@
 > added later and the current features don’t just yet match this README.
 <!-- prettier-ignore-end -->
 
-As a developer, I have tried to find a satisfactory way to manage my dotfiles
-and have a workstation set up so that, ideally, I can get a new machine up and
-running with a single command. However, I haven’t found any existing tool that
-would fill these needs: they may not easily support all of the required
-features, you might need to install some runtime (for example Python) before you
-can run them, or you have to follow their bespoke workflow in order to use the
-tool effectively. I find that these traits get in your way when you really just
-want to have symbolic links to your dotfiles in a Git repository, install the
-tools you need, and have a free hand to extend the tool’s workflow in the way
-you want to. Also, using Bash scripts for this get convoluted as the steps to
-run and the requirements grow. Ansible and Nix might be too involved for your
-needs.
+As a developer, I have tried to find a reasonable way to manage my dotfiles and
+have a workstation set up so that, ideally, I can get a new machine up and
+running with a single command. However, I’ve found that doing this with existing
+solutions can become a hassle as the existing tools might require you to install
+a runtime (for example, Python) or adapt a workflow that seems too complicated
+for the task at hand. Additionally, Bash scripts can become hard to maintain.
 
-Reginald uses a simple, single config file to define a set of idempotent,
-system-wide tasks describing how your system should look. By default, it can set
-up links to your dotfiles in the directory of your choosing and install tools
-using your system’s (or some other) package manager.
+Reginald can help as the workstation valet. You need to write a single config
+file telling Reginald what to do and it will take care of your setup. It creates
+symbolic links for your dotfiles from the directory that you choose and installs
+the packages you need.
 
-Even though Reginald is splendid already as is (see the picture of Reginald at
-the start of the README), they can always do more. That’s why Reginald has a
-language-agnostic plugin system. You can use it to teach Reginald to do
-effectively anything. Just install the plugins you need and use the same config
-file to configure them.
+Reginald can also learn new tasks. It has a language-agnostic plugin system that
+you can use to add new subcommands and tasks to Reginald.
+
+## Getting Started
+
+As the project is in an early stage, there is no prebuilt binaries or releases
+available. You can still build and run Reginald on your machine if you have Go
+and preferably `make` installed.
+
+After cloning the repository, switch to it and run:
+
+    make build
+
+This builds Reginald as `./reginald` at the root of the repository.
 
 ## License
 
