@@ -116,12 +116,7 @@ func (p *ValueParser) LogValue() slog.Value {
 // The function also resolves the configuration file according to the standard
 // paths for the file or according the flags. The relevant flags are
 // `--directory` and `--config`.
-func Parse(
-	ctx context.Context,
-	fs afero.Fs,
-	flagSet *flags.FlagSet,
-	plugins []*plugins.Plugin,
-) (*Config, error) {
+func Parse(ctx context.Context, fs afero.Fs, flagSet *flags.FlagSet, plugins []*plugins.Plugin) (*Config, error) {
 	configFile, err := resolveFile(fs, flagSet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve config file: %w", err)
@@ -145,7 +140,7 @@ func Parse(
 	logging.TraceContext(ctx, "normalized keys", "cfg", rawCfg)
 
 	cfg := DefaultConfig()
-	decoderConfig := &mapstructure.DecoderConfig{ //nolint:exhaustruct // default values for the rest
+	decoderConfig := &mapstructure.DecoderConfig{ //nolint:exhaustruct // use default values
 		DecodeHook: mapstructure.TextUnmarshallerHookFunc(),
 		Result:     cfg,
 	}
@@ -158,6 +153,8 @@ func Parse(
 	if err := d.Decode(rawCfg); err != nil {
 		return nil, fmt.Errorf("failed to read environment variables for config: %w", err)
 	}
+
+	logging.DebugContext(ctx, "read raw config", "cfg", cfg)
 
 	parser := &ValueParser{
 		FlagSet:  flagSet,
@@ -173,7 +170,7 @@ func Parse(
 		return nil, fmt.Errorf("%w", err)
 	}
 
-	logging.TraceContext(ctx, "parsed config", "cfg", cfg)
+	logging.InfoContext(ctx, "parsed config", "cfg", cfg)
 
 	return cfg, nil
 }
@@ -223,7 +220,7 @@ func (p *ValueParser) ApplyOverrides(ctx context.Context) error {
 	for i := range p.Value.NumField() {
 		var err error
 
-		// TODO: Check the struct tags for env and flags.
+		// TODO: Check the struct tags for env.
 		parser := &ValueParser{
 			FlagSet:  p.FlagSet,
 			Plugins:  p.Plugins,
@@ -282,21 +279,9 @@ func (p *ValueParser) ApplyOverrides(ctx context.Context) error {
 				err = parser.setString()
 			}
 		case reflect.Struct:
-			panic(
-				fmt.Sprintf(
-					"reached the struct check when converting environment variable to config value in %s: %s",
-					parser.Field.Name,
-					parser.Value.Kind(),
-				),
-			)
+			panic(fmt.Sprintf("reached the struct check when converting environment variable to config value in %s: %s", parser.Field.Name, parser.Value.Kind()))
 		default:
-			panic(
-				fmt.Sprintf(
-					"unsupported config field type for %s: %s",
-					parser.Field.Name,
-					parser.Value.Kind(),
-				),
-			)
+			panic(fmt.Sprintf("unsupported config field type for %s: %s", parser.Field.Name, parser.Value.Kind()))
 		}
 
 		if err != nil {

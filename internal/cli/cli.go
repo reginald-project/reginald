@@ -14,6 +14,7 @@ import (
 	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/plugins"
+	"github.com/anttikivi/reginald/pkg/version"
 	"github.com/spf13/afero"
 	"github.com/spf13/pflag"
 )
@@ -152,12 +153,13 @@ func (c *CLI) Execute(ctx context.Context) error { //nolint:funlen // one functi
 	// first.
 	_ = flagSet.Parse(args)
 
-	help, err := flagSet.GetBool("help")
+	// TODO: Help should be implemented for all commands.
+	helpSet, err := flagSet.GetBool("help")
 	if err != nil {
 		return fmt.Errorf("failed to get the value for command-line option '--help': %w", err)
 	}
 
-	if help {
+	if helpSet {
 		if err = printHelp(); err != nil {
 			return fmt.Errorf("failed to print the usage info: %w", err)
 		}
@@ -165,12 +167,12 @@ func (c *CLI) Execute(ctx context.Context) error { //nolint:funlen // one functi
 		return nil
 	}
 
-	version, err := flagSet.GetBool("version")
+	versionSet, err := flagSet.GetBool("version")
 	if err != nil {
 		return fmt.Errorf("failed to get the value for command-line option '--version': %w", err)
 	}
 
-	if version {
+	if versionSet {
 		if err = printVersion(); err != nil {
 			return fmt.Errorf("failed to print the version info: %w", err)
 		}
@@ -190,7 +192,8 @@ func (c *CLI) Execute(ctx context.Context) error { //nolint:funlen // one functi
 		return fmt.Errorf("failed to init the logger: %w", err)
 	}
 
-	logging.InfoContext(ctx, "logging initialized")
+	logging.DebugContext(ctx, "logging initialized")
+	logging.InfoContext(ctx, "running Reginald", "version", version.Version())
 
 	if err := c.loadPlugins(ctx); err != nil {
 		return fmt.Errorf("failed to resolve plugins: %w", err)
@@ -303,7 +306,7 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 		path := dir.Join(entry.Name())
 
 		if entry.IsDir() {
-			logging.DebugContext(ctx, "plugin file is a directory", "path", path)
+			logging.TraceContext(ctx, "plugin file is a directory", "path", path)
 
 			continue
 		}
@@ -314,7 +317,7 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 		}
 
 		if info.Mode()&0o111 == 0 {
-			logging.DebugContext(ctx, "plugin file is not executable", "path", path)
+			logging.TraceContext(ctx, "plugin file is not executable", "path", path)
 
 			continue
 		}
@@ -465,18 +468,9 @@ func (c *CLI) findSubcommand(ctx context.Context, args []string) (*Command, []st
 	}
 
 	if cmd == nil {
-		logging.DebugContext(
-			ctx,
-			"no command found",
-			"cmd",
-			os.Args[0],
-			"args",
-			args,
-			"flags",
-			flags,
-		)
+		logging.TraceContext(ctx, "no command found", "cmd", os.Args[0], "args", args, "flags", flags)
 	} else {
-		logging.DebugContext(ctx, "found subcommand", "cmd", cmd.Name, "args", args, "flags", flags)
+		logging.TraceContext(ctx, "found subcommand", "cmd", cmd.Name, "args", args, "flags", flags)
 	}
 
 	args = append(args, flags...)

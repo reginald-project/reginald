@@ -48,8 +48,6 @@ func run() int {
 		return 1
 	}
 
-	logging.TraceContext(ctx, "trace message")
-
 	logging.DebugContext(ctx, "bootstrap logger initialized")
 	logging.InfoContext(
 		ctx,

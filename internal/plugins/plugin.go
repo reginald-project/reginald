@@ -11,7 +11,6 @@ import (
 	"io"
 	"log/slog"
 	"os/exec"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -47,12 +46,6 @@ var (
 // client.
 type Plugin struct {
 	rpp.HandshakeResult
-
-	// ConfigEntries is the consolidated map of the plugins config options. Each
-	// entry of the map contains the list of config options under the plugin
-	// (key is the plugin name), command (key is "cmd:<command name>"), or task
-	// (key is "task:<task name>").
-	ConfigEntries map[string][]rpp.ConfigEntry
 
 	// lastID is the ID that was last used in a method call. Even though
 	// the protocol supports both strings and ints as the ID, we just default to
@@ -148,7 +141,6 @@ func New(ctx context.Context, fs afero.Fs, path fspath.Path) (*Plugin, error) {
 			Commands:      []rpp.CommandInfo{},
 			Tasks:         []rpp.TaskInfo{},
 		},
-		ConfigEntries:  nil,
 		lastID:         atomic.Int64{},
 		cmd:            c,
 		stdin:          bufio.NewWriter(stdin),
@@ -252,7 +244,7 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 		Params:  rawParams,
 	}
 
-	logging.DebugContext(ctx, "calling method", "plugin", p.Name, "method", method, "req", req)
+	logging.TraceContext(ctx, "calling method", "plugin", p.Name, "method", method, "req", req)
 
 	// A channel is created for each request. It receives a values in the read
 	// loop.
@@ -289,7 +281,7 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 			return nil, fmt.Errorf("%w: %s (method %s)", errNoResponse, p.Name, method)
 		}
 
-		logging.DebugContext(ctx, "received response", "plugin", p.Name, "res", res)
+		logging.TraceContext(ctx, "received response", "plugin", p.Name, "res", res)
 
 		if res.Error != nil {
 			var rpcErr rpp.Error
@@ -306,7 +298,7 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 
 		return res, nil
 	case <-ctx.Done():
-		logging.DebugContext(ctx, "context canceled during plugin call")
+		logging.TraceContext(ctx, "context canceled during plugin call")
 		p.cleanPending(id, ch)
 
 		return nil, fmt.Errorf("%w", ctx.Err())
@@ -384,7 +376,7 @@ func (p *Plugin) handshake(ctx context.Context) error {
 
 	p.HandshakeResult = result
 
-	logging.DebugContext(ctx, "handshake succeeded", "plugin", p.Name)
+	logging.TraceContext(ctx, "handshake succeeded", "plugin", p.Name)
 
 	return nil
 }
@@ -459,52 +451,6 @@ func (p *Plugin) notify(ctx context.Context, method string, params any) error {
 
 	if err != nil {
 		return fmt.Errorf("error when sending notification: %w", err)
-	}
-
-	return nil
-}
-
-// populateConfigs populates the ConfigEntries in p with the config values for
-// the plugin, commands, and tasks.
-func (p *Plugin) populateConfigs() error {
-	m := make(map[string][]rpp.ConfigEntry)
-
-	if len(p.ConfigEntries) > 0 {
-		m[p.Name] = make([]rpp.ConfigEntry, 0, len(p.PluginConfigs))
-
-		for _, c := range p.PluginConfigs {
-			if strings.HasPrefix(c.Key, "cmd:") || strings.HasPrefix(c.Key, "task:") {
-				return fmt.Errorf("%w: %s", errInvalidPluginConfig, c.Key)
-			}
-
-			m[p.Name] = append(m[p.Name], c)
-		}
-	}
-
-	for _, info := range p.Commands {
-		var entries []rpp.ConfigEntry
-		entries = append(entries, info.Configs...)
-
-		for _, f := range info.Flags {
-			if !f.IgnoreInConfig {
-				c := rpp.ConfigEntry{
-					Key:          f.Name,
-					DefaultValue: f.DefaultValue,
-					Type:         f.Type,
-					EnvOverride:  "",
-				}
-				entries = append(entries, c)
-			}
-		}
-
-		name := "cmd:" + info.Name
-		m[name] = entries
-	}
-
-	for _, info := range p.Tasks {
-		name := "task:" + info.Name
-		m[name] = make([]rpp.ConfigEntry, 0)
-		m[name] = append(m[name], info.Configs...)
 	}
 
 	return nil
@@ -636,20 +582,13 @@ func (p *Plugin) shutdown(ctx context.Context) error {
 // start starts the execution of the plugin process and the related reading
 // goroutines.
 func (p *Plugin) start(ctx context.Context) error {
-	logging.DebugContext(ctx, "executing plugin", "path", p.cmd.Path)
+	logging.TraceContext(ctx, "executing plugin", "path", p.cmd.Path)
 
 	if err := p.cmd.Start(); err != nil {
 		return fmt.Errorf("plugin execution from %s failed: %w", p.cmd.Path, err)
 	}
 
-	logging.InfoContext(
-		ctx,
-		"started a plugin process",
-		"path",
-		p.cmd.Path,
-		"pid",
-		p.cmd.Process.Pid,
-	)
+	logging.DebugContext(ctx, "started a plugin process", "path", p.cmd.Path, "pid", p.cmd.Process.Pid)
 
 	p.doneCh = make(chan error, 1)
 
