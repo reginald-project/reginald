@@ -14,6 +14,7 @@ import (
 	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/plugins"
+	"github.com/anttikivi/reginald/pkg/rpp"
 	"github.com/anttikivi/reginald/pkg/version"
 	"github.com/spf13/afero"
 	"github.com/spf13/pflag"
@@ -48,7 +49,9 @@ type CLI struct {
 	commands               []*Command        // list of subcommands
 	pluginCommands         []*Command        // commands received from plugins
 	allCommands            []*Command        // internal and plugin subcommands combined
+	allFlags               *flags.FlagSet    // own and plugin command-line flags combined
 	flags                  *flags.FlagSet    // global command-line flags
+	pluginFlags            *flags.FlagSet    // plugin-wide flags
 	mutuallyExclusiveFlags [][]string        // list of flag names that are marked as mutually exclusive
 	plugins                []*plugins.Plugin // loaded plugins
 	deferredErr            error             // error returned by the plugin shutdown not captured by the return value
@@ -65,7 +68,9 @@ func New() *CLI {
 		commands:               []*Command{},
 		pluginCommands:         []*Command{},
 		allCommands:            []*Command{},
+		allFlags:               flags.NewFlagSet(Name, pflag.ContinueOnError),
 		flags:                  flags.NewFlagSet(Name, pflag.ContinueOnError),
+		pluginFlags:            flags.NewFlagSet(Name, pflag.ContinueOnError),
 		mutuallyExclusiveFlags: [][]string{},
 		plugins:                []*plugins.Plugin{},
 		deferredErr:            nil,
@@ -227,7 +232,7 @@ func (c *CLI) Execute(ctx context.Context) error { //nolint:funlen // one functi
 	c.cmd, args = c.findSubcommand(ctx, args)
 
 	if c.cmd == nil {
-		flagSet = c.flags
+		flagSet = c.allFlags
 	} else {
 		c.cmd.mergeFlags()
 		flagSet = c.cmd.Flags()
@@ -253,6 +258,10 @@ func (c *CLI) Execute(ctx context.Context) error { //nolint:funlen // one functi
 	// if err != nil {
 	// 	return fmt.Errorf("failed to apply config values: %w", err)
 	// }
+
+	if err = plugins.Initialize(ctx, c.plugins); err != nil {
+		return fmt.Errorf("failed to initialize plugins: %w", err)
+	}
 
 	if err := c.run(ctx, c.cmd, c.args); err != nil {
 		return fmt.Errorf("%w", err)
@@ -339,11 +348,19 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 // addPluginCommands adds the commands from the loaded plugins to c.
 func (c *CLI) addPluginCommands() error {
 	for _, p := range c.plugins {
+		for _, entry := range p.PluginConfigs {
+			// TODO: Add inverted flags.
+			if f, ok := entry.Flag.(rpp.Flag); ok {
+				if err := c.pluginFlags.AddPluginFlag(f); err != nil {
+					return fmt.Errorf("failed to add flag from plugin %q: %w", p.Name, err)
+				}
+			}
+		}
+
 		for _, info := range p.Commands {
 			cmd := &Command{ //nolint:exhaustruct // private fields have zero values
 				Name:      info.Name,
 				UsageLine: info.UsageLine,
-				Setup:     nil,
 				Run: func(ctx context.Context, cmd *Command, args []string) error {
 					if err := p.RunCmd(ctx, cmd.Name, args); err != nil {
 						return fmt.Errorf(
@@ -358,14 +375,17 @@ func (c *CLI) addPluginCommands() error {
 				},
 			}
 
-			for _, f := range info.Flags {
-				if err := cmd.Flags().AddPluginFlag(f); err != nil {
-					return fmt.Errorf(
-						"failed to add flag from plugin %q and command %q: %w",
-						p.Name,
-						info.Name,
-						err,
-					)
+			for _, entry := range info.Configs {
+				// TODO: Add inverted flags.
+				if f, ok := entry.Flag.(rpp.Flag); ok {
+					if err := cmd.Flags().AddPluginFlag(f); err != nil {
+						return fmt.Errorf(
+							"failed to add flag from plugin %q and command %q: %w",
+							p.Name,
+							info.Name,
+							err,
+						)
+					}
 				}
 			}
 
@@ -375,6 +395,9 @@ func (c *CLI) addPluginCommands() error {
 
 	c.allCommands = append(c.allCommands, c.commands...)
 	c.allCommands = append(c.allCommands, c.pluginCommands...)
+
+	c.allFlags.AddFlagSet(c.flags)
+	c.allFlags.AddFlagSet(c.pluginFlags)
 
 	return nil
 }
@@ -389,7 +412,7 @@ func (c *CLI) checkMutuallyExclusiveFlags(cmd *Command) error {
 	)
 
 	if cmd == nil {
-		fs = c.flags
+		fs = c.allFlags
 		mutuallyExclusiveFlags = c.mutuallyExclusiveFlags
 	} else {
 		fs = cmd.Flags()
@@ -438,7 +461,7 @@ func (c *CLI) findSubcommand(ctx context.Context, args []string) (*Command, []st
 
 	var cmd *Command
 
-	fs := c.flags
+	fs := c.allFlags
 	flags := []string{}
 
 	for len(args) >= 1 {
@@ -533,9 +556,9 @@ func (c *CLI) run(ctx context.Context, cmd *Command, args []string) error {
 		return nil
 	}
 
-	if err := setupCommands(ctx, cmd, cmd, args); err != nil {
-		return fmt.Errorf("%w", err)
-	}
+	// if err := setupCommands(ctx, cmd, cmd, args); err != nil {
+	// 	return fmt.Errorf("%w", err)
+	// }
 
 	if err := cmd.Run(ctx, cmd, args); err != nil {
 		return fmt.Errorf("%w", err)
@@ -546,18 +569,18 @@ func (c *CLI) run(ctx context.Context, cmd *Command, args []string) error {
 
 // setupCommands runs [Command.Setup] for all of the commands, starting from the
 // root command. It exits on the first error it encounters.
-func setupCommands(ctx context.Context, c, subcmd *Command, args []string) error {
-	if c.HasParent() {
-		if err := setupCommands(ctx, c.parent, subcmd, args); err != nil {
-			return fmt.Errorf("%w", err)
-		}
-	}
-
-	if c.Setup != nil {
-		if err := c.Setup(ctx, c, subcmd, args); err != nil {
-			return fmt.Errorf("%w", err)
-		}
-	}
-
-	return nil
-}
+// func setupCommands(ctx context.Context, c, subcmd *Command, args []string) error {
+// 	if c.HasParent() {
+// 		if err := setupCommands(ctx, c.parent, subcmd, args); err != nil {
+// 			return fmt.Errorf("%w", err)
+// 		}
+// 	}
+//
+// 	if c.Setup != nil {
+// 		if err := c.Setup(ctx, c, subcmd, args); err != nil {
+// 			return fmt.Errorf("%w", err)
+// 		}
+// 	}
+//
+// 	return nil
+// }

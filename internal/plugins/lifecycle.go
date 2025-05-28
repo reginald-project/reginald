@@ -13,6 +13,11 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// Initialize calls the "initialize" method on all plugins.
+func Initialize(_ context.Context, _ []*Plugin) error {
+	return nil
+}
+
 // Load creates the processes for the plugins, performs the handshakes with
 // them, returns a slice of the valid plugins.
 func Load(ctx context.Context, fs afero.Fs, files []fspath.Path) ([]*Plugin, error) {

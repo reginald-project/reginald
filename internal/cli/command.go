@@ -29,7 +29,7 @@ type Command struct {
 	// For example, the configuration should be parsed in Setup. If Command is
 	// a subcommand, the setup functions for the parent commands are run first,
 	// starting from the root command.
-	Setup func(ctx context.Context, cmd, subcmd *Command, args []string) error
+	// Setup func(ctx context.Context, cmd, subcmd *Command, args []string) error
 
 	// Runs runs the command. Before running the command, Setup functions for
 	// the command and its parent commands are run.
@@ -155,7 +155,7 @@ func (c *Command) mergeFlags() {
 		panic(fmt.Sprintf("flag %q is set in the CommandLine flag set", f.Name))
 	})
 	// c.cli.flags.AddFlagSet(pflag.CommandLine)
-	c.Root().GlobalFlags().AddFlagSet(c.cli.flags)
+	c.Root().GlobalFlags().AddFlagSet(c.cli.allFlags)
 	c.VisitParents(func(p *Command) {
 		c.GlobalFlags().AddFlagSet(p.GlobalFlags())
 	})
