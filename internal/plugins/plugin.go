@@ -32,14 +32,13 @@ const (
 
 // Errors returned by plugin utility functions.
 var (
-	errCommandNotFound     = errors.New("given command is not present in the plugin")
-	errHandshake           = errors.New("plugin handshake failed")
-	errInvalidPluginConfig = errors.New("invalid plugin-level config definition")
-	errNoParams            = errors.New("notification has no params")
-	errNoResponse          = errors.New("plugin disconnected before responding")
-	errNotFile             = errors.New("plugin path is not a file")
-	errUnknownMethod       = errors.New("invalid method")
-	errWrongProtocol       = errors.New("mismatch in plugin protocol info")
+	errCommandNotFound = errors.New("given command is not present in the plugin")
+	errHandshake       = errors.New("plugin handshake failed")
+	errNoParams        = errors.New("notification has no params")
+	errNoResponse      = errors.New("plugin disconnected before responding")
+	errNotFile         = errors.New("plugin path is not a file")
+	errUnknownMethod   = errors.New("invalid method")
+	errWrongProtocol   = errors.New("mismatch in plugin protocol info")
 )
 
 // A Plugin represents a plugin that acts as an RPP server and is run from this
@@ -588,7 +587,14 @@ func (p *Plugin) start(ctx context.Context) error {
 		return fmt.Errorf("plugin execution from %s failed: %w", p.cmd.Path, err)
 	}
 
-	logging.DebugContext(ctx, "started a plugin process", "path", p.cmd.Path, "pid", p.cmd.Process.Pid)
+	logging.DebugContext(
+		ctx,
+		"started a plugin process",
+		"path",
+		p.cmd.Path,
+		"pid",
+		p.cmd.Process.Pid,
+	)
 
 	p.doneCh = make(chan error, 1)
 

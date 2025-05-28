@@ -468,7 +468,16 @@ func (c *CLI) findSubcommand(ctx context.Context, args []string) (*Command, []st
 	}
 
 	if cmd == nil {
-		logging.TraceContext(ctx, "no command found", "cmd", os.Args[0], "args", args, "flags", flags)
+		logging.TraceContext(
+			ctx,
+			"no command found",
+			"cmd",
+			os.Args[0],
+			"args",
+			args,
+			"flags",
+			flags,
+		)
 	} else {
 		logging.TraceContext(ctx, "found subcommand", "cmd", cmd.Name, "args", args, "flags", flags)
 	}

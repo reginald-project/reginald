@@ -145,9 +145,12 @@ type ConfigEntry struct {
 	// file.
 	Key string `json:"key"`
 
-	// DefaultValue is the default value of the config entry as the type it
-	// should be defined as.
-	DefaultValue any `json:"defaultValue"`
+	// Value is the current value of the config entry as the type it should be
+	// defined as. If this ConfigEntry is used in a result to a handshake, this
+	// should be the default value of the ConfigEntry. When Reginald sends
+	// the configuration data to the plugin at different steps after that, Value
+	// contains the configured value of this ConfigEntry.
+	Value any `json:"value"`
 
 	// Type is a string representation of the type of the value that this config
 	// entry holds. The possible values can be found in the protocol description
