@@ -11,8 +11,6 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
-
-	"github.com/anttikivi/reginald/pkg/logs"
 )
 
 // Constant values related to the RPP version currently implemented by this
@@ -22,17 +20,6 @@ const (
 	JSONRCPVersion = "2.0"                  // JSON-RCP version the protocol uses
 	Name           = "rpp"                  // protocol name to use in handshake
 	Version        = 0                      // protocol version
-)
-
-// Standard method names used by the RPP.
-const (
-	MethodExit       = "exit"
-	MethodHandshake  = "handshake"
-	MethodInitialize = "initialize"
-	MethodLog        = "log"
-	MethodRunCommand = "runCommand"
-	MethodRunTask    = "runTask"
-	MethodShutdown   = "shutdown"
 )
 
 // Error codes used for the protocol.
@@ -108,53 +95,6 @@ type Error struct {
 
 	// Data contains optional additional information about the error.
 	Data any `json:"data,omitempty"`
-}
-
-// Handshake is a helper type that contains the handshake information fields
-// that are shared between the "handshake" method parameters and the response.
-// These values must match in order to perform the handshake successfully.
-// The valid values for the current implementation are provided as constants in
-// this package.
-type Handshake struct {
-	// Protocol is the identifier of the protocol to use. It must be "rpp" for
-	// the handshake to succeed.
-	Protocol string `json:"protocol"`
-
-	// ProtocolVersion is the version of the protocol to use. It must be 0 for
-	// the handshake to succeed.
-	ProtocolVersion int `json:"protocolVersion"`
-}
-
-// HandshakeParams are the parameters that the client passes when calling the
-// "handshake" method on the server.
-type HandshakeParams struct {
-	Handshake
-}
-
-// HandshakeResult is the result struct the server returns when the handshake
-// method is successful.
-type HandshakeResult struct {
-	Handshake
-
-	// Name is the user-friendly name of the plugin that will be used in
-	// the logs and in the user output. It must be unique and loading
-	// the plugins will fail if two or more plugins have exactly the same name.
-	// It must also be a valid config key if the plugin registers plugin-wide
-	// config entries.
-	Name string `json:"name"`
-
-	// PluginConfigs contains the plugin-level config entries.
-	PluginConfigs []ConfigEntry `json:"configs,omitempty"`
-
-	// Commands contains the information on the command types this plugin
-	// offers. If the plugin does not provide any commands, this can be either
-	// nil or an empty list.
-	Commands []CommandInfo `json:"commands,omitempty"`
-
-	// Tasks contains the information on the task types this plugin offers. It
-	// is a list of the provided task types. If the plugin does not provide any
-	// tasks, this can be either nil or an empty list.
-	Tasks []TaskInfo `json:"tasks:omitempty"`
 }
 
 // CommandInfo contains information on a command that a plugin implements.
@@ -254,33 +194,6 @@ type Flag struct {
 	IgnoreInConfig bool `json:"ignoreInConfig"`
 }
 
-// LogParams are the parameters passed with the "log" method. Reginald uses
-// structured logging where the given message is one field of the log output and
-// additional information can be given as Fields.
-type LogParams struct {
-	// Level is the logging level of the message. It should have a string value "debug", "info", "warn", or "error".
-	Level logs.Level `json:"level"`
-
-	// Message is the logging message.
-	Message string `json:"msg"`
-
-	// Fields contains additional fields that should be included with the
-	// message. Reginald automatically adds information about the plugin from
-	// which the message came from.
-	Fields map[string]any `json:"fields,omitempty"`
-}
-
-// RunCmdParams are the parameters passed when the client runs a command from
-// a plugin.
-type RunCmdParams struct {
-	// Name is the name of the command that should be run.
-	Name string `json:"name"`
-
-	// Args are the command-line arguments after parsing the commands and flags.
-	// It should contain the positional arguments required by the command.
-	Args []string `json:"args"`
-}
-
 // Error returns the string representation of the error e.
 func (e *Error) Error() string {
 	if e.Data != nil {
@@ -288,17 +201,6 @@ func (e *Error) Error() string {
 	}
 
 	return e.Message
-}
-
-// DefaultHandshakeParams returns the default parameters used by the client in
-// the handshake method call.
-func DefaultHandshakeParams() HandshakeParams {
-	return HandshakeParams{
-		Handshake: Handshake{
-			Protocol:        Name,
-			ProtocolVersion: Version,
-		},
-	}
 }
 
 // Read reads one message from r.
