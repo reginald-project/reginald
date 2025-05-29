@@ -10,7 +10,6 @@ import (
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/panichandler"
 	"github.com/anttikivi/reginald/pkg/rpp"
-	"github.com/spf13/afero"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -70,9 +69,9 @@ func Initialize(ctx context.Context, plugins []*Plugin, cfgs map[string]any) err
 
 // Load creates the processes for the plugins, performs the handshakes with
 // them, returns a slice of the valid plugins.
-func Load(ctx context.Context, fs afero.Fs, files []fspath.Path) ([]*Plugin, error) {
+func Load(ctx context.Context, files []fspath.Path) ([]*Plugin, error) {
 	// TODO: Add a config options for ignoring the errors.
-	plugins, err := loadAll(ctx, fs, files, true)
+	plugins, err := loadAll(ctx, files, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load the plugins: %w", err)
 	}
@@ -130,12 +129,7 @@ func ShutdownAll(ctx context.Context, plugins []*Plugin) error {
 // handshake with them. If ignoreErrors is true, the function simply drops
 // plugins that cause errors when starting or fail the handshake. Otherwise the
 // function fails fast.
-func loadAll(
-	ctx context.Context,
-	fs afero.Fs,
-	files []fspath.Path,
-	ignoreErrors bool,
-) ([]*Plugin, error) {
+func loadAll(ctx context.Context, files []fspath.Path, ignoreErrors bool) ([]*Plugin, error) {
 	var (
 		mu      sync.Mutex
 		plugins []*Plugin
@@ -151,7 +145,7 @@ func loadAll(
 		eg.Go(func() error {
 			defer handlePanic()
 
-			p, err := New(ctx, fs, f)
+			p, err := New(ctx, f)
 			if err != nil {
 				return fmt.Errorf("failed to create a new plugin for path %s; %w", f, err)
 			}

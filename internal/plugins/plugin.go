@@ -21,7 +21,6 @@ import (
 	"github.com/anttikivi/reginald/internal/panichandler"
 	"github.com/anttikivi/reginald/pkg/logs"
 	"github.com/anttikivi/reginald/pkg/rpp"
-	"github.com/spf13/afero"
 )
 
 // Default values associated with the plugin client.
@@ -95,8 +94,8 @@ type Plugin struct {
 }
 
 // New returns a pointer to a newly created Plugin.
-func New(ctx context.Context, fs afero.Fs, path fspath.Path) (*Plugin, error) {
-	if ok, err := path.IsFile(fs); err != nil {
+func New(ctx context.Context, path fspath.Path) (*Plugin, error) {
+	if ok, err := path.IsFile(); err != nil {
 		return nil, fmt.Errorf("failed to check if %s is a file: %w", path, err)
 	} else if !ok {
 		return nil, fmt.Errorf("%w: %s", errNotFile, path)

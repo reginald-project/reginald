@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/anttikivi/reginald/internal/fspath"
-	"github.com/spf13/afero"
 )
 
 // Default values for the BufferedFileWriter.
@@ -62,16 +61,16 @@ func (w *BufferedFileWriter) File() fspath.Path {
 
 // Flush writes the underlying buffer to the given file, creating the file and
 // the intermediate directories if they don't exist.
-func (w *BufferedFileWriter) Flush(fs afero.Fs) error {
+func (w *BufferedFileWriter) Flush() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	dir := w.file.Dir()
-	if err := dir.MkdirAll(fs, defaultBufFileWriterDirPerm); err != nil {
+	if err := dir.MkdirAll(defaultBufFileWriterDirPerm); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
-	f, err := w.file.OpenFile(fs, os.O_CREATE|os.O_WRONLY|os.O_APPEND, defaultBufFileWriterPerm)
+	f, err := w.file.OpenFile(os.O_CREATE|os.O_WRONLY|os.O_APPEND, defaultBufFileWriterPerm)
 	if err != nil {
 		return fmt.Errorf("%w", err)
 	}

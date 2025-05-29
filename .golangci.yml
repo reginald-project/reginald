@@ -32,7 +32,6 @@ linters:
             - github.com/anttikivi/go-semver
             - github.com/go-viper/mapstructure/v2
             - github.com/pelletier/go-toml/v2
-            - github.com/spf13/afero
             - github.com/spf13/pflag
             - golang.org/x/sync
             - golang.org/x/term
@@ -69,7 +68,6 @@ linters:
       max-distance: 50
       ignore-decls:
         - eg *errgroup.Group
-        - fs afero.Fs
         - g *errgroup.Group
         - id rpp.ID
         - mu sync.Mutex

@@ -20,7 +20,6 @@ import (
 	"github.com/anttikivi/reginald/pkg/rpp"
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/pelletier/go-toml/v2"
-	"github.com/spf13/afero"
 )
 
 // Errors returned from the configuration parser.
@@ -158,15 +157,15 @@ func (p *ValueParser) LogValue() slog.Value {
 // The function also resolves the configuration file according to the standard
 // paths for the file or according the flags. The relevant flags are
 // `--directory` and `--config`.
-func Parse(ctx context.Context, fs afero.Fs, flagSet *flags.FlagSet) (*Config, error) {
-	configFile, err := resolveFile(fs, flagSet)
+func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
+	configFile, err := resolveFile(flagSet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve config file: %w", err)
 	}
 
 	logging.TraceContext(ctx, "reading config file", "path", configFile)
 
-	data, err := configFile.Clean().ReadFile(fs)
+	data, err := configFile.Clean().ReadFile()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
@@ -399,7 +398,11 @@ func (p *ValueParser) ApplyOverrides(ctx context.Context) error {
 // applyPluginOverrides applies the overrides of the config values from
 // environment variables and command-line flags to plugin configs in cfg in p.
 // It modifies the pointed cfg.
-func (p *ValueParser) applyPluginOverrides(ctx context.Context, m map[string]any, configs []rpp.ConfigValue) error {
+func (p *ValueParser) applyPluginOverrides(
+	ctx context.Context,
+	m map[string]any,
+	configs []rpp.ConfigValue,
+) error {
 	logging.TraceContext(ctx, "applying plugin overrides", "cfgs", configs)
 
 	for _, c := range configs {

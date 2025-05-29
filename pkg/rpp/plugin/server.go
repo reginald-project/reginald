@@ -197,9 +197,14 @@ func (p *Plugin) initialize(msg *rpp.Message) error {
 
 		if p.configs[i].Type != cfg.Type {
 			err := p.respondError(msg.ID, &rpp.Error{
-				Code:    rpp.InvalidParams,
-				Message: fmt.Sprintf("Invalid type for %q: wanted %s, got %s", cfg.Key, p.configs[i].Type, cfg.Type),
-				Data:    nil,
+				Code: rpp.InvalidParams,
+				Message: fmt.Sprintf(
+					"Invalid type for %q: wanted %s, got %s",
+					cfg.Key,
+					p.configs[i].Type,
+					cfg.Type,
+				),
+				Data: nil,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to send error response: %w", err)
@@ -470,9 +475,14 @@ func (p *Plugin) setupCmd(msg *rpp.Message) error {
 		c := cmd.Configs()[i]
 		if c.Type != cfg.Type {
 			err := p.respondError(msg.ID, &rpp.Error{
-				Code:    rpp.InvalidParams,
-				Message: fmt.Sprintf("Invalid type for %q: wanted %s, got %s", cfg.Key, c.Type, cfg.Type),
-				Data:    nil,
+				Code: rpp.InvalidParams,
+				Message: fmt.Sprintf(
+					"Invalid type for %q: wanted %s, got %s",
+					cfg.Key,
+					c.Type,
+					cfg.Type,
+				),
+				Data: nil,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to send error response: %w", err)

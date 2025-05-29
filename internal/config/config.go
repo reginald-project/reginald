@@ -16,7 +16,6 @@ import (
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/pkg/logs"
 	"github.com/anttikivi/reginald/pkg/task"
-	"github.com/spf13/afero"
 )
 
 // EnvPrefix is the prefix added to the names of the config values when reading
@@ -244,7 +243,7 @@ func genFlagName(s string, invert bool) string {
 // returns the first one that contains a file with a valid name. The returned
 // path is absolute. If no configuration file is found, the function returns an
 // empty string and an error.
-func resolveFile(fs afero.Fs, flagSet *flags.FlagSet) (fspath.Path, error) {
+func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
 	var (
 		err       error
 		fileValue string
@@ -268,7 +267,7 @@ func resolveFile(fs afero.Fs, flagSet *flags.FlagSet) (fspath.Path, error) {
 
 	// Use the fileValue if it is an absolute path.
 	if file.IsAbs() {
-		if ok, err := file.IsFile(fs); err != nil {
+		if ok, err := file.IsFile(); err != nil {
 			return "", fmt.Errorf("%w", err)
 		} else if ok {
 			return file.Clean(), nil
@@ -283,7 +282,7 @@ func resolveFile(fs afero.Fs, flagSet *flags.FlagSet) (fspath.Path, error) {
 	// Check if the config file f matches a file in the working directory.
 	file = fspath.New(wd, string(file))
 
-	if ok, err := file.IsFile(fs); err != nil {
+	if ok, err := file.IsFile(); err != nil {
 		return "", fmt.Errorf("%w", err)
 	} else if ok {
 		return file, nil
@@ -313,7 +312,7 @@ func resolveFile(fs afero.Fs, flagSet *flags.FlagSet) (fspath.Path, error) {
 		for _, n := range configNames {
 			for _, e := range extensions {
 				file = fspath.New(d, fmt.Sprintf("%s.%s", n, e))
-				if ok, err := file.IsFile(fs); err != nil {
+				if ok, err := file.IsFile(); err != nil {
 					return "", fmt.Errorf("%w", err)
 				} else if ok {
 					return file, nil

@@ -18,7 +18,6 @@ import (
 	"github.com/anttikivi/reginald/internal/plugins"
 	"github.com/anttikivi/reginald/pkg/rpp"
 	"github.com/anttikivi/reginald/pkg/version"
-	"github.com/spf13/afero"
 	"github.com/spf13/pflag"
 )
 
@@ -47,7 +46,6 @@ type CLI struct {
 	UsageLine string // one-line synopsis of the program
 
 	args                   []string          // command-line arguments after parsing
-	fs                     afero.Fs          // file system in use
 	cmd                    *Command          // command to run
 	cfg                    *config.Config    // parsed config of the run
 	commands               []*Command        // list of subcommands
@@ -66,7 +64,6 @@ func New() *CLI {
 	cli := &CLI{
 		UsageLine:              Name + " [--version] [-h | --help] <command> [<args>]",
 		args:                   []string{},
-		fs:                     afero.NewOsFs(), // TODO: Use different file systems for different purposes
 		cmd:                    nil,
 		cfg:                    nil,
 		commands:               []*Command{},
@@ -189,7 +186,7 @@ func (c *CLI) Execute(ctx context.Context) error { //nolint:funlen // one functi
 		return nil
 	}
 
-	c.cfg, err = config.Parse(ctx, c.fs, flagSet)
+	c.cfg, err = config.Parse(ctx, flagSet)
 	if err != nil {
 		return fmt.Errorf("failed to parse the config: %w", err)
 	}
@@ -334,7 +331,7 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 
 	dir := c.cfg.PluginDir
 
-	entries, err := dir.ReadDir(c.fs)
+	entries, err := dir.ReadDir()
 	if err != nil {
 		return fmt.Errorf("failed to read plugins directory %s: %w", dir, err)
 	}
@@ -348,7 +345,7 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 			continue
 		}
 
-		info, err := c.fs.Stat(string(path))
+		info, err := os.Stat(string(path))
 		if err != nil {
 			return fmt.Errorf("failed to check the file info for %s: %w", path, err)
 		}
@@ -366,7 +363,7 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 
 	logging.DebugContext(ctx, "performed the plugin lookup", "plugins", pluginFiles)
 
-	if c.plugins, err = plugins.Load(ctx, c.fs, pluginFiles); err != nil {
+	if c.plugins, err = plugins.Load(ctx, pluginFiles); err != nil {
 		return fmt.Errorf("failed to load the plugins: %w", err)
 	}
 

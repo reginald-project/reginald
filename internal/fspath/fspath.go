@@ -11,8 +11,6 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
-
-	"github.com/spf13/afero"
 )
 
 // A Path is a file system path.
@@ -126,10 +124,10 @@ func (p Path) IsAbs() bool {
 }
 
 // IsFile reports whether the file name exists and is a file.
-func (p Path) IsFile(fs afero.Fs) (bool, error) {
-	info, err := fs.Stat(string(p))
+func (p Path) IsFile() (bool, error) {
+	info, err := os.Stat(string(p))
 	if err != nil {
-		if errors.Is(err, afero.ErrFileNotFound) {
+		if errors.Is(err, os.ErrNotExist) {
 			return false, nil
 		}
 
@@ -161,9 +159,9 @@ func (p Path) Join(elem ...string) Path {
 // umask) are used for all directories that MkdirAll creates. If path is already
 // a directory, MkdirAll does nothing and returns nil.
 //
-// MkdirAll wraps [afero.Fs.MkdirAll].
-func (p Path) MkdirAll(fs afero.Fs, perm os.FileMode) error {
-	if err := fs.MkdirAll(string(p), perm); err != nil {
+// MkdirAll wraps [os.MkdirAll].
+func (p Path) MkdirAll(perm os.FileMode) error {
+	if err := os.MkdirAll(string(p), perm); err != nil {
 		return fmt.Errorf("failed to create directory %q: %w", p, err)
 	}
 
@@ -176,12 +174,12 @@ func (p Path) MkdirAll(fs afero.Fs, perm os.FileMode) error {
 // methods on the returned File can be used for I/O. If there is an error, it
 // will be of type *os.PathError.
 //
-// OpenFile wraps [afero.Fs.OpenFile], and the caller must call
-// [afero.File.Close] on the returned file.
+// OpenFile wraps [os.OpenFile], and the caller must call
+// [os.File.Close] on the returned file.
 //
 //nolint:ireturn // implementation also return an interface and the type depends on the filesystem
-func (p Path) OpenFile(fs afero.Fs, flag int, perm os.FileMode) (afero.File, error) {
-	f, err := fs.OpenFile(string(p), flag, perm)
+func (p Path) OpenFile(flag int, perm os.FileMode) (*os.File, error) {
+	f, err := os.OpenFile(string(p), flag, perm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open %q: %w", p, err)
 	}
@@ -192,9 +190,9 @@ func (p Path) OpenFile(fs afero.Fs, flag int, perm os.FileMode) (afero.File, err
 // ReadDir reads the named directory, returning all its directory entries sorted
 // by filename.
 //
-// ReadDir wraps [afero.ReadDir].
-func (p Path) ReadDir(fs afero.Fs) ([]os.FileInfo, error) {
-	list, err := afero.ReadDir(fs, string(p))
+// ReadDir wraps [os.ReadDir].
+func (p Path) ReadDir() ([]os.DirEntry, error) {
+	list, err := os.ReadDir(string(p))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read directory %q: %w", p, err)
 	}
@@ -206,9 +204,9 @@ func (p Path) ReadDir(fs afero.Fs) ([]os.FileInfo, error) {
 // returns err == nil, not err == EOF. Because ReadFile reads the whole file, it
 // does not treat an EOF from Read as an error to be reported.
 //
-// ReadFile wraps [afero.ReadFile].
-func (p Path) ReadFile(fs afero.Fs) ([]byte, error) {
-	data, err := afero.ReadFile(fs, string(p))
+// ReadFile wraps [os.ReadFile].
+func (p Path) ReadFile() ([]byte, error) {
+	data, err := os.ReadFile(string(p))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
