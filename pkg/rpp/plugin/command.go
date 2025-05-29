@@ -19,5 +19,6 @@ type Command interface {
 	// should also define the command-line flags of this command.
 	Configs() []rpp.ConfigValue
 
-	Run(args []string) error
+	// Run runs the command.
+	Run(cfg []rpp.ConfigValue) error
 }

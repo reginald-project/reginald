@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/anttikivi/reginald/internal/config"
@@ -15,6 +16,7 @@ import (
 	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/plugins"
+	"github.com/anttikivi/reginald/pkg/rpp"
 	"github.com/anttikivi/reginald/pkg/version"
 	"github.com/spf13/afero"
 	"github.com/spf13/pflag"
@@ -26,9 +28,11 @@ const (
 	Name        = "reginald" // name of the command that's run
 )
 
-// errMutuallyExclusive is returned when the user sets two mutually exclusive
-// flags from the same group at the same time.
-var errMutuallyExclusive = errors.New("two mutually exclusive flags set at the same time")
+// Errors returned by the CLI commands.
+var (
+	errDuplicateCommand  = errors.New("duplicate command")
+	errMutuallyExclusive = errors.New("two mutually exclusive flags set at the same time")
+)
 
 // A CLI is the command-line interface that runs the program. It handles
 // subcommands, global command-line flags, and the program execution. The "root
@@ -266,16 +270,20 @@ func (c *CLI) Execute(ctx context.Context) error { //nolint:funlen // one functi
 
 	logging.DebugContext(ctx, "full config parsed", "cfg", c.cfg)
 
-	// c.cfg, err = config.Parse(ctx, c.fs, flagSet, nil)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to parse the config: %w", err)
-	// }
-
 	if err = plugins.Initialize(ctx, c.plugins, c.cfg.Plugins); err != nil {
 		return fmt.Errorf("failed to initialize plugins: %w", err)
 	}
 
-	if err := c.run(ctx, c.cmd, c.args); err != nil {
+	// TODO: The "root command" should do something useful like print the help.
+	if c.cmd == nil {
+		return nil
+	}
+
+	if err := c.cmd.Setup(ctx, c.cmd, c.cfg, args); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	if err := c.cmd.Run(ctx, c.cmd, c.cfg); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
@@ -298,7 +306,13 @@ func (c *CLI) add(cmd *Command) {
 
 // addPluginCmd adds the given command to the list of plugin commands of c and
 // marks c as the CLI of cmd.
-func (c *CLI) addPluginCmd(cmd *Command) {
+func (c *CLI) addPluginCmd(cmd *Command) error {
+	if slices.ContainsFunc(c.commands, func(e *Command) bool {
+		return e.Name == cmd.Name
+	}) {
+		return fmt.Errorf("%w: %s", errDuplicateCommand, cmd.Name)
+	}
+
 	cmd.cli = c
 
 	if cmd.mutuallyExclusiveFlags == nil {
@@ -308,6 +322,8 @@ func (c *CLI) addPluginCmd(cmd *Command) {
 	cmd.mutuallyExclusiveFlags = append(cmd.mutuallyExclusiveFlags, c.mutuallyExclusiveFlags...)
 
 	c.pluginCommands = append(c.pluginCommands, cmd)
+
+	return nil
 }
 
 // loadPlugins finds and executes all of the plugins in the plugins directory
@@ -370,8 +386,33 @@ func (c *CLI) addPluginCommands() error {
 			cmd := &Command{ //nolint:exhaustruct // private fields have zero values
 				Name:      info.Name,
 				UsageLine: info.UsageLine,
-				Run: func(ctx context.Context, cmd *Command, args []string) error {
-					if err := p.RunCmd(ctx, cmd.Name, args); err != nil {
+				Setup: func(ctx context.Context, cmd *Command, cfg *config.Config, args []string) error {
+					var values []rpp.ConfigValue
+
+					if c, ok := cfg.Plugins[cmd.Name].(map[string]any); ok {
+						for k, v := range c {
+							cfgVal, err := rpp.NewConfigValue(k, v)
+							if err != nil {
+								return fmt.Errorf("%w", err)
+							}
+
+							values = append(values, cfgVal)
+						}
+					}
+
+					if err := p.SetupCmd(ctx, cmd.Name, values); err != nil {
+						return fmt.Errorf(
+							"failed to run setup for command %q from plugin %q: %w",
+							cmd.Name,
+							p.Name,
+							err,
+						)
+					}
+
+					return nil
+				},
+				Run: func(ctx context.Context, cmd *Command, cfg *config.Config) error {
+					if err := p.RunCmd(ctx, cmd.Name); err != nil {
 						return fmt.Errorf(
 							"failed to run command %q from plugin %q: %w",
 							cmd.Name,
@@ -395,7 +436,9 @@ func (c *CLI) addPluginCommands() error {
 				}
 			}
 
-			c.addPluginCmd(cmd)
+			if err := c.addPluginCmd(cmd); err != nil {
+				return fmt.Errorf("%w", err)
+			}
 		}
 	}
 
@@ -554,23 +597,6 @@ func (c *CLI) markFlagsMutuallyExclusive(a ...string) {
 	}
 
 	c.mutuallyExclusiveFlags = append(c.mutuallyExclusiveFlags, a)
-}
-
-// run runs the setup and execution of the resolved command.
-func (c *CLI) run(ctx context.Context, cmd *Command, args []string) error {
-	if cmd == nil {
-		return nil
-	}
-
-	// if err := setupCommands(ctx, cmd, cmd, args); err != nil {
-	// 	return fmt.Errorf("%w", err)
-	// }
-
-	if err := cmd.Run(ctx, cmd, args); err != nil {
-		return fmt.Errorf("%w", err)
-	}
-
-	return nil
 }
 
 // setupCommands runs [Command.Setup] for all of the commands, starting from the

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 
+	"github.com/anttikivi/reginald/internal/config"
 	"github.com/anttikivi/reginald/internal/logging"
 )
 
@@ -17,7 +18,7 @@ func NewApply() *Command {
 	return c
 }
 
-func runApply(ctx context.Context, _ *Command, _ []string) error {
+func runApply(ctx context.Context, _ *Command, _ *config.Config) error {
 	logging.InfoContext(ctx, "running apply")
 
 	return nil

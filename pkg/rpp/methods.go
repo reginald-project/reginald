@@ -4,13 +4,14 @@ import "github.com/anttikivi/reginald/pkg/logs"
 
 // Standard method names used by the RPP.
 const (
-	MethodExit       = "exit"
-	MethodHandshake  = "handshake"
-	MethodInitialize = "initialize"
-	MethodLog        = "log"
-	MethodRunCommand = "runCommand"
-	MethodRunTask    = "runTask"
-	MethodShutdown   = "shutdown"
+	MethodExit         = "exit"
+	MethodHandshake    = "handshake"
+	MethodInitialize   = "initialize"
+	MethodLog          = "log"
+	MethodRunCommand   = "runCommand"
+	MethodRunTask      = "runTask"
+	MethodSetupCommand = "setupCommand"
+	MethodShutdown     = "shutdown"
 )
 
 // Handshake is a helper type that contains the handshake information fields
@@ -112,10 +113,21 @@ type LogParams struct {
 type RunCmdParams struct {
 	// Name is the name of the command that should be run.
 	Name string `json:"name"`
+}
+
+// SetupCmdParams are the parameters passed when the client runs a command setup
+// from a plugin.
+type SetupCmdParams struct {
+	// Name is the name of the command that should be set up.
+	Name string `json:"name"`
 
 	// Args are the command-line arguments after parsing the commands and flags.
 	// It should contain the positional arguments required by the command.
 	Args []string `json:"args"`
+
+	// Config contains the config values of the command with the values set from
+	// the configuration sources.
+	Config []ConfigValue `json:"config,omitempty"`
 }
 
 // DefaultHandshakeParams returns the default parameters used by the client in

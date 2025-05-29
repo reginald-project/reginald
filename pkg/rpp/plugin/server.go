@@ -15,14 +15,18 @@ import (
 // A Plugin is a plugin server that contains the information for running the
 // plugin. It holds the implementation of the plugin's commands and tasks.
 type Plugin struct {
-	name     string
-	configs  []rpp.ConfigValue
-	cmds     []Command
-	tasks    []Task
-	in       *bufio.Reader
-	out      *bufio.Writer
-	shutdown bool // set to true when the plugin should start shutdown
-	exit     bool // set to true when the plugin should exit right away
+	name    string
+	configs []rpp.ConfigValue
+
+	// cmdConfig contains the parsed config values for the command that is
+	// currently called by the client.
+	cmdConfig []rpp.ConfigValue
+	cmds      []Command
+	tasks     []Task
+	in        *bufio.Reader
+	out       *bufio.Writer
+	shutdown  bool // set to true when the plugin should start shutdown
+	exit      bool // set to true when the plugin should exit right away
 }
 
 // New returns a new Plugin for the given parameters.
@@ -45,14 +49,15 @@ func New(name string, impls ...any) *Plugin {
 	}
 
 	return &Plugin{
-		name:     name,
-		configs:  []rpp.ConfigValue{},
-		cmds:     cmds,
-		tasks:    tasks,
-		in:       bufio.NewReader(os.Stdin),
-		out:      bufio.NewWriter(os.Stdout),
-		shutdown: false,
-		exit:     false,
+		name:      name,
+		configs:   []rpp.ConfigValue{},
+		cmdConfig: []rpp.ConfigValue{},
+		cmds:      cmds,
+		tasks:     tasks,
+		in:        bufio.NewReader(os.Stdin),
+		out:       bufio.NewWriter(os.Stdout),
+		shutdown:  false,
+		exit:      false,
 	}
 }
 
@@ -244,21 +249,8 @@ func (p *Plugin) runMethod(msg *rpp.Message) error {
 			return fmt.Errorf("%w", err)
 		}
 	case rpp.MethodRunCommand:
-		if msg.ID == nil {
-			err := p.respondError(msg.ID, &rpp.Error{
-				Code:    rpp.InvalidRequest,
-				Message: fmt.Sprintf("method %q was called using a notification", msg.Method),
-				Data:    nil,
-			})
-			if err != nil {
-				return fmt.Errorf("failed to send error response: %w", err)
-			}
-		}
-
-		fmt.Fprintln(os.Stderr, "RUNNING COMMAND")
-
-		if err := p.respond(msg.ID, nil); err != nil {
-			return fmt.Errorf("failed to send response: %w", err)
+		if err := p.runCmd(msg); err != nil {
+			return fmt.Errorf("%w", err)
 		}
 	case rpp.MethodShutdown:
 		if msg.ID == nil {
@@ -276,6 +268,10 @@ func (p *Plugin) runMethod(msg *rpp.Message) error {
 
 		if err := p.respond(msg.ID, nil); err != nil {
 			return fmt.Errorf("failed to send response: %w", err)
+		}
+	case rpp.MethodSetupCommand:
+		if err := p.setupCmd(msg); err != nil {
+			return fmt.Errorf("%w", err)
 		}
 	default:
 		err := p.respondError(msg.ID, &rpp.Error{
@@ -333,6 +329,167 @@ func (p *Plugin) respondError(id any, resErr *rpp.Error) error {
 
 	if err = p.out.Flush(); err != nil {
 		return fmt.Errorf("flushing the output buffer failed: %w", err)
+	}
+
+	return nil
+}
+
+// runCmd runs a command.
+func (p *Plugin) runCmd(msg *rpp.Message) error {
+	if msg.ID == nil {
+		err := p.respondError(msg.ID, &rpp.Error{
+			Code:    rpp.InvalidRequest,
+			Message: fmt.Sprintf("Method %q was called using a notification", msg.Method),
+			Data:    nil,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send error response: %w", err)
+		}
+
+		return nil
+	}
+
+	var params rpp.RunCmdParams
+
+	if err := json.Unmarshal(msg.Params, &params); err != nil {
+		err := p.respondError(msg.ID, &rpp.Error{
+			Code:    rpp.InvalidParams,
+			Message: "Failed to decode params",
+			Data:    err,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send error response: %w", err)
+		}
+
+		return nil
+	}
+
+	i := slices.IndexFunc(p.cmds, func(c Command) bool {
+		return c.Name() == params.Name
+	})
+	if i < 0 {
+		err := p.respondError(msg.ID, &rpp.Error{
+			Code:    rpp.InvalidParams,
+			Message: fmt.Sprintf("Invalid command name: %q", params.Name),
+			Data:    nil,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send error response: %w", err)
+		}
+
+		return nil
+	}
+
+	cmd := p.cmds[i]
+
+	if err := cmd.Run(p.cmdConfig); err != nil {
+		err := p.respondError(msg.ID, &rpp.Error{
+			Code:    -32000,
+			Message: "Command failed",
+			Data:    err,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send error response: %w", err)
+		}
+
+		return nil
+	}
+
+	if err := p.respond(msg.ID, struct{}{}); err != nil {
+		return fmt.Errorf("response in %s failed: %w", p.name, err)
+	}
+
+	return nil
+}
+
+// setup runs the setup method for a command.
+func (p *Plugin) setupCmd(msg *rpp.Message) error {
+	if msg.ID == nil {
+		err := p.respondError(msg.ID, &rpp.Error{
+			Code:    rpp.InvalidRequest,
+			Message: fmt.Sprintf("Method %q was called using a notification", msg.Method),
+			Data:    nil,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send error response: %w", err)
+		}
+
+		return nil
+	}
+
+	var params rpp.SetupCmdParams
+
+	if err := json.Unmarshal(msg.Params, &params); err != nil {
+		err := p.respondError(msg.ID, &rpp.Error{
+			Code:    rpp.InvalidParams,
+			Message: "Failed to decode params",
+			Data:    err,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send error response: %w", err)
+		}
+
+		return nil
+	}
+
+	i := slices.IndexFunc(p.cmds, func(c Command) bool {
+		return c.Name() == params.Name
+	})
+	if i < 0 {
+		err := p.respondError(msg.ID, &rpp.Error{
+			Code:    rpp.InvalidParams,
+			Message: fmt.Sprintf("Invalid command name: %q", params.Name),
+			Data:    nil,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send error response: %w", err)
+		}
+
+		return nil
+	}
+
+	cmd := p.cmds[i]
+
+	for _, cfg := range params.Config {
+		i := slices.IndexFunc(cmd.Configs(), func(c rpp.ConfigValue) bool {
+			return c.Key == cfg.Key
+		})
+		if i < 0 {
+			err := p.respondError(msg.ID, &rpp.Error{
+				Code:    rpp.InvalidParams,
+				Message: fmt.Sprintf("Received invalid config value: %q", cfg.Key),
+				Data:    nil,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to send error response: %w", err)
+			}
+
+			return nil
+		}
+
+		c := cmd.Configs()[i]
+		if c.Type != cfg.Type {
+			err := p.respondError(msg.ID, &rpp.Error{
+				Code:    rpp.InvalidParams,
+				Message: fmt.Sprintf("Invalid type for %q: wanted %s, got %s", cfg.Key, c.Type, cfg.Type),
+				Data:    nil,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to send error response: %w", err)
+			}
+
+			return nil
+		}
+
+		c.Value = cfg.Value
+
+		p.cmdConfig = append(p.cmdConfig, c)
+	}
+
+	// TODO: Call the seutp function defined by cmd.
+
+	if err := p.respond(msg.ID, struct{}{}); err != nil {
+		return fmt.Errorf("response in %s failed: %w", p.name, err)
 	}
 
 	return nil

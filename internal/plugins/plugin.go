@@ -156,10 +156,8 @@ func New(ctx context.Context, fs afero.Fs, path fspath.Path) (*Plugin, error) {
 	return p, nil
 }
 
-// RunCmd runs a command with the given name from this plugin. It calls
-// the plugin in order to invoke the "run/<name>" method which is supposed to
-// run the commands functionality.
-func (p *Plugin) RunCmd(ctx context.Context, name string, args []string) error {
+// RunCmd runs a command with the given name from this plugin.
+func (p *Plugin) RunCmd(ctx context.Context, name string) error {
 	ok := false
 
 	for _, c := range p.Commands {
@@ -174,10 +172,7 @@ func (p *Plugin) RunCmd(ctx context.Context, name string, args []string) error {
 		return fmt.Errorf("%w: command %q in plugin %q", errCommandNotFound, name, p.Name)
 	}
 
-	params := rpp.RunCmdParams{
-		Name: name,
-		Args: args,
-	}
+	params := rpp.RunCmdParams{Name: name}
 	method := rpp.MethodRunCommand
 
 	res, err := p.call(ctx, method, params)
@@ -202,6 +197,54 @@ func (p *Plugin) RunCmd(ctx context.Context, name string, args []string) error {
 	}
 
 	logging.DebugContext(ctx, "running command succeeded", "plugin", p.Name, "result", result)
+
+	return nil
+}
+
+// SetupCmd runs the setup for a command with the given name from this plugin.
+func (p *Plugin) SetupCmd(ctx context.Context, name string, cfg []rpp.ConfigValue) error {
+	ok := false
+
+	for _, c := range p.Commands {
+		if c.Name == name {
+			ok = true
+
+			break
+		}
+	}
+
+	if !ok {
+		return fmt.Errorf("%w: command %q in plugin %q", errCommandNotFound, name, p.Name)
+	}
+
+	params := rpp.SetupCmdParams{
+		Name:   name,
+		Config: cfg,
+	}
+	method := rpp.MethodSetupCommand
+
+	res, err := p.call(ctx, method, params)
+	if err != nil {
+		return fmt.Errorf(
+			"method call %q to plugin %s failed: %w",
+			method,
+			p.Name,
+			err,
+		)
+	}
+
+	// TODO: Add some sensible return type, maybe.
+	var result any
+	if err = json.Unmarshal(res.Result, &result); err != nil {
+		return fmt.Errorf(
+			"failed to unmarshal result for the %q method call to %s: %w",
+			method,
+			p.Name,
+			err,
+		)
+	}
+
+	logging.DebugContext(ctx, "setting up command succeeded", "plugin", p.Name, "result", result)
 
 	return nil
 }

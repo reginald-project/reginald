@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/anttikivi/reginald/pkg/rpp"
 	"github.com/anttikivi/reginald/pkg/rpp/plugin"
@@ -42,7 +43,24 @@ func (s *SleepCommand) Configs() []rpp.ConfigValue {
 }
 
 // Run executes the command for the plugin.
-func (s *SleepCommand) Run(_ []string) error {
+func (s *SleepCommand) Run(cfg []rpp.ConfigValue) error {
+	var (
+		err error
+		t   int
+	)
+
+	for _, c := range cfg {
+		if c.Key == "time" {
+			t, err = c.Int()
+			if err != nil {
+				return fmt.Errorf("failed to get config value \"time\": %w", err)
+			}
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "Sleeping for %ds\n", t)
+	time.Sleep(time.Duration(t) * time.Second)
+
 	return nil
 }
 

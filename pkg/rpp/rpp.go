@@ -44,6 +44,7 @@ const (
 var (
 	errInvalidConfig  = errors.New("invalid config value type")
 	errInvalidFlagDef = errors.New("invalid flag definition")
+	errConfigRead     = errors.New("reading config value failed")
 	errZeroLength     = errors.New("content-length is zero")
 )
 
@@ -226,6 +227,24 @@ func NewConfigValue(key string, value any) (ConfigValue, error) {
 	}
 
 	return cfg, nil
+}
+
+func (c ConfigValue) Int() (int, error) {
+	if c.Type != ConfigInt {
+		return 0, fmt.Errorf("%w: %q is not an int", errConfigRead, c.Key)
+	}
+
+	switch v := c.Value.(type) {
+	case int:
+		return v, nil
+	case int64:
+		// TODO: Might be unsafe.
+		return int(v), nil
+	case float64:
+		return int(v), nil
+	default:
+		return 0, fmt.Errorf("%w: invalid type %T", errConfigRead, v)
+	}
 }
 
 // RealFlag resolves the real type for ConfigValue.Flag and returns a pointer to

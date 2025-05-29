@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/anttikivi/reginald/internal/config"
 	"github.com/anttikivi/reginald/internal/flags"
+	"github.com/anttikivi/reginald/internal/plugins"
 	"github.com/spf13/pflag"
 )
 
@@ -20,27 +22,20 @@ type Command struct {
 	// with the command name without including the parent commands.
 	UsageLine string
 
-	// Setup runs the setup required for the Command. The function receives
-	// pointer cmd to the Command that it is currently run on and pointer subcmd
-	// to the final subcommand that will be run. Any flags that need to be used
-	// should be acquired from subcmd as the flags are merged into its flags
-	// before Setup is called.
-	//
-	// For example, the configuration should be parsed in Setup. If Command is
-	// a subcommand, the setup functions for the parent commands are run first,
-	// starting from the root command.
-	// Setup func(ctx context.Context, cmd, subcmd *Command, args []string) error
+	// Setup runs the setup required for the Command.
+	Setup func(ctx context.Context, cmd *Command, cfg *config.Config, args []string) error
 
-	// Runs runs the command. Before running the command, Setup functions for
-	// the command and its parent commands are run.
-	Run func(ctx context.Context, cmd *Command, args []string) error
+	// Runs runs the command. Before running the command, Setup function for it
+	// is run.
+	Run func(ctx context.Context, cmd *Command, cfg *config.Config) error
 
-	cli                    *CLI           // containing CLI struct
-	commands               []*Command     // list of subcommands
-	flags                  *flags.FlagSet // all of the command-line options
-	globalFlags            *flags.FlagSet // options that are inherited by the subcommands
-	mutuallyExclusiveFlags [][]string     // list of flag names that are marked as mutually exclusive
-	parent                 *Command       // parent command of this command if it is a subcommand
+	cli                    *CLI            // containing CLI struct
+	commands               []*Command      // list of subcommands
+	flags                  *flags.FlagSet  // all of the command-line options
+	globalFlags            *flags.FlagSet  // options that are inherited by the subcommands
+	mutuallyExclusiveFlags [][]string      // list of flag names that are marked as mutually exclusive
+	parent                 *Command        // parent command of this command if it is a subcommand
+	plugin                 *plugins.Plugin // plugin this command belongs to, if any
 }
 
 // Add adds the given command to the list of subcommands of c and marks c as the
