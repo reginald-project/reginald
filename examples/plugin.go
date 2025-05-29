@@ -47,7 +47,7 @@ func (s *SleepCommand) Run(_ []string) error {
 }
 
 func main() {
-	p := plugin.New("sleep", &SleepCommand{})
+	p := plugin.New("example", &SleepCommand{})
 
 	if err := p.Serve(); err != nil {
 		fmt.Fprintf(os.Stderr, "plugin %q is going to exit with an error: %v", "sleep", err)
