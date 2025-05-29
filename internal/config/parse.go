@@ -259,6 +259,8 @@ func normalizeKeys(cfg map[string]any) {
 
 // ApplyOverrides applies the overrides of the config values from environment
 // variables and command-line flags to cfg. It modifies the pointed cfg.
+//
+//nolint:cyclop,funlen,gocognit // no problem
 func (p *ValueParser) ApplyOverrides(ctx context.Context) error {
 	for i := range p.Value.NumField() {
 		var err error
@@ -400,33 +402,33 @@ func (p *ValueParser) ApplyOverrides(ctx context.Context) error {
 // It modifies the pointed cfg.
 func (p *ValueParser) applyPluginOverrides(
 	ctx context.Context,
-	m map[string]any,
+	cfgMap map[string]any,
 	configs []rpp.ConfigValue,
 ) error {
 	logging.TraceContext(ctx, "applying plugin overrides", "cfgs", configs)
 
-	for _, c := range configs {
+	for _, cfgVal := range configs {
 		parser := &pluginParser{
 			flagSet:  p.FlagSet,
-			m:        m,
-			c:        c,
+			m:        cfgMap,
+			c:        cfgVal,
 			envName:  "",
 			envValue: "",
 			flagName: "",
 		}
 
-		if c.EnvName == "" {
+		if cfgVal.EnvName == "" {
 			prefix := toEnv(p.Plugin.Name, EnvPrefix)
-			parser.envName = toEnv(c.Key, prefix)
+			parser.envName = toEnv(cfgVal.Key, prefix)
 		} else {
-			parser.envName = EnvPrefix + "_" + c.EnvName
+			parser.envName = EnvPrefix + "_" + cfgVal.EnvName
 		}
 
 		parser.envValue = os.Getenv(parser.envName)
 
 		var f rpp.Flag
 
-		if fp, err := c.RealFlag(); err != nil {
+		if fp, err := cfgVal.RealFlag(); err != nil {
 			return fmt.Errorf("%w", err)
 		} else if fp != nil {
 			f = *fp
@@ -436,50 +438,50 @@ func (p *ValueParser) applyPluginOverrides(
 
 		logging.TraceContext(ctx, "checking plugin config", "parser", parser)
 
-		switch c.Type {
+		switch cfgVal.Type {
 		case rpp.ConfigBool:
 			x, err := parser.bool()
 			if err != nil {
 				return fmt.Errorf(
 					"failed to set value for %q by %q: %w",
-					c.Key,
+					cfgVal.Key,
 					p.Plugin.Name,
 					err,
 				)
 			}
 
-			m[c.Key] = x
+			cfgMap[cfgVal.Key] = x
 		case rpp.ConfigInt:
 			x, err := parser.int()
 			if err != nil {
 				return fmt.Errorf(
 					"failed to set value for %q by %q: %w",
-					c.Key,
+					cfgVal.Key,
 					p.Plugin.Name,
 					err,
 				)
 			}
 
-			m[c.Key] = x
+			cfgMap[cfgVal.Key] = x
 		case rpp.ConfigString:
 			x, err := parser.string()
 			if err != nil {
 				return fmt.Errorf(
 					"failed to set value for %q by %q: %w",
-					c.Key,
+					cfgVal.Key,
 					p.Plugin.Name,
 					err,
 				)
 			}
 
-			m[c.Key] = x
+			cfgMap[cfgVal.Key] = x
 		default:
 			return fmt.Errorf(
 				"%w: ConfigEntry %q in plugin %q has invalid type: %s",
 				errInvalidConfig,
-				c.Key,
+				cfgVal.Key,
 				p.Plugin.Name,
-				c.Type,
+				cfgVal.Type,
 			)
 		}
 	}

@@ -176,10 +176,8 @@ func (p Path) MkdirAll(perm os.FileMode) error {
 //
 // OpenFile wraps [os.OpenFile], and the caller must call
 // [os.File.Close] on the returned file.
-//
-//nolint:ireturn // implementation also return an interface and the type depends on the filesystem
 func (p Path) OpenFile(flag int, perm os.FileMode) (*os.File, error) {
-	f, err := os.OpenFile(string(p), flag, perm)
+	f, err := os.OpenFile(string(p), flag, perm) // #nosec G304 -- utility function
 	if err != nil {
 		return nil, fmt.Errorf("failed to open %q: %w", p, err)
 	}

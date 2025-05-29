@@ -280,7 +280,7 @@ func (c *CLI) Execute(ctx context.Context) error { //nolint:funlen // one functi
 		return fmt.Errorf("%w", err)
 	}
 
-	if err := c.cmd.Run(ctx, c.cmd, c.cfg); err != nil {
+	if err := c.cmd.Run(ctx, c.cmd); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
@@ -371,19 +371,19 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 }
 
 // addPluginCommands adds the commands from the loaded plugins to c.
-func (c *CLI) addPluginCommands() error {
-	for _, p := range c.plugins {
-		for _, cv := range p.PluginConfigs {
+func (c *CLI) addPluginCommands() error { //nolint:gocognit // no problem
+	for _, plugin := range c.plugins {
+		for _, cv := range plugin.PluginConfigs {
 			if err := c.pluginFlags.AddPluginFlag(cv); err != nil {
-				return fmt.Errorf("failed to add flag from plugin %q: %w", p.Name, err)
+				return fmt.Errorf("failed to add flag from plugin %q: %w", plugin.Name, err)
 			}
 		}
 
-		for _, info := range p.Commands {
+		for _, info := range plugin.Commands {
 			cmd := &Command{ //nolint:exhaustruct // private fields have zero values
 				Name:      info.Name,
 				UsageLine: info.UsageLine,
-				Setup: func(ctx context.Context, cmd *Command, cfg *config.Config, args []string) error {
+				Setup: func(ctx context.Context, cmd *Command, cfg *config.Config, _ []string) error {
 					var values []rpp.ConfigValue
 
 					if c, ok := cfg.Plugins[cmd.Name].(map[string]any); ok {
@@ -397,23 +397,24 @@ func (c *CLI) addPluginCommands() error {
 						}
 					}
 
-					if err := p.SetupCmd(ctx, cmd.Name, values); err != nil {
+					// TODO: Pass in the args.
+					if err := plugin.SetupCmd(ctx, cmd.Name, values); err != nil {
 						return fmt.Errorf(
 							"failed to run setup for command %q from plugin %q: %w",
 							cmd.Name,
-							p.Name,
+							plugin.Name,
 							err,
 						)
 					}
 
 					return nil
 				},
-				Run: func(ctx context.Context, cmd *Command, cfg *config.Config) error {
-					if err := p.RunCmd(ctx, cmd.Name); err != nil {
+				Run: func(ctx context.Context, cmd *Command) error {
+					if err := plugin.RunCmd(ctx, cmd.Name); err != nil {
 						return fmt.Errorf(
 							"failed to run command %q from plugin %q: %w",
 							cmd.Name,
-							p.Name,
+							plugin.Name,
 							err,
 						)
 					}
@@ -426,7 +427,7 @@ func (c *CLI) addPluginCommands() error {
 				if err := cmd.Flags().AddPluginFlag(cv); err != nil {
 					return fmt.Errorf(
 						"failed to add flag from plugin %q and command %q: %w",
-						p.Name,
+						plugin.Name,
 						info.Name,
 						err,
 					)

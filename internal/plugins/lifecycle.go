@@ -50,7 +50,6 @@ func Initialize(ctx context.Context, plugins []*Plugin, cfgs map[string]any) err
 				//
 				// 	return nil
 				// }
-
 				return fmt.Errorf("failed to initialize plugin %s: %w", p.Name, err)
 			}
 

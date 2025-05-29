@@ -220,7 +220,7 @@ func NewConfigValue(key string, value any) (ConfigValue, error) {
 		return ConfigValue{}, fmt.Errorf("%w: %[2]v (%[2]T) for %s", errInvalidConfig, value, key)
 	}
 
-	cfg := ConfigValue{
+	cfg := ConfigValue{ //nolint:exhaustruct // rest are up to the caller
 		Key:   key,
 		Value: value,
 		Type:  t,
@@ -229,6 +229,7 @@ func NewConfigValue(key string, value any) (ConfigValue, error) {
 	return cfg, nil
 }
 
+// Int returns value of c as an int.
 func (c ConfigValue) Int() (int, error) {
 	if c.Type != ConfigInt {
 		return 0, fmt.Errorf("%w: %q is not an int", errConfigRead, c.Key)
@@ -257,7 +258,7 @@ func (c ConfigValue) Int() (int, error) {
 func (c ConfigValue) RealFlag() (*Flag, error) {
 	switch v := c.Flag.(type) {
 	case nil:
-		return nil, nil
+		return nil, nil //nolint:nilnil // TODO: See if sentinel error should be used.
 	case Flag:
 		f := v
 		if f.Name == "" {

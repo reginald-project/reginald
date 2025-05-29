@@ -6,7 +6,6 @@ import (
 
 	"github.com/anttikivi/reginald/internal/config"
 	"github.com/anttikivi/reginald/internal/flags"
-	"github.com/anttikivi/reginald/internal/plugins"
 	"github.com/spf13/pflag"
 )
 
@@ -27,15 +26,14 @@ type Command struct {
 
 	// Runs runs the command. Before running the command, Setup function for it
 	// is run.
-	Run func(ctx context.Context, cmd *Command, cfg *config.Config) error
+	Run func(ctx context.Context, cmd *Command) error
 
-	cli                    *CLI            // containing CLI struct
-	commands               []*Command      // list of subcommands
-	flags                  *flags.FlagSet  // all of the command-line options
-	globalFlags            *flags.FlagSet  // options that are inherited by the subcommands
-	mutuallyExclusiveFlags [][]string      // list of flag names that are marked as mutually exclusive
-	parent                 *Command        // parent command of this command if it is a subcommand
-	plugin                 *plugins.Plugin // plugin this command belongs to, if any
+	cli                    *CLI           // containing CLI struct
+	commands               []*Command     // list of subcommands
+	flags                  *flags.FlagSet // all of the command-line options
+	globalFlags            *flags.FlagSet // options that are inherited by the subcommands
+	mutuallyExclusiveFlags [][]string     // list of flag names that are marked as mutually exclusive
+	parent                 *Command       // parent command of this command if it is a subcommand
 }
 
 // Add adds the given command to the list of subcommands of c and marks c as the

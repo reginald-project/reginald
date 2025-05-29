@@ -407,7 +407,7 @@ func (p *Plugin) runCmd(msg *rpp.Message) error {
 	return nil
 }
 
-// setup runs the setup method for a command.
+// setupCmd runs the setup method for a command.
 func (p *Plugin) setupCmd(msg *rpp.Message) error {
 	if msg.ID == nil {
 		err := p.respondError(msg.ID, &rpp.Error{

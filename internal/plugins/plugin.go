@@ -216,7 +216,7 @@ func (p *Plugin) SetupCmd(ctx context.Context, name string, cfg []rpp.ConfigValu
 		return fmt.Errorf("%w: command %q in plugin %q", errCommandNotFound, name, p.Name)
 	}
 
-	params := rpp.SetupCmdParams{
+	params := rpp.SetupCmdParams{ //nolint:exhaustruct // TODO: Add the args
 		Name:   name,
 		Config: cfg,
 	}

@@ -80,7 +80,9 @@ type InitializeParams struct {
 	Logging LoggingConfig `json:"logging"`
 }
 
-// TODO: Add docs.
+// LoggingConfig is the logging configuration passed in to plugins during
+// the initialize method call. It tells the client's settings for logging so
+// that the plugin can adapt and not send unnecessary log messages.
 type LoggingConfig struct {
 	// Enabled tells whether logging is enabled at all.
 	Enabled bool `json:"enabled"`

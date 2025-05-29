@@ -27,14 +27,14 @@ func (s *SleepCommand) UsageLine() string {
 	return "sleep [options]"
 }
 
-// Flags returns the flags supported by this command.
+// Configs returns the config entries of s.
 func (s *SleepCommand) Configs() []rpp.ConfigValue {
 	return []rpp.ConfigValue{
-		{
+		{ //nolint:exhaustruct // use the default values
 			Key:   "time",
-			Value: 5,
+			Value: 5, //nolint:mnd // default value of 5s
 			Type:  rpp.ConfigInt,
-			Flag: rpp.Flag{
+			Flag: rpp.Flag{ //nolint:exhaustruct // use the default values
 				Shorthand: "t",
 				Usage:     "time to sleep in seconds (default 5s)",
 			},
