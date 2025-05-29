@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 
 	"github.com/anttikivi/reginald/internal/config"
@@ -184,7 +185,7 @@ func (c *CLI) Execute(ctx context.Context) error { //nolint:funlen // one functi
 		return nil
 	}
 
-	c.cfg, err = config.Parse(ctx, c.fs, flagSet, nil)
+	c.cfg, err = config.Parse(ctx, c.fs, flagSet)
 	if err != nil {
 		return fmt.Errorf("failed to parse the config: %w", err)
 	}
@@ -247,15 +248,27 @@ func (c *CLI) Execute(ctx context.Context) error { //nolint:funlen // one functi
 		return fmt.Errorf("%w", err)
 	}
 
-	c.cfg, err = config.Parse(ctx, c.fs, flagSet, nil)
-	if err != nil {
-		return fmt.Errorf("failed to parse the config: %w", err)
+	valueParser := &config.ValueParser{
+		Cfg:      c.cfg,
+		FlagSet:  flagSet,
+		Plugins:  c.plugins,
+		Value:    reflect.ValueOf(c.cfg).Elem(),
+		Field:    reflect.StructField{}, //nolint:exhaustruct // zero value wanted
+		Plugin:   nil,
+		FullName: "",
+		EnvName:  config.EnvPrefix,
+		EnvValue: "",
+		FlagName: "",
+	}
+	if err := valueParser.ApplyOverrides(ctx); err != nil {
+		return fmt.Errorf("failed to apply config values: %w", err)
 	}
 
-	// v := reflect.ValueOf(c.cfg).Elem()
-	// err = config.ApplyOverrides(ctx, c.cfg, v, config.EnvPrefix, flagSet, c.plugins)
+	logging.DebugContext(ctx, "full config parsed", "cfg", c.cfg)
+
+	// c.cfg, err = config.Parse(ctx, c.fs, flagSet, nil)
 	// if err != nil {
-	// 	return fmt.Errorf("failed to apply config values: %w", err)
+	// 	return fmt.Errorf("failed to parse the config: %w", err)
 	// }
 
 	if err = plugins.Initialize(ctx, c.plugins); err != nil {

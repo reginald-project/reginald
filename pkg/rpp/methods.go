@@ -46,7 +46,9 @@ type HandshakeResult struct {
 	// config entries.
 	Name string `json:"name"`
 
-	// PluginConfigs contains the plugin-level config entries.
+	// PluginConfigs contains the plugin-level config entries. If the name of
+	// the plugin and the name of a command are the same, PluginConfigs takes
+	// precedence over the configs defined by the command.
 	PluginConfigs []ConfigValue `json:"configs,omitempty"`
 
 	// Commands contains the information on the command types this plugin
