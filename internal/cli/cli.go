@@ -14,7 +14,6 @@ import (
 	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/plugins"
-	"github.com/anttikivi/reginald/pkg/rpp"
 	"github.com/anttikivi/reginald/pkg/version"
 	"github.com/spf13/afero"
 	"github.com/spf13/pflag"
@@ -348,12 +347,9 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 // addPluginCommands adds the commands from the loaded plugins to c.
 func (c *CLI) addPluginCommands() error {
 	for _, p := range c.plugins {
-		for _, entry := range p.PluginConfigs {
-			// TODO: Add inverted flags.
-			if f, ok := entry.Flag.(rpp.Flag); ok {
-				if err := c.pluginFlags.AddPluginFlag(f); err != nil {
-					return fmt.Errorf("failed to add flag from plugin %q: %w", p.Name, err)
-				}
+		for _, cv := range p.PluginConfigs {
+			if err := c.pluginFlags.AddPluginFlag(cv); err != nil {
+				return fmt.Errorf("failed to add flag from plugin %q: %w", p.Name, err)
 			}
 		}
 
@@ -375,17 +371,14 @@ func (c *CLI) addPluginCommands() error {
 				},
 			}
 
-			for _, entry := range info.Configs {
-				// TODO: Add inverted flags.
-				if f, ok := entry.Flag.(rpp.Flag); ok {
-					if err := cmd.Flags().AddPluginFlag(f); err != nil {
-						return fmt.Errorf(
-							"failed to add flag from plugin %q and command %q: %w",
-							p.Name,
-							info.Name,
-							err,
-						)
-					}
+			for _, cv := range info.Configs {
+				if err := cmd.Flags().AddPluginFlag(cv); err != nil {
+					return fmt.Errorf(
+						"failed to add flag from plugin %q and command %q: %w",
+						p.Name,
+						info.Name,
+						err,
+					)
 				}
 			}
 

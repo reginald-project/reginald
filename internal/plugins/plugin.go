@@ -136,7 +136,7 @@ func New(ctx context.Context, fs afero.Fs, path fspath.Path) (*Plugin, error) {
 		HandshakeResult: rpp.HandshakeResult{
 			Handshake:     rpp.DefaultHandshakeParams().Handshake,
 			Name:          string(path.Base()),
-			PluginConfigs: []rpp.ConfigEntry{},
+			PluginConfigs: []rpp.ConfigValue{},
 			Commands:      []rpp.CommandInfo{},
 			Tasks:         []rpp.TaskInfo{},
 		},
@@ -371,6 +371,30 @@ func (p *Plugin) handshake(ctx context.Context) error {
 
 	if result.Name == "" {
 		return fmt.Errorf("%w: plugin provided no name", errHandshake)
+	}
+
+	for _, t := range result.Tasks {
+		for _, c := range t.Configs {
+			if c.Flag != nil {
+				return fmt.Errorf(
+					"%w: plugin %q defined flag %q for task %q",
+					errHandshake,
+					result.Name,
+					c.Key,
+					t.Name,
+				)
+			}
+
+			if c.FlagOnly {
+				return fmt.Errorf(
+					"%w: plugin %q marked config %q for task %q as flag only",
+					errHandshake,
+					result.Name,
+					c.Key,
+					t.Name,
+				)
+			}
+		}
 	}
 
 	p.HandshakeResult = result

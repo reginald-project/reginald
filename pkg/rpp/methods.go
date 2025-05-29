@@ -47,7 +47,7 @@ type HandshakeResult struct {
 	Name string `json:"name"`
 
 	// PluginConfigs contains the plugin-level config entries.
-	PluginConfigs []ConfigEntry `json:"configs,omitempty"`
+	PluginConfigs []ConfigValue `json:"configs,omitempty"`
 
 	// Commands contains the information on the command types this plugin
 	// offers. If the plugin does not provide any commands, this can be either
@@ -57,7 +57,7 @@ type HandshakeResult struct {
 	// Tasks contains the information on the task types this plugin offers. It
 	// is a list of the provided task types. If the plugin does not provide any
 	// tasks, this can be either nil or an empty list.
-	Tasks []TaskInfo `json:"tasks:omitempty"`
+	Tasks []TaskInfo `json:"tasks,omitempty"`
 }
 
 // InitializeParams is the parameter type for the "initialize" method.
@@ -68,7 +68,7 @@ type HandshakeResult struct {
 type InitializeParams struct {
 	// Config contains the values of the plugin-wide configuration with
 	// the values set from the configuration sources.
-	Config []ConfigEntry `json:"config,omitempty"`
+	Config []ConfigValue `json:"config,omitempty"`
 
 	// Logging contains the logging configuration by Reginald. The plugin should
 	// aim to honor these settings in order to avoid sending log messages that

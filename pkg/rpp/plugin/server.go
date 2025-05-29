@@ -15,6 +15,7 @@ import (
 // plugin. It holds the implementation of the plugin's commands and tasks.
 type Plugin struct {
 	name     string
+	configs  []rpp.ConfigValue
 	cmds     []Command
 	tasks    []Task
 	in       *bufio.Reader
@@ -44,6 +45,7 @@ func New(name string, impls ...any) *Plugin {
 
 	return &Plugin{
 		name:     name,
+		configs:  []rpp.ConfigValue{},
 		cmds:     cmds,
 		tasks:    tasks,
 		in:       bufio.NewReader(os.Stdin),
@@ -107,7 +109,7 @@ func (p *Plugin) handshake(msg *rpp.Message) error {
 		info := rpp.CommandInfo{
 			Name:      c.Name(),
 			UsageLine: c.UsageLine(),
-			Configs:   nil,
+			Configs:   c.Configs(),
 		}
 		cmdInfos = append(cmdInfos, info)
 	}
@@ -126,7 +128,7 @@ func (p *Plugin) handshake(msg *rpp.Message) error {
 			ProtocolVersion: rpp.Version,
 		},
 		Name:          p.name,
-		PluginConfigs: nil,
+		PluginConfigs: p.configs,
 		Commands:      cmdInfos,
 		Tasks:         taskInfos,
 	}

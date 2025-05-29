@@ -77,24 +77,30 @@ func (f *FlagSet) AddFlagSet(newSet *FlagSet) {
 	}
 }
 
-// AddPluginFlag adds a flag to the flag set according to the given flag
+// AddPluginFlag adds a flag to the flag set according to the given config value
 // specification from a plugin.
-func (f *FlagSet) AddPluginFlag(flag rpp.Flag) error {
-	switch flag.Type {
+func (f *FlagSet) AddPluginFlag(cv rpp.ConfigValue) error {
+	var flag rpp.Flag
+
+	if rf, err := cv.RealFlag(); err != nil {
+		return fmt.Errorf("%w", err)
+	} else if rf != nil {
+		flag = *rf
+	} else {
+		return nil
+	}
+
+	// TODO: Add inverted flags.
+	switch cv.Type {
 	case rpp.ConfigBool:
-		defVal, ok := flag.DefaultValue.(bool)
+		defVal, ok := cv.Value.(bool)
 		if !ok {
-			return fmt.Errorf(
-				"%w: %v (%T)",
-				errDefaultValueType,
-				flag.DefaultValue,
-				flag.DefaultValue,
-			)
+			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cv.Value)
 		}
 
 		f.BoolP(flag.Name, flag.Shorthand, defVal, flag.Usage, "")
 	case rpp.ConfigInt:
-		switch v := flag.DefaultValue.(type) {
+		switch v := cv.Value.(type) {
 		case int:
 			f.IntP(flag.Name, flag.Shorthand, v, flag.Usage, "")
 		case float64:
@@ -104,28 +110,17 @@ func (f *FlagSet) AddPluginFlag(flag rpp.Flag) error {
 
 			f.IntP(flag.Name, flag.Shorthand, u, flag.Usage, "")
 		default:
-			return fmt.Errorf("%w: %v (%T)", errDefaultValueType, flag.DefaultValue, flag.DefaultValue)
+			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cv.Value)
 		}
 	case rpp.ConfigString:
-		defVal, ok := flag.DefaultValue.(string)
+		defVal, ok := cv.Value.(string)
 		if !ok {
-			return fmt.Errorf(
-				"%w: %v (%T)",
-				errDefaultValueType,
-				flag.DefaultValue,
-				flag.DefaultValue,
-			)
+			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cv.Value)
 		}
 
 		f.StringP(flag.Name, flag.Shorthand, defVal, flag.Usage, "")
 	default:
-		return fmt.Errorf(
-			"%w: flag %q: %v (%T)",
-			errInvalidFlagType,
-			flag.Name,
-			flag.Type,
-			flag.DefaultValue,
-		)
+		return fmt.Errorf("%w: flag %q: %v (%T)", errInvalidFlagType, flag.Name, cv.Type, cv.Value)
 	}
 
 	return nil

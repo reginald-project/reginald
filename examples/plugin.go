@@ -27,15 +27,16 @@ func (s *SleepCommand) UsageLine() string {
 }
 
 // Flags returns the flags supported by this command.
-func (s *SleepCommand) Flags() []rpp.Flag {
-	return []rpp.Flag{
+func (s *SleepCommand) Configs() []rpp.ConfigValue {
+	return []rpp.ConfigValue{
 		{
-			Name:           "time",
-			Shorthand:      "t",
-			DefaultValue:   5, //nolint:mnd // five seconds
-			Type:           rpp.ConfigInt,
-			Usage:          "time to sleep in seconds (default 5s)",
-			IgnoreInConfig: false,
+			Key:   "time",
+			Value: 5,
+			Type:  rpp.ConfigInt,
+			Flag: rpp.Flag{
+				Shorthand: "t",
+				Usage:     "time to sleep in seconds (default 5s)",
+			},
 		},
 	}
 }

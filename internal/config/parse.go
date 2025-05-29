@@ -345,18 +345,32 @@ func (p *ValueParser) applyPluginOverrides(ctx context.Context, plugin *plugins.
 	}
 
 	for _, c := range plugin.PluginConfigs {
-		if c.EnvOverride == "" {
+		p.EnvName = ""
+		p.EnvValue = ""
+		p.FlagName = ""
+
+		if c.EnvName == "" {
 			prefix := toEnv(plugin.Name, EnvPrefix)
 			p.EnvName = toEnv(c.Key, prefix)
 		} else {
-			p.EnvName = EnvPrefix + "_" + c.EnvOverride
+			p.EnvName = EnvPrefix + "_" + c.EnvName
 		}
 
 		p.EnvValue = os.Getenv(p.EnvName)
 
+		var f rpp.Flag
+
+		if fp, err := c.RealFlag(); err != nil {
+			return fmt.Errorf("%w", err)
+		} else if fp != nil {
+			f = *fp
+		}
+
+		p.FlagName = f.Name
+
 		switch c.Type {
 		case rpp.ConfigBool:
-			x, err := p.setPluginBool(pluginMap, c)
+			x, err := p.pluginBool(pluginMap, c)
 			if err != nil {
 				return fmt.Errorf(
 					"failed to set value for %q by plugin %q: %w",
@@ -577,7 +591,7 @@ func (p *ValueParser) setString() error {
 	return nil
 }
 
-func (p *ValueParser) setPluginBool(m map[string]any, c rpp.ConfigEntry) (bool, error) {
+func (p *ValueParser) pluginBool(m map[string]any, c rpp.ConfigValue) (bool, error) {
 	var (
 		err error
 		x   bool
@@ -606,6 +620,14 @@ func (p *ValueParser) setPluginBool(m map[string]any, c rpp.ConfigEntry) (bool, 
 		x, err = strconv.ParseBool(p.EnvValue)
 		if err != nil {
 			return x, fmt.Errorf("%s=%q: %w", p.EnvName, p.EnvValue, err)
+		}
+	}
+
+	// TODO: Inverse flags.
+	if p.FlagName != "" && p.FlagSet.Changed(p.FlagName) {
+		x, err = p.FlagSet.GetBool(p.FlagName)
+		if err != nil {
+			return x, fmt.Errorf("failed to get value for --%s: %w", p.FlagName, err)
 		}
 	}
 

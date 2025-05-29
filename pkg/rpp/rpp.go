@@ -11,6 +11,8 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+
+	"github.com/go-viper/mapstructure/v2"
 )
 
 // Constant values related to the RPP version currently implemented by this
@@ -40,7 +42,8 @@ const (
 
 // Errors returned by the RPP helper functions.
 var (
-	errZeroLength = errors.New("content-length is zero")
+	errInvalidFlagDef = errors.New("invalid flag definition")
+	errZeroLength     = errors.New("content-length is zero")
 )
 
 // ConfigType is used as the type indicator of the fields that define the type
@@ -110,7 +113,7 @@ type CommandInfo struct {
 	UsageLine string `json:"usage"`
 
 	// Configs contains the config entries for this command.
-	Configs []ConfigEntry `json:"configs,omitempty"`
+	Configs []ConfigValue `json:"configs,omitempty"`
 }
 
 // TaskInfo contains information on a task that a plugin implements. TaskInfo is
@@ -123,20 +126,16 @@ type TaskInfo struct {
 	Name string `json:"name"`
 
 	// Configs contains the config entries for this task.
-	Configs []ConfigEntry `json:"configs,omitempty"`
+	Configs []ConfigValue `json:"configs,omitempty"`
 }
 
-// A ConfigEntry is an entry in the config file that can also be set using
+// A ConfigValue is an entry in the config file that can also be set using
 // an environment variable. As tasks are configured on a per-task basis,
 // the config values in tasks cannot be set using environment variables.
-// ConfigEntry can be in the plugin (under the plugin's name in the file), in
+// ConfigValue can be in the plugin (under the plugin's name in the file), in
 // a command (under the commands name in the file), or in a task (in a task
 // entry in the file).
-//
-// All of the flags in commands will automatically have matching config entries
-// if not explicitly disabled. Those will be placed under the command in
-// the file.
-type ConfigEntry struct {
+type ConfigValue struct {
 	// Key is the key of the ConfigEntry as it would be written in the config
 	// file.
 	Key string `json:"key"`
@@ -157,48 +156,96 @@ type ConfigEntry struct {
 	// associated with this ConfigEntry. Flag must be nil if the ConfigEntry has
 	// no associated flag. Otherwise, its type must match [Flag]. If
 	// the ConfigEntry is associated with a task, it must not have a flag.
+	//
+	// TODO: Make the difference between having an empty Flag object and having
+	// a nil here clear.
 	Flag any `json:"flag,omitempty"`
 
-	// EnvOverride defines a string to use in the environment variable name
-	// instead of the automatic name of the variable that will be composed using
-	// Key. It is appended after the prefix `REGINALD_` but if the override is
-	// used, the name of the plugin or the name of the command is not added to
-	// variable name automatically.
-	EnvOverride string `json:"envOverride,omitempty"`
+	// FlagOnly tells Reginald whether this config value should only be
+	// controlled by a command-line flag. If this is set to true, Reginald won't
+	// read the value of this config entry from the config file or from
+	// environment variables.
+	FlagOnly bool `json:"flagOnly,omitempty"`
+
+	// EnvName optionally defines a string to use in the environment variable
+	// name instead of the automatic name of the variable that will be composed
+	// using Key. It is appended after the prefix `REGINALD_` but if EnvName is
+	// used to set the name of the environment variable, the name of the plugin
+	// or the name of the command is not added to variable name automatically.
+	EnvName string `json:"envOverride,omitempty"`
 }
 
-// Flag is an entry in the handshake response for a command that defines one
-// flag. The type of the flag is inferred using the type of the default value.
+// Flag is a field in [ConfigValue] that describes the command-line flag
+// associated with that ConfigValue. The default value and the value of Flag are
+// given using ConfigValue.Value. Only a ConfigValue for a command or a plugin
+// can have flags, and Reginald reports an error a flag is given for
+// a ConfigValue for a task.
 type Flag struct {
 	// Name is the full name of the flag, used in the form of "--example". This
 	// must be unique across Reginald and all of the flags currently in use by
 	// the commands.
-	Name string `json:"name"`
+	//
+	// If the name is omitted, the key for the config entry is used as the name
+	// of the flag.
+	Name string `json:"name,omitempty" mapstructure:"name,omitempty"`
+
 	// Shorthand is the short one-letter name of the flag, used in the form of
 	// "-e". This must be unique across Reginald and all of the flags currently
-	// in use by the commands.
-	Shorthand string `json:"shorthand,omitempty"`
-
-	// DefaultValue is the default value of the flag as the type it should be
-	// defined as.
-	DefaultValue any `json:"defaultValue"`
-
-	// Type is a string representation of the type of the value that this flag
-	// holds. The possible values can be found in the protocol description and
-	// in the constants of this package.
-	Type ConfigType `json:"type"`
+	// in use by the commands. The shorthand can be omitted if the flag
+	// shouldn't have one.
+	Shorthand string `json:"shorthand,omitempty" mapstructure:"shorthand,omitempty"`
 
 	// Usage is the help description of this flag.
-	Usage string `json:"usage"`
+	Usage string `json:"usage,omitempty" mapstructure:"usage,omitempty"`
 
 	// TODO: Add invert and remove IgnoreInConfig.
+}
 
-	// IgnoreInConfig tells whether this flag should not be used as
-	// a traditional config value that can be used through an environment
-	// variable or in the config file. By default, all of the flags can also be
-	// set using the config file or environment variables, but if this is set to
-	// true, this will not be possible.
-	IgnoreInConfig bool `json:"ignoreInConfig"`
+// RealFlag resolves the real type for ConfigValue.Flag and returns a pointer to
+// the Flag if it is set. If the flag is not set, it returns nil. As the flag
+// might be decoded into a map when it is passed using JSON-RCP, RealFlag
+// further decodes the map into Flag.
+//
+// As the Flag may inherit its name from ConfigValue, the function also sets
+// the correct name for the Flag.
+func (c ConfigValue) RealFlag() (*Flag, error) {
+	switch v := c.Flag.(type) {
+	case nil:
+		return nil, nil
+	case Flag:
+		f := v
+		if f.Name == "" {
+			// TODO: Make sure that the key is correctly formatted.
+			f.Name = c.Key
+		}
+
+		return &f, nil
+	case map[string]any:
+		var flag Flag
+
+		dc := &mapstructure.DecoderConfig{ //nolint:exhaustruct // use default values
+			DecodeHook: mapstructure.TextUnmarshallerHookFunc(),
+			Result:     &flag,
+		}
+
+		d, err := mapstructure.NewDecoder(dc)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create mapstructure decoder: %w", err)
+		}
+
+		if err := d.Decode(v); err != nil {
+			return nil, fmt.Errorf("failed to decode flag: %w", err)
+		}
+
+		if flag.Name == "" {
+			// TODO: Make sure that the key is correctly formatted.
+			flag.Name = c.Key
+		}
+
+		return &flag, nil
+	default:
+		return nil, fmt.Errorf("%w: %T", errInvalidFlagDef, c.Flag)
+	}
 }
 
 // Error returns the string representation of the error e.

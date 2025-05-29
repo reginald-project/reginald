@@ -17,7 +17,7 @@ type Command interface {
 
 	// Configs returns the config options for this Command. The config options
 	// should also define the command-line flags of this command.
-	Configs() []rpp.ConfigEntry
+	Configs() []rpp.ConfigValue
 
 	Run(args []string) error
 }
