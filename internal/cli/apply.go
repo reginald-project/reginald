@@ -2,29 +2,23 @@ package cli
 
 import (
 	"context"
-	"log/slog"
+
+	"github.com/anttikivi/reginald/internal/logging"
 )
 
 // NewApply returns a new apply command.
 func NewApply() *Command {
-	c := &Command{ //nolint:exhaustruct
+	c := &Command{ //nolint:exhaustruct // private fields need zero values
 		Name:      "apply",
 		UsageLine: "apply [options]",
-		Setup:     setupApply,
 		Run:       runApply,
 	}
 
 	return c
 }
 
-func setupApply(_ context.Context, cmd, _ *Command, _ []string) error {
-	slog.Info("running setup", "cmd", cmd.Name)
-
-	return nil
-}
-
-func runApply(_ context.Context, _ *Command, _ []string) error {
-	slog.Info("running apply")
+func runApply(ctx context.Context, _ *Command) error {
+	logging.InfoContext(ctx, "running apply")
 
 	return nil
 }

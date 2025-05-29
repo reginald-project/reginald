@@ -11,14 +11,15 @@ import (
 	"io"
 	"log/slog"
 	"os/exec"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/anttikivi/reginald/internal/fspath"
 	"github.com/anttikivi/reginald/internal/iostreams"
+	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/panichandler"
-	"github.com/anttikivi/reginald/internal/pathname"
+	"github.com/anttikivi/reginald/pkg/logs"
 	"github.com/anttikivi/reginald/pkg/rpp"
 )
 
@@ -93,20 +94,20 @@ type Plugin struct {
 }
 
 // New returns a pointer to a newly created Plugin.
-func New(ctx context.Context, path string) (*Plugin, error) {
-	if ok, err := pathname.IsFile(path); err != nil {
+func New(ctx context.Context, path fspath.Path) (*Plugin, error) {
+	if ok, err := path.IsFile(); err != nil {
 		return nil, fmt.Errorf("failed to check if %s is a file: %w", path, err)
 	} else if !ok {
 		return nil, fmt.Errorf("%w: %s", errNotFile, path)
 	}
 
-	c := exec.CommandContext(ctx, filepath.Clean(path)) // #nosec G204 -- sanitized earlier
+	c := exec.CommandContext(ctx, string(path.Clean())) // #nosec G204 -- sanitized earlier
 
 	stdin, err := c.StdinPipe()
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to create standard input pipe for %s: %w",
-			filepath.Base(path),
+			path.Base(),
 			err,
 		)
 	}
@@ -115,7 +116,7 @@ func New(ctx context.Context, path string) (*Plugin, error) {
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to create standard output pipe for %s: %w",
-			filepath.Base(path),
+			path.Base(),
 			err,
 		)
 	}
@@ -124,7 +125,7 @@ func New(ctx context.Context, path string) (*Plugin, error) {
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to create standard error pipe for %s: %w",
-			filepath.Base(path),
+			path.Base(),
 			err,
 		)
 	}
@@ -133,10 +134,11 @@ func New(ctx context.Context, path string) (*Plugin, error) {
 		// The base name of the plugin file is used until the real name is
 		// received.
 		HandshakeResult: rpp.HandshakeResult{
-			Handshake: rpp.DefaultHandshakeParams().Handshake,
-			Name:      filepath.Base(path),
-			Commands:  []rpp.CommandInfo{},
-			Tasks:     []rpp.TaskInfo{},
+			Handshake:     rpp.DefaultHandshakeParams().Handshake,
+			Name:          string(path.Base()),
+			PluginConfigs: []rpp.ConfigValue{},
+			Commands:      []rpp.CommandInfo{},
+			Tasks:         []rpp.TaskInfo{},
 		},
 		lastID:         atomic.Int64{},
 		cmd:            c,
@@ -153,10 +155,8 @@ func New(ctx context.Context, path string) (*Plugin, error) {
 	return p, nil
 }
 
-// RunCmd runs a command with the given name from this plugin. It calls
-// the plugin in order to invoke the "run/<name>" method which is supposed to
-// run the commands functionality.
-func (p *Plugin) RunCmd(ctx context.Context, name string, args []string) error {
+// RunCmd runs a command with the given name from this plugin.
+func (p *Plugin) RunCmd(ctx context.Context, name string) error {
 	ok := false
 
 	for _, c := range p.Commands {
@@ -171,10 +171,8 @@ func (p *Plugin) RunCmd(ctx context.Context, name string, args []string) error {
 		return fmt.Errorf("%w: command %q in plugin %q", errCommandNotFound, name, p.Name)
 	}
 
-	params := rpp.RunParams{
-		Args: args,
-	}
-	method := rpp.MethodRunPrefix + name
+	params := rpp.RunCmdParams{Name: name}
+	method := rpp.MethodRunCommand
 
 	res, err := p.call(ctx, method, params)
 	if err != nil {
@@ -197,7 +195,55 @@ func (p *Plugin) RunCmd(ctx context.Context, name string, args []string) error {
 		)
 	}
 
-	slog.DebugContext(ctx, "running command succeeded", "plugin", p.Name, "result", result)
+	logging.DebugContext(ctx, "running command succeeded", "plugin", p.Name, "result", result)
+
+	return nil
+}
+
+// SetupCmd runs the setup for a command with the given name from this plugin.
+func (p *Plugin) SetupCmd(ctx context.Context, name string, cfg []rpp.ConfigValue) error {
+	ok := false
+
+	for _, c := range p.Commands {
+		if c.Name == name {
+			ok = true
+
+			break
+		}
+	}
+
+	if !ok {
+		return fmt.Errorf("%w: command %q in plugin %q", errCommandNotFound, name, p.Name)
+	}
+
+	params := rpp.SetupCmdParams{ //nolint:exhaustruct // TODO: Add the args
+		Name:   name,
+		Config: cfg,
+	}
+	method := rpp.MethodSetupCommand
+
+	res, err := p.call(ctx, method, params)
+	if err != nil {
+		return fmt.Errorf(
+			"method call %q to plugin %s failed: %w",
+			method,
+			p.Name,
+			err,
+		)
+	}
+
+	// TODO: Add some sensible return type, maybe.
+	var result any
+	if err = json.Unmarshal(res.Result, &result); err != nil {
+		return fmt.Errorf(
+			"failed to unmarshal result for the %q method call to %s: %w",
+			method,
+			p.Name,
+			err,
+		)
+	}
+
+	logging.DebugContext(ctx, "setting up command succeeded", "plugin", p.Name, "result", result)
 
 	return nil
 }
@@ -207,10 +253,10 @@ func (p *Plugin) RunCmd(ctx context.Context, name string, args []string) error {
 func (p *Plugin) countProtocolError(ctx context.Context, reason string) {
 	n := p.protocolErrors.Add(1)
 
-	slog.WarnContext(ctx, "plugin protocol error", "reason", reason)
+	logging.WarnContext(ctx, "plugin protocol error", "reason", reason)
 
 	if n >= DefaultMaxProtocolErrors {
-		slog.ErrorContext(
+		logging.ErrorContext(
 			ctx,
 			"too many protocol errors, shutting plugin down",
 			"plugin",
@@ -240,7 +286,7 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 		Params:  rawParams,
 	}
 
-	slog.DebugContext(ctx, "calling method", "plugin", p.Name, "method", method, "req", req)
+	logging.TraceContext(ctx, "calling method", "plugin", p.Name, "method", method, "req", req)
 
 	// A channel is created for each request. It receives a values in the read
 	// loop.
@@ -277,7 +323,7 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 			return nil, fmt.Errorf("%w: %s (method %s)", errNoResponse, p.Name, method)
 		}
 
-		slog.DebugContext(ctx, "received response", "plugin", p.Name, "res", res)
+		logging.TraceContext(ctx, "received response", "plugin", p.Name, "res", res)
 
 		if res.Error != nil {
 			var rpcErr rpp.Error
@@ -294,7 +340,7 @@ func (p *Plugin) call(ctx context.Context, method string, params any) (*rpp.Mess
 
 		return res, nil
 	case <-ctx.Done():
-		slog.DebugContext(ctx, "context canceled during plugin call")
+		logging.TraceContext(ctx, "context canceled during plugin call")
 		p.cleanPending(id, ch)
 
 		return nil, fmt.Errorf("%w", ctx.Err())
@@ -370,9 +416,69 @@ func (p *Plugin) handshake(ctx context.Context) error {
 		return fmt.Errorf("%w: plugin provided no name", errHandshake)
 	}
 
+	for _, t := range result.Tasks {
+		for _, c := range t.Configs {
+			if c.Flag != nil {
+				return fmt.Errorf(
+					"%w: plugin %q defined flag %q for task %q",
+					errHandshake,
+					result.Name,
+					c.Key,
+					t.Name,
+				)
+			}
+
+			if c.FlagOnly {
+				return fmt.Errorf(
+					"%w: plugin %q marked config %q for task %q as flag only",
+					errHandshake,
+					result.Name,
+					c.Key,
+					t.Name,
+				)
+			}
+		}
+	}
+
 	p.HandshakeResult = result
 
-	slog.DebugContext(ctx, "handshake succeeded", "plugin", p.Name)
+	logging.TraceContext(ctx, "handshake succeeded", "plugin", p.Name)
+
+	return nil
+}
+
+func (p *Plugin) initialize(ctx context.Context, cfg []rpp.ConfigValue) error {
+	params := rpp.InitializeParams{
+		Config: cfg,
+		// TODO: Use the actual configs.
+		Logging: rpp.LoggingConfig{
+			Enabled: true,
+			Level:   logs.LevelTrace,
+		},
+	}
+
+	res, err := p.call(ctx, rpp.MethodInitialize, params)
+	if err != nil {
+		return fmt.Errorf(
+			"method call %q to plugin %s failed: %w",
+			rpp.MethodInitialize,
+			p.Name,
+			err,
+		)
+	}
+
+	// TODO: Disallow unknown fields.
+	var result any
+	if err = json.Unmarshal(res.Result, &result); err != nil {
+		return fmt.Errorf(
+			"failed to unmarshal result for the %q method call to %s: %w",
+			rpp.MethodInitialize,
+			p.Name,
+			err,
+		)
+	}
+
+	logging.TraceContext(ctx, "initialize succeeded", "plugin", p.Name)
 
 	return nil
 }
@@ -380,7 +486,7 @@ func (p *Plugin) handshake(ctx context.Context) error {
 // kill kills the plugin process.
 func (p *Plugin) kill(ctx context.Context) {
 	if p.cmd.Process != nil {
-		slog.DebugContext(ctx, "killing plugin", "plugin", p.Name)
+		logging.DebugContext(ctx, "killing plugin", "plugin", p.Name)
 
 		if err := p.cmd.Process.Kill(); err != nil {
 			panic(fmt.Sprintf("failed to kill a plugin process: %v", err))
@@ -410,14 +516,14 @@ func (p *Plugin) logNotification(ctx context.Context, msg *rpp.Message) error {
 		attrs = append(attrs, slog.Any(k, v))
 	}
 
-	slog.LogAttrs(ctx, params.Level, params.Message, attrs...)
+	logging.LogAttrs(ctx, params.Level, params.Message, attrs...)
 
 	return nil
 }
 
 // notify send a notification to the plugin.
 func (p *Plugin) notify(ctx context.Context, method string, params any) error {
-	slog.DebugContext(
+	logging.DebugContext(
 		ctx,
 		"sending notification",
 		"plugin",
@@ -462,7 +568,7 @@ func (p *Plugin) read(ctx context.Context, panicHandler func()) {
 		if err != nil {
 			// Error when reading or EOF.
 			if !errors.Is(err, io.EOF) {
-				slog.ErrorContext(ctx, "error when reading plugin output", "err", err)
+				logging.ErrorContext(ctx, "error when reading plugin output", "err", err)
 			}
 
 			p.closeAllPending()
@@ -522,11 +628,11 @@ func (p *Plugin) readStderr(ctx context.Context, panicHandler func()) {
 		line := p.stderr.Text()
 
 		iostreams.PrintErrf("[%s:err] %s\n", p.Name, line)
-		slog.WarnContext(ctx, "plugin printed to stderr", "plugin", p.Name, "output", line)
+		logging.WarnContext(ctx, "plugin printed to stderr", "plugin", p.Name, "output", line)
 	}
 
 	if err := p.stderr.Err(); err != nil {
-		slog.ErrorContext(ctx, "error reading stderr for plugin", "plugin", p.Name, "err", err)
+		logging.ErrorContext(ctx, "error reading stderr for plugin", "plugin", p.Name, "err", err)
 	}
 }
 
@@ -535,12 +641,19 @@ func (p *Plugin) shutdown(ctx context.Context) error {
 	// TODO: Check the response.
 	_, err := p.call(ctx, rpp.MethodShutdown, nil)
 	if err != nil {
-		slog.WarnContext(ctx, "error when calling shutdown", "plugin", p.Name, "err", err.Error())
+		logging.WarnContext(
+			ctx,
+			"error when calling shutdown",
+			"plugin",
+			p.Name,
+			"err",
+			err.Error(),
+		)
 	}
 
 	err = p.notify(ctx, rpp.MethodExit, nil)
 	if err != nil {
-		slog.WarnContext(
+		logging.WarnContext(
 			ctx,
 			"error when sending the exit notification",
 			"plugin",
@@ -571,13 +684,20 @@ func (p *Plugin) shutdown(ctx context.Context) error {
 // start starts the execution of the plugin process and the related reading
 // goroutines.
 func (p *Plugin) start(ctx context.Context) error {
-	slog.DebugContext(ctx, "executing plugin", "path", p.cmd.Path)
+	logging.TraceContext(ctx, "executing plugin", "path", p.cmd.Path)
 
 	if err := p.cmd.Start(); err != nil {
 		return fmt.Errorf("plugin execution from %s failed: %w", p.cmd.Path, err)
 	}
 
-	slog.InfoContext(ctx, "started a plugin process", "path", p.cmd.Path, "pid", p.cmd.Process.Pid)
+	logging.DebugContext(
+		ctx,
+		"started a plugin process",
+		"path",
+		p.cmd.Path,
+		"pid",
+		p.cmd.Process.Pid,
+	)
 
 	p.doneCh = make(chan error, 1)
 

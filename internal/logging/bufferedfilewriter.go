@@ -3,10 +3,10 @@ package logging
 import (
 	"bytes"
 	"fmt"
-	"log/slog"
 	"os"
-	"path/filepath"
 	"sync"
+
+	"github.com/anttikivi/reginald/internal/fspath"
 )
 
 // Default values for the BufferedFileWriter.
@@ -23,14 +23,14 @@ const (
 type BufferedFileWriter struct {
 	buf  *bytes.Buffer
 	mu   sync.Mutex
-	file string
+	file fspath.Path
 }
 
 // NewBufferedFileWriter returns a new bootstrap writer for the given file.
 // The given file must be a valid and absolute path. If it does not exist when
 // the writer flushes, the file will be created.
-func NewBufferedFileWriter(file string) *BufferedFileWriter {
-	if !filepath.IsAbs(file) {
+func NewBufferedFileWriter(file fspath.Path) *BufferedFileWriter {
+	if !file.IsAbs() {
 		panic("tried to set an invalid path to bootstrap writer")
 	}
 
@@ -55,7 +55,7 @@ func (w *BufferedFileWriter) Bytes() []byte {
 }
 
 // File returns path to the file where the logs are written.
-func (w *BufferedFileWriter) File() string {
+func (w *BufferedFileWriter) File() fspath.Path {
 	return w.file
 }
 
@@ -65,12 +65,12 @@ func (w *BufferedFileWriter) Flush() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	dir := filepath.Dir(w.file)
-	if err := os.MkdirAll(dir, defaultBufFileWriterDirPerm); err != nil {
+	dir := w.file.Dir()
+	if err := dir.MkdirAll(defaultBufFileWriterDirPerm); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
-	f, err := os.OpenFile(w.file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, defaultBufFileWriterPerm)
+	f, err := w.file.OpenFile(os.O_CREATE|os.O_WRONLY|os.O_APPEND, defaultBufFileWriterPerm)
 	if err != nil {
 		return fmt.Errorf("%w", err)
 	}
@@ -78,7 +78,7 @@ func (w *BufferedFileWriter) Flush() error {
 	defer func() {
 		if err := f.Close(); err != nil {
 			// TODO: See if there is some better way to handle this error.
-			slog.Error("failed to close buffered file writer file", "err", err)
+			Error("failed to close buffered file writer file", "err", err)
 		}
 	}()
 

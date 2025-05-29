@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/anttikivi/reginald/pkg/rpp"
 	"github.com/anttikivi/reginald/pkg/rpp/plugin"
@@ -26,26 +27,45 @@ func (s *SleepCommand) UsageLine() string {
 	return "sleep [options]"
 }
 
-// Flags returns the flags supported by this command.
-func (s *SleepCommand) Flags() []rpp.Flag {
-	return []rpp.Flag{
-		{
-			Name:         "time",
-			Shorthand:    "t",
-			DefaultValue: 5, //nolint:mnd
-			Type:         rpp.FlagInt,
-			Usage:        "time to sleep in seconds (default 5s)",
+// Configs returns the config entries of s.
+func (s *SleepCommand) Configs() []rpp.ConfigValue {
+	return []rpp.ConfigValue{
+		{ //nolint:exhaustruct // use the default values
+			Key:   "time",
+			Value: 5, //nolint:mnd // default value of 5s
+			Type:  rpp.ConfigInt,
+			Flag: rpp.Flag{ //nolint:exhaustruct // use the default values
+				Shorthand: "t",
+				Usage:     "time to sleep in seconds (default 5s)",
+			},
 		},
 	}
 }
 
 // Run executes the command for the plugin.
-func (s *SleepCommand) Run(_ []string) error {
+func (s *SleepCommand) Run(cfg []rpp.ConfigValue) error {
+	var (
+		err error
+		t   int
+	)
+
+	for _, c := range cfg {
+		if c.Key == "time" {
+			t, err = c.Int()
+			if err != nil {
+				return fmt.Errorf("failed to get config value \"time\": %w", err)
+			}
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "Sleeping for %ds\n", t)
+	time.Sleep(time.Duration(t) * time.Second)
+
 	return nil
 }
 
 func main() {
-	p := plugin.New("sleep", &SleepCommand{})
+	p := plugin.New("example", &SleepCommand{})
 
 	if err := p.Serve(); err != nil {
 		fmt.Fprintf(os.Stderr, "plugin %q is going to exit with an error: %v", "sleep", err)

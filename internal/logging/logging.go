@@ -10,6 +10,7 @@
 package logging
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -17,9 +18,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/anttikivi/reginald/internal/config"
+	"github.com/anttikivi/reginald/internal/fspath"
 	"github.com/anttikivi/reginald/internal/iostreams"
-	"github.com/anttikivi/reginald/internal/pathname"
+	"github.com/anttikivi/reginald/pkg/logs"
 )
 
 // Default values for the logger.
@@ -34,12 +35,20 @@ const (
 // that in case of errors the final handler of the error can check if its type
 // is [BufferedFileWriter] and flush its contents to the given file if that is
 // the case.
-var BootstrapWriter io.Writer //nolint:gochecknoglobals
+var BootstrapWriter io.Writer //nolint:gochecknoglobals // needed by the panic handler
 
 // Errors for logging.
 var (
 	errInvalidFormat = errors.New("given log format not supported")
 )
+
+// Config contains the configuration options for logging.
+type Config struct {
+	Enabled bool       `flag:"log,no-log" mapstructure:"enabled"` // whether logging is enabled
+	Format  string     `                  mapstructure:"format"`  // format of the logs, "json" or "text"
+	Level   logs.Level `                  mapstructure:"level"`   // logging level
+	Output  string     `                  mapstructure:"output"`  // destination of the logs
+}
 
 // InitBootstrap initializes the bootstrap logger and sets it as the default
 // logger in [log/slog].
@@ -59,7 +68,7 @@ func InitBootstrap() error {
 	if debugVar == "" || (debugVar != "true" && debugVar != "1") {
 		// TODO: Come up with a reasonable default resolving maybe using
 		// `XDG_CACHE_HOME` and some other directory on Windows.
-		path, err := pathname.Abs("~/.cache/reginald/bootstrap.log")
+		path, err := fspath.New("~/.cache/reginald/bootstrap.log").Abs()
 		if err != nil {
 			return fmt.Errorf("failed to create path to bootstrap log file: %w", err)
 		}
@@ -70,9 +79,10 @@ func InitBootstrap() error {
 			slog.New(
 				slog.NewJSONHandler(
 					BootstrapWriter,
-					&slog.HandlerOptions{ //nolint:exhaustruct
-						AddSource: true,
-						Level:     slog.LevelDebug,
+					&slog.HandlerOptions{
+						AddSource:   true,
+						Level:       logs.LevelTrace,
+						ReplaceAttr: replaceAttrFunc(""),
 					},
 				),
 			),
@@ -81,12 +91,15 @@ func InitBootstrap() error {
 		return nil
 	}
 
-	//nolint:exhaustruct
 	slog.SetDefault(
 		slog.New(
 			slog.NewTextHandler(
 				iostreams.NewLockedWriter(os.Stderr),
-				&slog.HandlerOptions{AddSource: true, Level: slog.LevelDebug},
+				&slog.HandlerOptions{
+					AddSource:   true,
+					Level:       logs.LevelTrace,
+					ReplaceAttr: replaceAttrFunc(""),
+				},
 			),
 		),
 	)
@@ -96,7 +109,7 @@ func InitBootstrap() error {
 
 // Init initializes the proper logger of the program and sets it as the default
 // logger in [log/slog].
-func Init(cfg config.LoggingConfig) error {
+func Init(cfg Config) error {
 	if !cfg.Enabled {
 		slog.SetDefault(slog.New(slog.DiscardHandler))
 
@@ -111,6 +124,7 @@ func Init(cfg config.LoggingConfig) error {
 	case "stdout":
 		w = iostreams.NewLockedWriter(os.Stdout)
 	default:
+		// TODO: This does not respect the file system in use. Should it?
 		fw, err := os.OpenFile(cfg.Output, os.O_WRONLY|os.O_APPEND|os.O_CREATE, defaultFilePerm)
 		if err != nil {
 			return fmt.Errorf("failed to open log file at %s: %w", cfg.Output, err)
@@ -119,20 +133,10 @@ func Init(cfg config.LoggingConfig) error {
 		w = fw
 	}
 
-	timeFormat := defaultJSONTimeFormat
-	if strings.ToLower(cfg.Format) == "text" {
-		timeFormat = defaultTextTimeFormat
-	}
-
-	opts := &slog.HandlerOptions{ //nolint:exhaustruct
-		Level: cfg.Level,
-		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-			if a.Key == slog.TimeKey {
-				return slog.String(slog.TimeKey, a.Value.Time().Format(timeFormat))
-			}
-
-			return a
-		},
+	opts := &slog.HandlerOptions{
+		AddSource:   true,
+		Level:       cfg.Level,
+		ReplaceAttr: replaceAttrFunc(""),
 	}
 
 	var h slog.Handler
@@ -149,4 +153,89 @@ func Init(cfg config.LoggingConfig) error {
 	slog.SetDefault(slog.New(h))
 
 	return nil
+}
+
+// Trace calls [slog.Logger.Log] with level set to trace on the default logger.
+func Trace(msg string, args ...any) {
+	slog.Log(context.Background(), logs.LevelTrace.Level(), msg, args...)
+}
+
+// TraceContext calls [slog.Logger.Log] with level set to trace on the default
+// logger.
+func TraceContext(ctx context.Context, msg string, args ...any) {
+	slog.Log(ctx, logs.LevelTrace.Level(), msg, args...)
+}
+
+// Debug calls [slog.Logger.Debug] on the default logger.
+func Debug(msg string, args ...any) {
+	slog.Log(context.Background(), logs.LevelDebug.Level(), msg, args...)
+}
+
+// DebugContext calls [slog.Logger.DebugContext] on the default logger.
+func DebugContext(ctx context.Context, msg string, args ...any) {
+	slog.Log(ctx, logs.LevelDebug.Level(), msg, args...)
+}
+
+// Info calls [slog.Logger.Info] on the default logger.
+func Info(msg string, args ...any) {
+	slog.Log(context.Background(), logs.LevelInfo.Level(), msg, args...)
+}
+
+// InfoContext calls [slog.Logger.InfoContext] on the default logger.
+func InfoContext(ctx context.Context, msg string, args ...any) {
+	slog.Log(ctx, logs.LevelInfo.Level(), msg, args...)
+}
+
+// Warn calls [slog.Logger.Warn] on the default logger.
+func Warn(msg string, args ...any) {
+	slog.Log(context.Background(), logs.LevelWarn.Level(), msg, args...)
+}
+
+// WarnContext calls [slog.Logger.WarnContext] on the default logger.
+func WarnContext(ctx context.Context, msg string, args ...any) {
+	slog.Log(ctx, logs.LevelWarn.Level(), msg, args...)
+}
+
+// Error calls [slog.Logger.Error] on the default logger.
+func Error(msg string, args ...any) {
+	slog.Log(context.Background(), logs.LevelError.Level(), msg, args...)
+}
+
+// ErrorContext calls [slog.Logger.ErrorContext] on the default logger.
+func ErrorContext(ctx context.Context, msg string, args ...any) {
+	slog.Log(ctx, logs.LevelError.Level(), msg, args...)
+}
+
+// Log calls [slog.Logger.Log] on the default logger.
+func Log(ctx context.Context, level logs.Level, msg string, args ...any) {
+	slog.Log(ctx, level.Level(), msg, args...)
+}
+
+// LogAttrs calls [slog.Logger.LogAttrs] on the default logger.
+func LogAttrs(ctx context.Context, level logs.Level, msg string, attrs ...slog.Attr) {
+	slog.LogAttrs(ctx, level.Level(), msg, attrs...)
+}
+
+func replaceAttrFunc(timeFormat string) func([]string, slog.Attr) slog.Attr {
+	return func(_ []string, a slog.Attr) slog.Attr {
+		if timeFormat != "" && a.Key == slog.TimeKey {
+			return slog.String(slog.TimeKey, a.Value.Time().Format(timeFormat))
+		}
+
+		if a.Key == slog.LevelKey {
+			level, ok := a.Value.Any().(slog.Level)
+			if !ok {
+				panic(
+					fmt.Sprintf(
+						"failed to convert level value to slog.Level: %[1]v (%[1]T)",
+						a.Value.Any(),
+					),
+				)
+			}
+
+			return slog.String(slog.LevelKey, logs.Level(level).String())
+		}
+
+		return a
+	}
 }

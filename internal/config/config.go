@@ -5,198 +5,321 @@ package config
 
 import (
 	"fmt"
-	"log/slog"
+	"os"
 	"reflect"
 	"strings"
+	"unicode"
 
+	"github.com/anttikivi/reginald/internal/flags"
+	"github.com/anttikivi/reginald/internal/fspath"
+	"github.com/anttikivi/reginald/internal/iostreams"
+	"github.com/anttikivi/reginald/internal/logging"
+	"github.com/anttikivi/reginald/pkg/logs"
 	"github.com/anttikivi/reginald/pkg/task"
 )
 
-// Config the parsed configuration of the program run. There should be only one
-// effective Config per run.
-type Config struct {
-	Color      bool          // whether colors are enabled in the output
-	ConfigFile string        // path to the config file
-	Directory  string        // path to the directory passed in with '-C'
-	Logging    LoggingConfig // logging config values
-	PluginDir  string        // directory where Reginald looks for plugins
-	Quiet      bool          // whether only errors are output
-	Tasks      []task.Config // tasks configs
-	Verbose    bool          // whether verbose output is enabled
-}
+// EnvPrefix is the prefix added to the names of the config values when reading
+// them from environment variables.
+const EnvPrefix = "REGINALD" // prefix used for the environment variables.
 
-// LoggingConfig is type of the logging configuration in Config.
-type LoggingConfig struct {
-	Enabled bool       `toml:"enabled"` // whether logging is enabled
-	Format  string     `toml:"format"`  // format of the logs, "json" or "text"
-	Level   slog.Level `toml:"level"`   // logging level
-	Output  string     `toml:"output"`  // destination of the logs
-}
+const (
+	defaultFileName  = "reginald"
+	defaultLogOutput = "~/.local/state/reginald.log"
+)
 
-// A File is a struct that the represents the structure of a valid configuration
-// file. It is a subset of [Config]. Some of the configuration values may not
-// be set using the file so the file is first unmarshaled into a File and the
-// values are read into [Config].
+// Config is the parsed configuration of the program run. There should be only
+// one effective Config per run.
 //
-// See the documentation for each field in [Config].
-type File struct {
-	Color     bool             `toml:"color"`
-	Logging   LoggingConfig    `toml:"logging"`
-	PluginDir string           `toml:"plugin-dir"`
-	Quiet     bool             `toml:"quiet"`
-	Tasks     []map[string]any `toml:"tasks"`
-	Verbose   bool             `toml:"verbose"`
+// Config has a lock for locking it when it is being parsed and written to.
+// After the parsing, Config should not be written to and, thus, the lock should
+// no longer be used.
+type Config struct {
+	// Color tells whether colors should be enabled in the user output.
+	Color iostreams.ColorMode `mapstructure:"color"`
+
+	// Logging contains the config values for logging.
+	Logging logging.Config `flag:"log" mapstructure:"logging"`
+
+	// PluginDir is the directory where Reginald looks for the plugins.
+	PluginDir fspath.Path `mapstructure:"plugin-dir"`
+
+	// Quiet tells the program to suppress all other output than errors.
+	Quiet bool `mapstructure:"quiet"`
+
+	// Tasks contains tasks and the configs for them as given in the config
+	// file.
+	Tasks []task.Config `mapstructure:"tasks"`
+
+	// Verbose tells the program to print more verbose output.
+	Verbose bool `mapstructure:"verbose"`
+
+	// Plugins contains the rest of the config options which should only be
+	// plugin-defined options.
+	Plugins map[string]any `mapstructure:",remain"`
 }
 
-// Equal reports if the Config that d points to is equal to the Config that c
-// points to.
-func (c *Config) Equal(d *Config) bool {
-	if c == d {
-		return true
+// DefaultConfig returns the default values for configuration. The function
+// panics on errors.
+func DefaultConfig() *Config {
+	pluginDir, err := DefaultPluginsDir()
+	if err != nil {
+		panic(fmt.Sprintf("failed to get default plugin directory: %v", err))
 	}
 
-	if c == nil {
-		return d == nil
+	return &Config{
+		Color: iostreams.ColorAuto,
+		Logging: logging.Config{
+			Enabled: true,
+			Format:  "json",
+			Level:   logs.LevelInfo,
+			Output:  "stdout",
+		},
+		PluginDir: pluginDir,
+		Quiet:     false,
+		Tasks:     []task.Config{},
+		Verbose:   false,
+		Plugins:   map[string]any{},
+	}
+}
+
+// DefaultPluginsDir returns the plugins directory to use. It takes the environment
+// variable for customizing the plugins directory and the platform into account.
+func DefaultPluginsDir() (fspath.Path, error) {
+	path, err := defaultPluginsDir()
+	if err != nil {
+		return "", fmt.Errorf("%w", err)
 	}
 
-	if d == nil {
-		return c == nil
-	}
+	return path.Clean(), nil
+}
 
-	if len(c.Tasks) != len(d.Tasks) {
+// FlagName returns the command-line flag name for the given Config field s.
+// The field name should be given as you would write it in Go syntax, for
+// example "Logging.Output".
+//
+// Flag name is primarily resolved from the "flag" tag in the struct tags for
+// the field. The tag should be written as `flag:"<regular>,<inverted>"`where
+// regular is the normal name of the flag that is used to either give the value
+// or set the value as true. The inverted is available only for boolean types
+// and it is used for getting the name of a flag that explicitly set the value
+// of the field to false. The inverted name and the comma before it may be
+// omitted.
+//
+// If the field has no "flag" tag, the flag name will be calculated from
+// the field name. The function converts the field's name to lower case (and to
+// "kebab-case") and adds the names of the parent fields before the field name
+// separated with hyphen.
+func FlagName(s string) string {
+	return genFlagName(s, false)
+}
+
+// InvertedFlagName returns the command-line flag for the given Config field for
+// a flag that explicitly sets the value of the boolean to false. The field name
+// should be given as you would write it in Go syntax, for example
+// "Logging.Output".
+//
+// Flag name is primarily resolved from the "flag" tag in the struct tags for
+// the field. The tag should be written as `flag:"<regular>,<inverted>"`where
+// regular is the normal name of the flag that is used to either give the value
+// or set the value as true. The inverted is available only for boolean types
+// and it is used for getting the name of a flag that explicitly set the value
+// of the field to false. The inverted name and the comma before it may be
+// omitted.
+//
+// If the field has no inverted flag name in the "flag" tag, this function will
+// panic.
+func InvertedFlagName(s string) string {
+	return genFlagName(s, true)
+}
+
+// HasInvertedFlagName reports whether the given config value has an inverted
+// flag name tag.
+func HasInvertedFlagName(s string) bool {
+	if s == "" {
 		return false
 	}
 
-	for i, t := range c.Tasks {
-		u := d.Tasks[i]
+	cfg := Config{} //nolint:exhaustruct // used only for reflection
+	fieldNames := strings.Split(s, ".")
+	typ := reflect.TypeOf(cfg)
 
-		if t.Type != u.Type || t.Name != u.Name {
+	for _, name := range fieldNames {
+		f, ok := typ.FieldByName(name)
+		if !ok {
 			return false
 		}
 
-		for k, a := range t.Settings {
-			if b, ok := u.Settings[k]; !ok || a != b {
-				return false
+		if f.Type.Kind() == reflect.Struct {
+			typ = f.Type
+
+			continue
+		}
+
+		if f.Type.Kind() != reflect.Bool {
+			return false
+		}
+
+		t := strings.ToLower(f.Tag.Get("flag"))
+		tags := strings.FieldsFunc(t, func(r rune) bool {
+			return r == ','
+		})
+
+		if len(tags) < 2 { //nolint:mnd // only the flag and the inverted flag are allowed
+			return false
+		}
+
+		if tags[1] != "" {
+			return true
+		}
+	}
+
+	return false
+}
+
+// genFlagName resolves the flag name or the name of the inverted tag for
+// the Config field. The process is documented with [FlagName].
+func genFlagName(s string, invert bool) string {
+	cfg := Config{} //nolint:exhaustruct // used only for reflection
+	fieldNames := strings.Split(s, ".")
+	typ := reflect.TypeOf(cfg)
+	flagName := ""
+
+	for _, name := range fieldNames {
+		f, ok := typ.FieldByName(name)
+		if !ok {
+			panic(fmt.Sprintf("field in %q with name %q not found", typ.Name(), name))
+		}
+
+		t := strings.ToLower(f.Tag.Get("flag"))
+		tags := strings.FieldsFunc(t, func(r rune) bool {
+			return r == ','
+		})
+
+		if f.Type.Kind() != reflect.Bool && len(tags) > 1 {
+			panic(fmt.Sprintf("field %q (%s) has invert flag tag: %q", f.Name, f.Type.Kind(), t))
+		}
+
+		if f.Type.Kind() != reflect.Struct && invert && len(tags) < 2 {
+			panic(fmt.Sprintf("field %q has no invert flag tag: %q", f.Name, t))
+		}
+
+		if len(tags) > 2 { //nolint:mnd // only the flag and the inverted flag are allowed
+			panic(fmt.Sprintf("field %q has invalid flag tag: %q", f.Name, t))
+		}
+
+		j := 0
+
+		if invert && len(tags) > 1 {
+			j = 1
+		}
+
+		if len(tags) > 0 && tags[j] != "" {
+			// If the field has a "flag" tag, it overrides the whole tag thus
+			// far.
+			flagName = tags[j]
+		} else {
+			if len(flagName) > 0 {
+				flagName += "-"
+			}
+
+			for i, r := range f.Name {
+				if i > 0 && unicode.IsUpper(r) {
+					flagName += "-"
+				}
+
+				flagName += string(r)
 			}
 		}
-	}
 
-	return c.Color == d.Color && c.ConfigFile == d.ConfigFile && c.Directory == d.Directory &&
-		c.Logging == d.Logging &&
-		c.PluginDir == d.PluginDir &&
-		c.Quiet == d.Quiet &&
-		c.Verbose == d.Verbose
-}
-
-// from creates a new [Config] by creating one with default values and then
-// applying all of the found values from f.
-func (f *File) from() (*Config, error) {
-	cfg := defaultConfig()
-	cfgValue := reflect.ValueOf(cfg).Elem()
-	cfgFile := reflect.ValueOf(f).Elem()
-
-	applyFileValues(cfgFile, cfgValue)
-
-	if len(f.Tasks) > 0 {
-		if err := applyTasks(f, cfg); err != nil {
-			return nil, fmt.Errorf("%w", err)
+		if f.Type.Kind() == reflect.Struct {
+			typ = f.Type
 		}
 	}
 
-	return cfg, nil
+	return strings.ToLower(flagName)
 }
 
-// applyFileValues applies the configuration values from the value of
-// [File] given as the first parameter to the value [Config] given as
-// the second parameter. It calls itself recursively to resolve structs. It
-// panics if there is an error.
-func applyFileValues(cfgFile, cfg reflect.Value) {
-	for i := range cfgFile.NumField() {
-		fieldValue := cfgFile.Field(i)
-		structField := cfgFile.Type().Field(i)
-		target := cfg.FieldByName(structField.Name)
+// resolveFile looks up the possible paths for the configuration file and
+// returns the first one that contains a file with a valid name. The returned
+// path is absolute. If no configuration file is found, the function returns an
+// empty string and an error.
+func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
+	var (
+		err       error
+		fileValue string
+	)
 
-		if !target.IsValid() || !target.CanSet() {
-			panic("target value in Config cannot be set: " + structField.Name)
-		}
+	if env := os.Getenv(EnvPrefix + "_CONFIG_FILE"); env != "" {
+		fileValue = env
+	}
 
-		// Tasks are handled manually in [File.from].
-		if strings.ToLower(structField.Name) == "tasks" {
-			continue
-		}
-
-		if fieldValue.Kind() == reflect.Struct {
-			applyFileValues(fieldValue, target)
-
-			continue
-		}
-
-		if !fieldValue.Type().AssignableTo(target.Type()) {
-			panic(
-				fmt.Sprintf(
-					"config file value from field %q is not assignable to config",
-					structField.Name,
-				),
+	if flagSet.Changed("config") {
+		fileValue, err = flagSet.GetString("config")
+		if err != nil {
+			return "", fmt.Errorf(
+				"failed to get the value for command-line option '--config': %w",
+				err,
 			)
 		}
-
-		target.Set(fieldValue)
-	}
-}
-
-// applyTasks copies the task configurations from cfgFile to cfg. It modifies
-// the pointed Config directly.
-func applyTasks(cfgFile *File, cfg *Config) error {
-	cfg.Tasks = make([]task.Config, len(cfgFile.Tasks))
-	counters := map[string]int{}
-
-	for i, m := range cfgFile.Tasks {
-		var t task.Config
-
-		taskType, ok := m["type"]
-		if !ok {
-			return fmt.Errorf("%w: task does not specify a type", errInvalidConfig)
-		}
-
-		typeString, ok := taskType.(string)
-		if !ok {
-			return fmt.Errorf("%w: task type is not a string: %v", errInvalidConfig, m["type"])
-		}
-
-		t.Type = typeString
-
-		if taskName, ok := m["name"]; ok {
-			nameString, ok := taskName.(string)
-			if !ok {
-				return fmt.Errorf("%w: task name is not a string: %v", errInvalidConfig, m["name"])
-			}
-
-			t.Name = nameString
-		} else {
-			count, ok := counters[typeString]
-			if !ok {
-				count = 0
-			}
-
-			nameString := fmt.Sprintf("%s-%v", typeString, count)
-			t.Name = nameString
-			count++
-			counters[typeString] = count
-		}
-
-		t.Settings = make(map[string]any, len(m)-2) //nolint:mnd
-
-		for k, v := range m {
-			k = strings.ToLower(k)
-			if k == "type" || k == "name" {
-				continue
-			}
-
-			t.Settings[k] = v
-		}
-
-		cfg.Tasks[i] = t
 	}
 
-	return nil
+	file := fspath.Path(fileValue)
+
+	// Use the fileValue if it is an absolute path.
+	if file.IsAbs() {
+		if ok, err := file.IsFile(); err != nil {
+			return "", fmt.Errorf("%w", err)
+		} else if ok {
+			return file.Clean(), nil
+		}
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("%w", err)
+	}
+
+	// Check if the config file f matches a file in the working directory.
+	file = fspath.New(wd, string(file))
+
+	if ok, err := file.IsFile(); err != nil {
+		return "", fmt.Errorf("%w", err)
+	} else if ok {
+		return file, nil
+	}
+
+	// If the config file flag is set but it didn't resolve, fail so that the
+	// program doesn't use a config file from some other location by surprise.
+	if fileValue != "" {
+		return "", fmt.Errorf("%w: tried to resolve file with %q", errConfigFileNotFound, fileValue)
+	}
+
+	// TODO: Add more locations, at least the default location in the user home
+	// directory.
+	configDirs := []string{
+		wd,
+	}
+	configNames := []string{
+		strings.ToLower(defaultFileName),
+		"." + strings.ToLower(defaultFileName),
+	}
+	extensions := []string{
+		"toml",
+	}
+
+	// This is crazy.
+	for _, d := range configDirs {
+		for _, n := range configNames {
+			for _, e := range extensions {
+				file = fspath.New(d, fmt.Sprintf("%s.%s", n, e))
+				if ok, err := file.IsFile(); err != nil {
+					return "", fmt.Errorf("%w", err)
+				} else if ok {
+					return file, nil
+				}
+			}
+		}
+	}
+
+	return "", fmt.Errorf("%w", errConfigFileNotFound)
 }

@@ -15,9 +15,10 @@ type Command interface {
 	// UsageLine is the one-line usage synopsis of the command.
 	UsageLine() string
 
-	// Flags returns the command-line flag definitions for this command. If
-	// len(Flags()) == 0, the value will be omitted in the handshake.
-	Flags() []rpp.Flag
+	// Configs returns the config options for this Command. The config options
+	// should also define the command-line flags of this command.
+	Configs() []rpp.ConfigValue
 
-	Run(args []string) error
+	// Run runs the command.
+	Run(cfg []rpp.ConfigValue) error
 }

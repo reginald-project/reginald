@@ -10,7 +10,7 @@ import (
 // and output streams where necessary to prevent multiple sources reading or
 // writing at the same time. It is usually used with the [io.Writer] acquired by
 // [NewLockedWriter].
-var StdioMu sync.Mutex //nolint:gochecknoglobals
+var StdioMu sync.Mutex //nolint:gochecknoglobals // used by multiple goroutines
 
 type lockedWriter struct {
 	w io.Writer

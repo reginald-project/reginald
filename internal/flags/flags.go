@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/anttikivi/reginald/internal/fspath"
 	"github.com/anttikivi/reginald/pkg/rpp"
 	"github.com/spf13/pflag"
 )
@@ -38,7 +39,7 @@ type Flag struct {
 // NewFlagSet returns a new, empty flag set with the specified name, error
 // handling property, and SortFlags set to true.
 func NewFlagSet(name string, errorHandling pflag.ErrorHandling) *FlagSet {
-	f := &FlagSet{ //nolint:exhaustruct
+	f := &FlagSet{ //nolint:exhaustruct // flags is initialized when needed
 		FlagSet: pflag.NewFlagSet(name, errorHandling),
 	}
 
@@ -76,24 +77,30 @@ func (f *FlagSet) AddFlagSet(newSet *FlagSet) {
 	}
 }
 
-// AddPluginFlag adds a flag to the flag set according to the given flag
+// AddPluginFlag adds a flag to the flag set according to the given config value
 // specification from a plugin.
-func (f *FlagSet) AddPluginFlag(flag rpp.Flag) error {
-	switch flag.Type {
-	case rpp.FlagBool:
-		defVal, ok := flag.DefaultValue.(bool)
+func (f *FlagSet) AddPluginFlag(cv rpp.ConfigValue) error {
+	var flag rpp.Flag
+
+	if rf, err := cv.RealFlag(); err != nil {
+		return fmt.Errorf("%w", err)
+	} else if rf != nil {
+		flag = *rf
+	} else {
+		return nil
+	}
+
+	// TODO: Add inverted flags.
+	switch cv.Type {
+	case rpp.ConfigBool:
+		defVal, ok := cv.Value.(bool)
 		if !ok {
-			return fmt.Errorf(
-				"%w: %v (%T)",
-				errDefaultValueType,
-				flag.DefaultValue,
-				flag.DefaultValue,
-			)
+			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cv.Value)
 		}
 
 		f.BoolP(flag.Name, flag.Shorthand, defVal, flag.Usage, "")
-	case rpp.FlagInt:
-		switch v := flag.DefaultValue.(type) {
+	case rpp.ConfigInt:
+		switch v := cv.Value.(type) {
 		case int:
 			f.IntP(flag.Name, flag.Shorthand, v, flag.Usage, "")
 		case float64:
@@ -103,28 +110,17 @@ func (f *FlagSet) AddPluginFlag(flag rpp.Flag) error {
 
 			f.IntP(flag.Name, flag.Shorthand, u, flag.Usage, "")
 		default:
-			return fmt.Errorf("%w: %v (%T)", errDefaultValueType, flag.DefaultValue, flag.DefaultValue)
+			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cv.Value)
 		}
-	case rpp.FlagString:
-		defVal, ok := flag.DefaultValue.(string)
+	case rpp.ConfigString:
+		defVal, ok := cv.Value.(string)
 		if !ok {
-			return fmt.Errorf(
-				"%w: %v (%T)",
-				errDefaultValueType,
-				flag.DefaultValue,
-				flag.DefaultValue,
-			)
+			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cv.Value)
 		}
 
 		f.StringP(flag.Name, flag.Shorthand, defVal, flag.Usage, "")
 	default:
-		return fmt.Errorf(
-			"%w: flag %q: %v (%T)",
-			errInvalidFlagType,
-			flag.Name,
-			flag.Type,
-			flag.DefaultValue,
-		)
+		return fmt.Errorf("%w: flag %q: %v (%T)", errInvalidFlagType, flag.Name, cv.Type, cv.Value)
 	}
 
 	return nil
@@ -186,6 +182,33 @@ func (f *FlagSet) IntP(name, shorthand string, value int, usage, doc string) *in
 	return p
 }
 
+// Path defines a path flag with specified name, default value, and usage
+// string. The return value is the address of a path variable that stores
+// the value of the flag.
+func (f *FlagSet) Path(name string, value fspath.Path, usage, doc string) *fspath.Path {
+	return f.PathP(name, "", value, usage, doc)
+}
+
+// PathP is like Path, but accepts a shorthand letter that can be used after
+// a single dash.
+func (f *FlagSet) PathP(name, shorthand string, value fspath.Path, usage, doc string) *fspath.Path {
+	p := f.FlagSet.StringP(name, shorthand, string(value), usage)
+
+	flag := f.Lookup(name)
+	if flag == nil {
+		panic(fmt.Sprintf("received nil flag %q from wrapped flag set", name))
+	}
+
+	f.AddFlag(&Flag{
+		Flag: flag,
+		Doc:  doc,
+	})
+
+	path := fspath.Path(*p)
+
+	return &path
+}
+
 // String defines a string flag with specified name, default value, and usage
 // string. The return value is the address of a string variable that stores the
 // value of the flag.
@@ -209,4 +232,37 @@ func (f *FlagSet) StringP(name, shorthand, value, usage, doc string) *string {
 	})
 
 	return p
+}
+
+// Var defines a flag with the specified name and usage string. The type and
+// value of the flag are represented by the first argument, of type
+// [pflag.Value], which typically holds a user-defined implementation of
+// [pflag.Value]. For instance, the caller could create a flag that turns
+// a comma-separated string into a slice of strings by giving the slice
+// the methods of [pflag.Value]; in particular, Set would decompose
+// the comma-separated string into the slice.
+func (f *FlagSet) Var(value pflag.Value, name, usage, doc string) {
+	f.VarP(value, name, "", usage, doc)
+}
+
+// VarP is like Var, but accepts a shorthand letter that can be used after
+// a single dash.
+func (f *FlagSet) VarP(value pflag.Value, name, shorthand, usage, doc string) {
+	flag := f.VarPF(value, name, shorthand, usage)
+
+	f.AddFlag(&Flag{
+		Flag: flag,
+		Doc:  doc,
+	})
+}
+
+// GetPath returns the string value of a flag with the given name and converts
+// it to [fspath.Path].
+func (f *FlagSet) GetPath(name string) (fspath.Path, error) {
+	val, err := f.GetString(name)
+	if err != nil {
+		return "", fmt.Errorf("%w", err)
+	}
+
+	return fspath.Path(val), nil
 }

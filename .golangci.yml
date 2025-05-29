@@ -30,6 +30,7 @@ linters:
             - $gostd
             - github.com/anttikivi/reginald
             - github.com/anttikivi/go-semver
+            - github.com/go-viper/mapstructure/v2
             - github.com/pelletier/go-toml/v2
             - github.com/spf13/pflag
             - golang.org/x/sync
@@ -41,6 +42,7 @@ linters:
         - '^github\.com/anttikivi/reginald/pkg/rpp\.Message$'
     funlen:
       lines: 100
+      statements: 60
       ignore-comments: true
     goconst:
       find-duplicates: true
@@ -52,10 +54,21 @@ linters:
         - name: (*github.com/pelletier/go-toml/v2.Decoder).Decode
           tag: toml
           arg-pos: 0
+    nolintlint:
+      allow-unused: false
+      allow-no-explanation:
+        - lll
+        - varnamelen
+      require-explanation: true
+      require-specific: true
+    tagalign:
+      align: false
+      sort: true
     varnamelen:
       max-distance: 50
       ignore-decls:
         - eg *errgroup.Group
+        - g *errgroup.Group
         - id rpp.ID
         - mu sync.Mutex
         - wg sync.WaitGroup

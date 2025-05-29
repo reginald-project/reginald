@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/anttikivi/reginald/internal/config"
 	"github.com/anttikivi/reginald/internal/flags"
 	"github.com/spf13/pflag"
 )
@@ -20,20 +21,12 @@ type Command struct {
 	// with the command name without including the parent commands.
 	UsageLine string
 
-	// Setup runs the setup required for the Command. The function receives
-	// pointer cmd to the Command that it is currently run on and pointer subcmd
-	// to the final subcommand that will be run. Any flags that need to be used
-	// should be acquired from subcmd as the flags are merged into its flags
-	// before Setup is called.
-	//
-	// For example, the configuration should be parsed in Setup. If Command is
-	// a subcommand, the setup functions for the parent commands are run first,
-	// starting from the root command.
-	Setup func(ctx context.Context, cmd, subcmd *Command, args []string) error
+	// Setup runs the setup required for the Command.
+	Setup func(ctx context.Context, cmd *Command, cfg *config.Config, args []string) error
 
-	// Runs runs the command. Before running the command, Setup functions for
-	// the command and its parent commands are run.
-	Run func(ctx context.Context, cmd *Command, args []string) error
+	// Runs runs the command. Before running the command, Setup function for it
+	// is run.
+	Run func(ctx context.Context, cmd *Command) error
 
 	cli                    *CLI           // containing CLI struct
 	commands               []*Command     // list of subcommands
@@ -82,7 +75,7 @@ func (c *Command) Lookup(name string) *Command {
 func (c *Command) MarkFlagsMutuallyExclusive(a ...string) {
 	c.mergeFlags()
 
-	if len(a) < 2 { //nolint:mnd
+	if len(a) < 2 { //nolint:mnd // obvious
 		panic("only one flag cannot be marked as mutually exclusive")
 	}
 
@@ -155,7 +148,7 @@ func (c *Command) mergeFlags() {
 		panic(fmt.Sprintf("flag %q is set in the CommandLine flag set", f.Name))
 	})
 	// c.cli.flags.AddFlagSet(pflag.CommandLine)
-	c.Root().GlobalFlags().AddFlagSet(c.cli.flags)
+	c.Root().GlobalFlags().AddFlagSet(c.cli.allFlags)
 	c.VisitParents(func(p *Command) {
 		c.GlobalFlags().AddFlagSet(p.GlobalFlags())
 	})

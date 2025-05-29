@@ -11,12 +11,12 @@ import (
 )
 
 // buildVersion is the version number set at build.
-var buildVersion = "dev" //nolint:gochecknoglobals
+var buildVersion = "dev" //nolint:gochecknoglobals // set at build time
 
 // Version is the parsed version number of Reginald.
 var version *semver.Version
 
-func init() { //nolint:gochecknoinits
+func init() { //nolint:gochecknoinits // version must be parsed once at the start
 	if buildVersion == "dev" {
 		if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "(devel)" {
 			v := info.Main.Version
