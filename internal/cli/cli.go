@@ -271,7 +271,7 @@ func (c *CLI) Execute(ctx context.Context) error { //nolint:funlen // one functi
 	// 	return fmt.Errorf("failed to parse the config: %w", err)
 	// }
 
-	if err = plugins.Initialize(ctx, c.plugins); err != nil {
+	if err = plugins.Initialize(ctx, c.plugins, c.cfg.Plugins); err != nil {
 		return fmt.Errorf("failed to initialize plugins: %w", err)
 	}
 

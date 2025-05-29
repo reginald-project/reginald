@@ -19,6 +19,7 @@ import (
 	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/panichandler"
+	"github.com/anttikivi/reginald/pkg/logs"
 	"github.com/anttikivi/reginald/pkg/rpp"
 	"github.com/spf13/afero"
 )
@@ -400,6 +401,42 @@ func (p *Plugin) handshake(ctx context.Context) error {
 	p.HandshakeResult = result
 
 	logging.TraceContext(ctx, "handshake succeeded", "plugin", p.Name)
+
+	return nil
+}
+
+func (p *Plugin) initialize(ctx context.Context, cfg []rpp.ConfigValue) error {
+	params := rpp.InitializeParams{
+		Config: cfg,
+		// TODO: Use the actual configs.
+		Logging: rpp.LoggingConfig{
+			Enabled: true,
+			Level:   logs.LevelTrace,
+		},
+	}
+
+	res, err := p.call(ctx, rpp.MethodInitialize, params)
+	if err != nil {
+		return fmt.Errorf(
+			"method call %q to plugin %s failed: %w",
+			rpp.MethodInitialize,
+			p.Name,
+			err,
+		)
+	}
+
+	// TODO: Disallow unknown fields.
+	var result any
+	if err = json.Unmarshal(res.Result, &result); err != nil {
+		return fmt.Errorf(
+			"failed to unmarshal result for the %q method call to %s: %w",
+			rpp.MethodInitialize,
+			p.Name,
+			err,
+		)
+	}
+
+	logging.TraceContext(ctx, "initialize succeeded", "plugin", p.Name)
 
 	return nil
 }

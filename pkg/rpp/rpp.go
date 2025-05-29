@@ -42,6 +42,7 @@ const (
 
 // Errors returned by the RPP helper functions.
 var (
+	errInvalidConfig  = errors.New("invalid config value type")
 	errInvalidFlagDef = errors.New("invalid flag definition")
 	errZeroLength     = errors.New("content-length is zero")
 )
@@ -199,6 +200,32 @@ type Flag struct {
 	Usage string `json:"usage,omitempty" mapstructure:"usage,omitempty"`
 
 	// TODO: Add invert and remove IgnoreInConfig.
+}
+
+// NewConfigValue creates a new ConfigValue and returns it. This function is
+// primarily meant to be used outside of the handshake during the later method
+// calls. It only assigns the Key, Value, and Type fields.
+func NewConfigValue(key string, value any) (ConfigValue, error) {
+	var t ConfigType
+
+	switch value.(type) {
+	case bool:
+		t = ConfigBool
+	case int, int64:
+		t = ConfigInt
+	case string:
+		t = ConfigString
+	default:
+		return ConfigValue{}, fmt.Errorf("%w: %[2]v (%[2]T) for %s", errInvalidConfig, value, key)
+	}
+
+	cfg := ConfigValue{
+		Key:   key,
+		Value: value,
+		Type:  t,
+	}
+
+	return cfg, nil
 }
 
 // RealFlag resolves the real type for ConfigValue.Flag and returns a pointer to

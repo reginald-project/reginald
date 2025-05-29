@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 
 	"github.com/anttikivi/reginald/pkg/rpp"
 )
@@ -100,6 +101,8 @@ func (p *Plugin) handshake(msg *rpp.Message) error {
 		if err != nil {
 			return fmt.Errorf("failed to send error response: %w", err)
 		}
+
+		return nil
 	}
 
 	cmdInfos := make([]rpp.CommandInfo, 0, len(p.cmds))
@@ -140,6 +143,78 @@ func (p *Plugin) handshake(msg *rpp.Message) error {
 	return nil
 }
 
+// handshake handles responding to the handshake method.
+func (p *Plugin) initialize(msg *rpp.Message) error {
+	if msg.ID == nil {
+		err := p.respondError(msg.ID, &rpp.Error{
+			Code:    rpp.InvalidRequest,
+			Message: fmt.Sprintf("Method %q was called using a notification", msg.Method),
+			Data:    nil,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send error response: %w", err)
+		}
+
+		return nil
+	}
+
+	var params rpp.InitializeParams
+
+	if err := json.Unmarshal(msg.Params, &params); err != nil {
+		err := p.respondError(msg.ID, &rpp.Error{
+			Code:    rpp.InvalidParams,
+			Message: "Failed to decode params",
+			Data:    err,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send error response: %w", err)
+		}
+
+		return nil
+	}
+
+	for _, cfg := range params.Config {
+		i := slices.IndexFunc(p.configs, func(c rpp.ConfigValue) bool {
+			return c.Key == cfg.Key
+		})
+		if i < 0 {
+			err := p.respondError(msg.ID, &rpp.Error{
+				Code:    rpp.InvalidParams,
+				Message: fmt.Sprintf("Received invalid config value: %q", cfg.Key),
+				Data:    nil,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to send error response: %w", err)
+			}
+
+			return nil
+		}
+
+		if p.configs[i].Type != cfg.Type {
+			err := p.respondError(msg.ID, &rpp.Error{
+				Code:    rpp.InvalidParams,
+				Message: fmt.Sprintf("Invalid type for %q: wanted %s, got %s", cfg.Key, p.configs[i].Type, cfg.Type),
+				Data:    nil,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to send error response: %w", err)
+			}
+
+			return nil
+		}
+
+		p.configs[i].Value = cfg.Value
+	}
+
+	// TODO: Handle the logging.
+
+	if err := p.respond(msg.ID, struct{}{}); err != nil {
+		return fmt.Errorf("response in %s failed: %w", p.name, err)
+	}
+
+	return nil
+}
+
 // runMethod runs the requested method and responds to it. It returns an error
 // when an unrecoverable error is encountered.
 func (p *Plugin) runMethod(msg *rpp.Message) error {
@@ -162,6 +237,10 @@ func (p *Plugin) runMethod(msg *rpp.Message) error {
 		p.exit = true
 	case rpp.MethodHandshake:
 		if err := p.handshake(msg); err != nil {
+			return fmt.Errorf("%w", err)
+		}
+	case rpp.MethodInitialize:
+		if err := p.initialize(msg); err != nil {
 			return fmt.Errorf("%w", err)
 		}
 	case rpp.MethodRunCommand:

@@ -9,12 +9,62 @@ import (
 	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/panichandler"
+	"github.com/anttikivi/reginald/pkg/rpp"
 	"github.com/spf13/afero"
 	"golang.org/x/sync/errgroup"
 )
 
 // Initialize calls the "initialize" method on all plugins.
-func Initialize(_ context.Context, _ []*Plugin) error {
+func Initialize(ctx context.Context, plugins []*Plugin, cfgs map[string]any) error {
+	eg, gctx := errgroup.WithContext(ctx)
+
+	for _, p := range plugins {
+		handlePanic := panichandler.WithStackTrace()
+
+		eg.Go(func() error {
+			defer handlePanic()
+
+			// TODO: Allow configuring the timeout.
+			tctx, cancel := context.WithTimeout(gctx, DefaultHandshakeTimeout)
+			defer cancel()
+
+			var cfg []rpp.ConfigValue
+
+			if c, ok := cfgs[p.Name].(map[string]any); ok {
+				for k, v := range c {
+					cfgVal, err := rpp.NewConfigValue(k, v)
+					if err != nil {
+						return fmt.Errorf("%w", err)
+					}
+
+					cfg = append(cfg, cfgVal)
+				}
+			}
+
+			logging.TraceContext(ctx, "cfgs", "cfgs", cfgs)
+
+			if err := p.initialize(tctx, cfg); err != nil {
+				// if ignoreErrors {
+				// 	logging.ErrorContext(tctx, "failed to initialize plugin", "path", f, "err", err)
+				// 	iostreams.Errorf("Failed to initialize plugin %q\n", f)
+				// 	iostreams.PrintErrf("Error: %v\n", err)
+				//
+				// 	return nil
+				// }
+
+				return fmt.Errorf("failed to initialize plugin %s: %w", p.Name, err)
+			}
+
+			logging.DebugContext(gctx, "plugin initialized", "plugin", p)
+
+			return nil
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
 	return nil
 }
 

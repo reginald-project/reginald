@@ -76,15 +76,18 @@ type InitializeParams struct {
 	// aim to honor these settings in order to avoid sending log messages that
 	// are not allowed by the configuration. Messages that are not allowed are
 	// discarded by Reginald anyway.
-	Logging struct {
-		// Enabled tells whether logging is enabled at all.
-		Enabled bool `json:"enabled"`
+	Logging LoggingConfig `json:"logging"`
+}
 
-		// Level gives the selected logging level. For example, if the level is
-		// set to [logs.LevelDebug], messages with the level "debug" and higher
-		// are allowed.
-		Level logs.Level `json:"level"`
-	} `json:"logging"`
+// TODO: Add docs.
+type LoggingConfig struct {
+	// Enabled tells whether logging is enabled at all.
+	Enabled bool `json:"enabled"`
+
+	// Level gives the selected logging level. For example, if the level is
+	// set to [logs.LevelDebug], messages with the level "debug" and higher
+	// are allowed.
+	Level logs.Level `json:"level"`
 }
 
 // LogParams are the parameters passed with the "log" method. Reginald uses
