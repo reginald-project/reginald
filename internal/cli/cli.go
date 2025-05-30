@@ -153,7 +153,9 @@ func (c *CLI) DeferredErr() error {
 // Execute executes the CLI. It parses the command-line options, finds the
 // correct command to run, and executes it. An error is returned on user errors.
 // The function panics if it is called with invalid program configuration.
-func (c *CLI) Execute(ctx context.Context) error { //nolint:funlen // one function to rule them all
+//
+//nolint:cyclop,funlen // one function to rule them all
+func (c *CLI) Execute(ctx context.Context) error {
 	var flagSet *flags.FlagSet
 
 	args := os.Args
