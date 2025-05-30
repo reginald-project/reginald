@@ -37,6 +37,12 @@ type Config struct {
 	// Color tells whether colors should be enabled in the user output.
 	Color iostreams.ColorMode `mapstructure:"color"`
 
+	// Directory is the "dotfiles" directory option. If it is set, Reginald
+	// looks for all of the relative filenames from this directory. Most
+	// absolute paths are still resolved relative to actual current working
+	// directory of the program.
+	Directory fspath.Path `mapstructure:"directory"`
+
 	// Logging contains the config values for logging.
 	Logging logging.Config `flag:"log" mapstructure:"logging"`
 
@@ -61,18 +67,24 @@ type Config struct {
 // DefaultConfig returns the default values for configuration. The function
 // panics on errors.
 func DefaultConfig() *Config {
+	dir, err := DefaultDir()
+	if err != nil {
+		panic(fmt.Sprintf("failed to get default directory: %v", err))
+	}
+
 	pluginDir, err := DefaultPluginsDir()
 	if err != nil {
 		panic(fmt.Sprintf("failed to get default plugin directory: %v", err))
 	}
 
 	return &Config{
-		Color: iostreams.ColorAuto,
+		Color:     iostreams.ColorAuto,
+		Directory: dir,
 		Logging: logging.Config{
 			Enabled: true,
 			Format:  "json",
 			Level:   logs.LevelInfo,
-			Output:  "stdout",
+			Output:  "stdout", // TODO: Default to file.
 		},
 		PluginDir: pluginDir,
 		Quiet:     false,
@@ -82,8 +94,22 @@ func DefaultConfig() *Config {
 	}
 }
 
-// DefaultPluginsDir returns the plugins directory to use. It takes the environment
-// variable for customizing the plugins directory and the platform into account.
+// DefaultDir returns the default working directory for Reginald.
+func DefaultDir() (fspath.Path, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get the user home directory: %w", err)
+	}
+
+	path, err := fspath.NewAbs(home, ".dotfiles")
+	if err != nil {
+		return "", fmt.Errorf("failed to convert directory to absolute path: %w", err)
+	}
+
+	return path, nil
+}
+
+// DefaultPluginsDir returns the default plugins directory to use.
 func DefaultPluginsDir() (fspath.Path, error) {
 	path, err := defaultPluginsDir()
 	if err != nil {
@@ -257,7 +283,8 @@ func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
 		fileValue, err = flagSet.GetString("config")
 		if err != nil {
 			return "", fmt.Errorf(
-				"failed to get the value for command-line option '--config': %w",
+				"failed to get the value for command-line option --%s: %w",
+				"config",
 				err,
 			)
 		}
@@ -274,13 +301,29 @@ func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
 		}
 	}
 
-	wd, err := os.Getwd()
-	if err != nil {
-		return "", fmt.Errorf("%w", err)
+	var wd fspath.Path
+
+	flagName := FlagName("Directory")
+	if flagSet.Changed(flagName) {
+		wd, err = flagSet.GetPath(flagName)
+		if err != nil {
+			return "", fmt.Errorf(
+				"failed to get the value for command-line option --%s: %w",
+				flagName,
+				err,
+			)
+		}
+	} else {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("%w", err)
+		}
+
+		wd = fspath.Path(cwd)
 	}
 
 	// Check if the config file f matches a file in the working directory.
-	file = fspath.New(wd, string(file))
+	file = wd.Join(string(file))
 
 	if ok, err := file.IsFile(); err != nil {
 		return "", fmt.Errorf("%w", err)
@@ -296,7 +339,7 @@ func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
 
 	// TODO: Add more locations, at least the default location in the user home
 	// directory.
-	configDirs := []string{
+	configDirs := []fspath.Path{
 		wd,
 	}
 	configNames := []string{
@@ -311,7 +354,7 @@ func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
 	for _, d := range configDirs {
 		for _, n := range configNames {
 			for _, e := range extensions {
-				file = fspath.New(d, fmt.Sprintf("%s.%s", n, e))
+				file = d.Join(fmt.Sprintf("%s.%s", n, e))
 				if ok, err := file.IsFile(); err != nil {
 					return "", fmt.Errorf("%w", err)
 				} else if ok {

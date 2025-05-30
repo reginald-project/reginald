@@ -89,7 +89,13 @@ func New() *CLI {
 		"use `<path>` as the configuration file instead of resolving it from the standard locations",
 		"",
 	)
-
+	cli.flags.PathP(
+		config.FlagName("Directory"),
+		"C",
+		defaults.Directory,
+		"use `<path>` as the \"dotfiles\" directory so that Reginald looks for the config file and the files for linking from there", //nolint:lll
+		"",
+	)
 	cli.flags.PathP(
 		config.FlagName("PluginDir"),
 		"p",
