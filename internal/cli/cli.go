@@ -139,7 +139,7 @@ func New() *CLI {
 		panic(fmt.Sprintf("failed to mark --%s hidden: %v", hiddenLogFlag, err))
 	}
 
-	cli.add(NewApply())
+	cli.add(NewAttend())
 
 	return cli
 }
@@ -396,6 +396,7 @@ func (c *CLI) addPluginCommands() error { //nolint:gocognit // no problem
 		for _, info := range plugin.Commands {
 			cmd := &Command{ //nolint:exhaustruct // private fields have zero values
 				Name:      info.Name,
+				Aliases:   []string{}, // TODO: Add alias support or at least think about it.
 				UsageLine: info.UsageLine,
 				Setup: func(ctx context.Context, cmd *Command, _ []string) error {
 					var values []rpp.ConfigValue
@@ -579,9 +580,14 @@ func (c *CLI) lookup(name string) *Command {
 	}
 
 	for _, cmd := range c.allCommands {
-		// TODO: Check for aliases.
-		if cmd.Name == name {
+		if strings.EqualFold(cmd.Name, name) {
 			return cmd
+		}
+
+		for _, a := range cmd.Aliases {
+			if strings.EqualFold(a, name) {
+				return cmd
+			}
 		}
 	}
 

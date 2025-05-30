@@ -16,6 +16,11 @@ type Command struct {
 	// they run the command.
 	Name string
 
+	// Aliases are the aliases for the command that can be used instead of
+	// the real name of the command to run it. All of the aliases and command
+	// names must be unique.
+	Aliases []string
+
 	// UsageLine is the one-line usage synopsis for the command. It should start
 	// with the command name without including the parent commands.
 	UsageLine string
