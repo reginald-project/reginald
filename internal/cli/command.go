@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/anttikivi/reginald/internal/config"
 	"github.com/anttikivi/reginald/internal/flags"
 	"github.com/spf13/pflag"
 )
@@ -22,7 +21,7 @@ type Command struct {
 	UsageLine string
 
 	// Setup runs the setup required for the Command.
-	Setup func(ctx context.Context, cmd *Command, cfg *config.Config, args []string) error
+	Setup func(ctx context.Context, cmd *Command, args []string) error
 
 	// Runs runs the command. Before running the command, Setup function for it
 	// is run.

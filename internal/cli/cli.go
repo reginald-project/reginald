@@ -282,8 +282,14 @@ func (c *CLI) Execute(ctx context.Context) error { //nolint:funlen // one functi
 		return nil
 	}
 
-	if err := c.cmd.Setup(ctx, c.cmd, c.cfg, args); err != nil {
-		return fmt.Errorf("%w", err)
+	if c.cmd.Setup != nil {
+		if err := c.cmd.Setup(ctx, c.cmd, args); err != nil {
+			return fmt.Errorf("%w", err)
+		}
+	}
+
+	if c.cmd.Run == nil {
+		panic(fmt.Sprintf("command %q has no Run function", c.cmd.Name))
 	}
 
 	if err := c.cmd.Run(ctx, c.cmd); err != nil {
@@ -389,10 +395,10 @@ func (c *CLI) addPluginCommands() error { //nolint:gocognit // no problem
 			cmd := &Command{ //nolint:exhaustruct // private fields have zero values
 				Name:      info.Name,
 				UsageLine: info.UsageLine,
-				Setup: func(ctx context.Context, cmd *Command, cfg *config.Config, _ []string) error {
+				Setup: func(ctx context.Context, cmd *Command, _ []string) error {
 					var values []rpp.ConfigValue
 
-					if c, ok := cfg.Plugins[cmd.Name].(map[string]any); ok {
+					if c, ok := cmd.cli.cfg.Plugins[cmd.Name].(map[string]any); ok {
 						for k, v := range c {
 							cfgVal, err := rpp.NewConfigValue(k, v)
 							if err != nil {
