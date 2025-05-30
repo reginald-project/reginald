@@ -284,10 +284,8 @@ func (c *CLI) Execute(ctx context.Context) error {
 		return nil
 	}
 
-	if c.cmd.Setup != nil {
-		if err := c.cmd.Setup(ctx, c.cmd, args); err != nil {
-			return fmt.Errorf("%w", err)
-		}
+	if err = c.setup(ctx, args); err != nil {
+		return fmt.Errorf("%w", err)
 	}
 
 	if c.cmd.Run == nil {
@@ -619,18 +617,23 @@ func (c *CLI) markFlagsMutuallyExclusive(a ...string) {
 
 // setupCommands runs [Command.Setup] for all of the commands, starting from the
 // root command. It exits on the first error it encounters.
-// func setupCommands(ctx context.Context, c, subcmd *Command, args []string) error {
-// 	if c.HasParent() {
-// 		if err := setupCommands(ctx, c.parent, subcmd, args); err != nil {
-// 			return fmt.Errorf("%w", err)
-// 		}
-// 	}
-//
-// 	if c.Setup != nil {
-// 		if err := c.Setup(ctx, c, subcmd, args); err != nil {
-// 			return fmt.Errorf("%w", err)
-// 		}
-// 	}
-//
-// 	return nil
-// }
+func (c *CLI) setup(ctx context.Context, args []string) error {
+	cmd := c.cmd
+	cmdStack := make([]*Command, 0)
+	cmdStack = append(cmdStack, cmd)
+
+	for cmd.HasParent() {
+		cmd := cmd.parent
+		cmdStack = append(cmdStack, cmd)
+	}
+
+	for _, cmd := range slices.Backward(cmdStack) {
+		if cmd.Setup != nil {
+			if err := cmd.Setup(ctx, cmd, args); err != nil {
+				return fmt.Errorf("%w", err)
+			}
+		}
+	}
+
+	return nil
+}
