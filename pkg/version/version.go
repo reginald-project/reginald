@@ -7,7 +7,7 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/anttikivi/go-semver"
+	"github.com/anttikivi/semver"
 )
 
 // buildVersion is the version number set at build.
