@@ -22,7 +22,7 @@ func init() { //nolint:gochecknoinits // version must be parsed once at the star
 			v := info.Main.Version
 			i := strings.IndexByte(v, '-')
 			v = v[:i+1] + "0.invalid." + v[i+1:]
-			version = semver.MustParsePrefix(v, "v")
+			version = semver.MustParse(v)
 
 			return
 		}
