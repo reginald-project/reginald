@@ -16,6 +16,7 @@ import (
 	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/plugins"
+	"github.com/anttikivi/reginald/internal/tasks"
 	"github.com/anttikivi/reginald/pkg/rpp"
 	"github.com/anttikivi/reginald/pkg/version"
 	"github.com/spf13/pflag"
@@ -51,6 +52,7 @@ type CLI struct {
 	commands               []*Command        // list of subcommands
 	pluginCommands         []*Command        // commands received from plugins
 	allCommands            []*Command        // internal and plugin subcommands combined
+	tasks                  []*tasks.Task     // list of the task instances according to the config
 	allFlags               *flags.FlagSet    // own and plugin command-line flags combined
 	flags                  *flags.FlagSet    // global command-line flags
 	pluginFlags            *flags.FlagSet    // plugin-wide flags
@@ -69,6 +71,7 @@ func New() *CLI {
 		commands:               []*Command{},
 		pluginCommands:         []*Command{},
 		allCommands:            []*Command{},
+		tasks:                  []*tasks.Task{},
 		allFlags:               flags.NewFlagSet(Name, pflag.ContinueOnError),
 		flags:                  flags.NewFlagSet(Name, pflag.ContinueOnError),
 		pluginFlags:            flags.NewFlagSet(Name, pflag.ContinueOnError),

@@ -15,10 +15,17 @@ func NewAttend() *Command {
 			"tend",
 		},
 		UsageLine: "attend [options]",
+		Setup:     setupAttend,
 		Run:       runAttend,
 	}
 
 	return c
+}
+
+func setupAttend(ctx context.Context, _ *Command, _ []string) error {
+	logging.InfoContext(ctx, "setting up attend")
+
+	return nil
 }
 
 func runAttend(ctx context.Context, _ *Command) error {

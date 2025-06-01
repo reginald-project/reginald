@@ -738,16 +738,13 @@ func (p *pluginParser) int() (int64, error) {
 
 	val, ok := p.m[p.c.Key]
 	if !ok {
-		// At start the config entry should have the default value.
-		x, ok = p.c.Value.(int64)
-		if !ok {
-			return x, fmt.Errorf(
-				"%w: default value for %q is not an int: %[3]v (%[3]T)",
-				errInvalidCast,
-				p.c.Key,
-				p.c.Value,
-			)
+		v, err := p.c.Int()
+		if err != nil {
+			return x, fmt.Errorf("failed to get int value for %q: %w", p.c.Key, err)
 		}
+
+		// At start the config entry should have the default value.
+		x = int64(v)
 	} else {
 		x, ok = val.(int64)
 		if !ok {
