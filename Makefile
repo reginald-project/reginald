@@ -148,22 +148,31 @@ clean:
 install-addlicense:
 	@PATH="$${PATH}:$$(go env GOPATH)/bin"; \
 	force="$$(echo "$(FORCE_REINSTALL)" | tr '[:upper:]' '[:lower:]')"; \
-	if ! command -v addlicense >/dev/null 2>&1 || [ "$${force}" = "true" ] || \
-		[ "$${force}" = "1" ]; then \
+	found="false"; \
+	\
+	if command -v addlicense >/dev/null 2>&1; then \
+		found="true"; \
+		echo "found addlicense"; \
+	fi; \
+	\
+	if [ "$${found}" != "true" ] || [ "$${force}" = "true" ] || [ "$${force}" = "1" ]; then \
+		echo "installing addlicense version $(ADDLICENSE_VERSION)..."; \
 		go install github.com/google/addlicense@v$(ADDLICENSE_VERSION); \
 	fi
 
 .PHONY: install-gci
 install-gci:
 	@PATH="$${PATH}:$$(go env GOPATH)/bin"; \
-	if ! command -v gci >/dev/null 2>&1; then \
-		echo "gci not found, installing..."; \
-		go install github.com/daixiang0/gci@v$(GCI_VERSION); \
-		exit 0; \
+	force="$$(echo "$(FORCE_REINSTALL)" | tr '[:upper:]' '[:lower:]')"; \
+	current_version=""; \
+	\
+	if command -v gci >/dev/null 2>&1; then \
+		current_version="$$(gci --version 2>/dev/null | awk '{print $$3}')"; \
+		echo "found gci version $${current_version}"; \
 	fi; \
-	current_version="$$(gci --version 2>/dev/null | awk '{print $$3}')"; \
-	if [ "$${current_version}" != "$(GCI_VERSION)" ]; then \
-		echo "found gci version $${current_version}, installing version $(GCI_VERSION)..."; \
+	\
+	if [ "$${current_version}" != "$(GCI_VERSION)" ] || [ "$${force}" = "true" ] || [ "$${force}" = "1" ]; then \
+		echo "installing gci version $(GCI_VERSION)..."; \
 		go install github.com/daixiang0/gci@v$(GCI_VERSION); \
 	fi
 
@@ -171,22 +180,31 @@ install-gci:
 install-go-licenses:
 	@PATH="$${PATH}:$$(go env GOPATH)/bin"; \
 	force="$$(echo "$(FORCE_REINSTALL)" | tr '[:upper:]' '[:lower:]')"; \
-	if ! command -v go-licenses >/dev/null 2>&1 || [ "$${force}" = "true" ] || \
-		[ "$${force}" = "1" ]; then \
+	found="false"; \
+	\
+	if command -v go-licenses >/dev/null 2>&1; then \
+		found="true"; \
+		echo "found go-licenses"; \
+	fi; \
+	\
+	if [ "$${found}" != "true" ] || [ "$${force}" = "true" ] || [ "$${force}" = "1" ]; then \
+		echo "installing go-licenses version $(GO_LICENSES_VERSION)..."; \
 		go install github.com/google/go-licenses@v$(GO_LICENSES_VERSION); \
 	fi
 
 .PHONY: install-gofumpt
 install-gofumpt:
 	@PATH="$${PATH}:$$(go env GOPATH)/bin"; \
-	if ! command -v gofumpt >/dev/null 2>&1; then \
-		echo "gofumpt not found, installing..."; \
-		go install mvdan.cc/gofumpt@v$(GOFUMPT_VERSION); \
-		exit 0; \
+	force="$$(echo "$(FORCE_REINSTALL)" | tr '[:upper:]' '[:lower:]')"; \
+	current_version=""; \
+	\
+	if command -v gofumpt >/dev/null 2>&1; then \
+		current_version="$$(gofumpt --version | awk '{print $$1}' | cut -c 2-)"; \
+		echo "found gofumpt version $${current_version}"; \
 	fi; \
-	current_version="$$(gofumpt --version | awk '{print $$1}' | cut -c 2-)"; \
-	if [ "$${current_version}" != "$(GOFUMPT_VERSION)" ]; then \
-		echo "found gofumpt version $${current_version}, installing version $(GOFUMPT_VERSION)..."; \
+	\
+	if [ "$${current_version}" != "$(GOFUMPT_VERSION)" ] || [ "$${force}" = "true" ] || [ "$${force}" = "1" ]; then \
+		echo "installing gofumpt version $(GOFUMPT_VERSION)..."; \
 		go install mvdan.cc/gofumpt@v$(GOFUMPT_VERSION); \
 	fi
 
@@ -194,27 +212,31 @@ install-gofumpt:
 install-golangci-lint:
 	@GOPATH="$$(go env GOPATH)"; \
 	PATH="$${PATH}:$${GOPATH}/bin"; \
-	if ! command -v golangci-lint >/dev/null 2>&1; then \
-		echo "golangci-lint not found, installing..."; \
-		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "${GOPATH}/bin" v$(GOLANGCI_LINT_VERSION); \
-		exit 0; \
+	force="$$(echo "$(FORCE_REINSTALL)" | tr '[:upper:]' '[:lower:]')"; \
+	current_version=""; \
+	\
+	if command -v golangci-lint >/dev/null 2>&1; then \
+		current_version=$$(golangci-lint --version 2>/dev/null | awk '{print $$4}'); \
+		echo "found golangci-lint version $${current_version}"; \
 	fi; \
-	current_version=$$(golangci-lint --version 2>/dev/null | awk '{print $$4}'); \
-	if [ "$${current_version}" != "$(GOLANGCI_LINT_VERSION)" ]; then \
-		echo "found golangci-lint version $${current_version}, installing version $(GOLANGCI_LINT_VERSION)..."; \
+	\
+	if [ "$${current_version}" != "$(GOLANGCI_LINT_VERSION)" ] || [ "$${force}" = "true" ] || [ "$${force}" = "1" ]; then \
+		echo "installing golangci-lint version $(GOLANGCI_LINT_VERSION)..."; \
 		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "${GOPATH}/bin" v$(GOLANGCI_LINT_VERSION); \
 	fi
 
 .PHONY: install-golines
 install-golines:
 	@PATH="$${PATH}:$$(go env GOPATH)/bin"; \
-	if ! command -v golines >/dev/null 2>&1; then \
-		echo "golines not found, installing..."; \
-		./scripts/install_golines "$(GOLINES_VERSION)"; \
-		exit 0; \
+	force="$$(echo "$(FORCE_REINSTALL)" | tr '[:upper:]' '[:lower:]')"; \
+	current_version=""; \
+	\
+	if command -v golines >/dev/null 2>&1; then \
+		current_version="$$(golines --version | head -1 | awk '{print $$2}' | cut -c 2-)"; \
+		echo "found golines version $${current_version}"; \
 	fi; \
-	current_version="$$(golines --version | head -1 | awk '{print $$2}' | cut -c 2-)"; \
-	if [ "$${current_version}" != "$(GOLINES_VERSION)" ]; then \
-		echo "found golines version $${current_version}, installing version $(GOLINES_VERSION)..."; \
+	\
+	if [ "$${current_version}" != "$(GOLINES_VERSION)" ] || [ "$${force}" = "true" ] || [ "$${force}" = "1" ]; then \
+		echo "installing golines version $(GOLINES_VERSION)..."; \
 		./scripts/install_golines "$(GOLINES_VERSION)"; \
 	fi
