@@ -1,3 +1,17 @@
+# Copyright 2025 Antti Kivi
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # This Makefile is POSIX-compliant, and non-compliance is considered a bug. It
 # follows the POSIX base specification IEEE Std 1003.1-2024. Documentation can
 # be found here: https://pubs.opengroup.org/onlinepubs/9799919799/.
@@ -25,9 +39,7 @@ VERSION_PACKAGE = github.com/anttikivi/reginald/pkg/version
 .PHONY: all
 all: build plugins
 
-# ============================================================================ #
-# QUALITY CONTROL
-# ============================================================================ #
+# CODE QUALITY & CHECKS
 
 .PHONY: audit
 audit: license-check test lint
@@ -49,9 +61,7 @@ lint: install-addlicense install-golangci-lint
 test:
 	go test $(GOFLAGS) ./...
 
-# ============================================================================ #
 # DEVELOPMENT & BUILDING
-# ============================================================================ #
 
 .PHONY: tidy
 tidy: install-gci install-gofumpt install-golines addlicense
@@ -132,9 +142,7 @@ clean:
 	rm "$${output}"
 	@rm reginald-sleep
 
-# ============================================================================ #
 # TOOL HELPERS
-# ============================================================================ #
 
 .PHONY: install-addlicense
 install-addlicense:
