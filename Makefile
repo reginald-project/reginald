@@ -146,7 +146,12 @@ clean:
 
 .PHONY: install-addlicense
 install-addlicense:
-	@go install github.com/google/addlicense@v$(ADDLICENSE_VERSION)
+	@PATH="$${PATH}:$$(go env GOPATH)/bin"; \
+	force="$$(echo "$(FORCE_REINSTALL)" | tr '[:upper:]' '[:lower:]')"; \
+	if ! command -v addlicense >/dev/null 2>&1 || [ "$${force}" = "true" ] || \
+		[ "$${force}" = "1" ]; then \
+		go install github.com/google/addlicense@v$(ADDLICENSE_VERSION); \
+	fi
 
 .PHONY: install-gci
 install-gci:
@@ -164,7 +169,12 @@ install-gci:
 
 .PHONY: install-go-licenses
 install-go-licenses:
-	go install github.com/google/go-licenses@v$(GO_LICENSES_VERSION)
+	@PATH="$${PATH}:$$(go env GOPATH)/bin"; \
+	force="$$(echo "$(FORCE_REINSTALL)" | tr '[:upper:]' '[:lower:]')"; \
+	if ! command -v go-licenses >/dev/null 2>&1 || [ "$${force}" = "true" ] || \
+		[ "$${force}" = "1" ]; then \
+		go install github.com/google/go-licenses@v$(GO_LICENSES_VERSION); \
+	fi
 
 .PHONY: install-gofumpt
 install-gofumpt:
