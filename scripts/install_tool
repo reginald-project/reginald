@@ -1,0 +1,380 @@
+#!/bin/sh
+
+# Copyright 2025 Antti Kivi
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# This script is POSIX-compliant, and non-compliance is considered a bug. It
+# follows the POSIX base specification IEEE Std 1003.1-2024. Documentation can
+# be found here: https://pubs.opengroup.org/onlinepubs/9799919799/.
+
+set -eu
+
+################################################################################
+# Download a URL using either "curl" or "wget".
+# Globals:
+#   None
+# Arguments:
+#   URL to get.
+# Outputs:
+#   Writes the data to stdout.
+# Returns:
+#   Zero if the function is successful, non-zero otherwise.
+################################################################################
+get_url() {
+  if [ -z "${1-}" ]; then
+    echo "No URL provided" >&2
+    return 1
+  fi
+
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$1"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO - "$1"
+  else
+    echo 'Error: neither curl nor wget is installed' >&2
+    return 1
+  fi
+
+  return
+}
+
+################################################################################
+# Gets the installed version for given tool.
+# Globals:
+#   None
+# Arguments:
+#   Name of the tool to check.
+#   Command that should be run to get the tool version.
+# Outputs:
+#   Writes the version to stdout. If no version is found, writes an empty
+#   string.
+#   Writes errors to stderr.
+# Returns:
+#   Non-zero if the function is passed invalid arguments, 0 otherwise.
+################################################################################
+tool_version() {
+  if [ -z "${1-}" ]; then
+    echo "No tool given as an argument" >&2
+    return 1
+  fi
+
+  if [ -z "${2-}" ]; then
+    echo "No version check command given as an argument" >&2
+    return 1
+  fi
+
+  _tool="$1"
+  _check_cmd="$2"
+  _version=""
+
+  if command -v "${_tool}" >/dev/null 2>&1; then
+    _version="$(sh -c "${_check_cmd}" 2>/dev/null || printf '')"
+  fi
+
+  printf '%s' "${_version}"
+
+  unset _version
+  unset _check_cmd
+  unset _tool
+}
+
+################################################################################
+# Check if a tool that has no version flag or command is installed.
+# Globals:
+#   None
+# Arguments:
+#   Name of the tool to check.
+# Outputs:
+#   Writes "true" to stdout if the tool is installed, "false" otherwise.
+#   Writes errors to stderr.
+# Returns:
+#   Non-zero if the function is passed invalid arguments, 0 otherwise.
+################################################################################
+is_installed() {
+  if [ -z "${1-}" ]; then
+    echo "No tool given as an argument" >&2
+    return 1
+  fi
+
+  _tool="$1"
+  _status="false"
+
+  if command -v "${_tool}" >/dev/null 2>&1; then
+    _status="true"
+  fi
+
+  printf '%s' "${_status}"
+
+  unset _status
+  unset _tool
+
+  return 0
+}
+
+################################################################################
+# Check if a specific version of a tool is installed.
+# Globals:
+#   None
+# Arguments:
+#   Name of the tool to check.
+#   Wanted version of the tool.
+#   Command that should be run to get the tool version.
+# Outputs:
+#   Writes "true" to stdout if the tool is installed, "false" otherwise.
+#   Writes errors to stderr.
+# Returns:
+#   Non-zero if the function is passed invalid arguments, 0 otherwise.
+################################################################################
+is_version_installed() {
+  if [ -z "${1-}" ]; then
+    echo "No tool given as an argument" >&2
+    return 1
+  fi
+
+  if [ -z "${2-}" ]; then
+    echo "No version given as an argument" >&2
+    return 1
+  fi
+
+  if [ -z "${3-}" ]; then
+    echo "No version check command given as an argument" >&2
+    return 1
+  fi
+
+  _tool="$1"
+  _version="$2"
+  _check_cmd="$3"
+  _current_version=""
+  _status="false"
+
+  if command -v "${_tool}" >/dev/null 2>&1; then
+    _current_version="$(sh -c "${_check_cmd}" 2>/dev/null || printf '')"
+  fi
+
+  if [ "${_current_version}" = "${_version}" ]; then
+    _status="true"
+  fi
+
+  printf '%s' "${_status}"
+
+  unset _status
+  unset _current_version
+  unset _check_cmd
+  unset _version
+  unset _tool
+
+  return 0
+}
+
+################################################################################
+# Install a tool using "go install".
+# Globals:
+#   None
+# Arguments:
+#   Name of the Go module to install.
+#   Wanted version of the tool.
+# Outputs:
+#   Writes errors to stderr.
+# Returns:
+#   Zero if the function is successful, otherwise non-zero.
+################################################################################
+go_install() {
+  if [ -z "${1-}" ]; then
+    echo "No Go module given as an argument" >&2
+    return 1
+  fi
+
+  if [ -z "${2-}" ]; then
+    echo "No version given as an argument" >&2
+    return 1
+  fi
+
+  _module="$1"
+  _version="$2"
+
+  go install "${_module}"@v"${_version}"
+
+  return
+}
+
+################################################################################
+# Install the given version of golines. Golines recommended a more involved
+# installation process so that is implemented here.
+# Globals:
+#   None
+# Arguments:
+#   Wanted version of golines.
+# Outputs:
+#   Writes errors to stderr.
+# Returns:
+#   Zero if the function is successful, otherwise non-zero.
+################################################################################
+install_golines() {
+  if [ -z "${1-}" ]; then
+    echo "No version given as an argument" >&2
+    return 1
+  fi
+
+  _version="$1"
+
+  _checksum_file="golines_${_version}_checksums.txt"
+  _archive_file="golines_${_version}_$(uname | tr '[:upper:]' '[:lower:]')_$(uname -m).tar.gz"
+
+  if [ "$(uname)" = "Darwin" ]; then
+    _archive_file="golines_${_version}_darwin_all.tar.gz"
+  fi
+
+  _script_dir="$(CDPATH= cd "$(dirname "$0")" >/dev/null 2>&1 && pwd)"
+  cd "${_script_dir}/.." || return 1
+
+  TMP="${PWD}/golines_tmp_$$"
+  mkdir "${TMP}" || return 1
+
+  get_url "https://github.com/segmentio/golines/releases/download/v${_version}/${_checksum_file}" >"${TMP}/${_checksum_file}" || return 1
+  get_url "https://github.com/segmentio/golines/releases/download/v${_version}/${_archive_file}" >"${TMP}/${_archive_file}" || return 1
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    (
+      cd "${TMP}" || exit 1
+      sha256sum -c --ignore-missing "${_checksum_file}"
+    ) || {
+      printf 'Error: checksum verification failed\n' >&2
+      return 1
+    }
+  else
+    printf 'Warning: sha256sum not found, skipping checksum\n' >&2
+  fi
+
+  cd "${TMP}" || return 1
+  tar -xf "${_archive_file}" || return 1
+
+  _destdir="${GOPATH}/bin"
+  mkdir -p "${_destdir}" || return 1
+
+  _dir="$(basename "${_archive_file}" ".tar.gz")"
+  mv "${_dir}/golines" "${_destdir}/golines" || return 1
+
+  cd "${_script_dir}/.." >/dev/null 2>&1
+  rm -rf "${TMP}"
+
+  return
+}
+
+main() {
+  if [ -z "${1-}" ]; then
+    echo "No tool given as an argument" >&2
+    return 1
+  fi
+
+  if [ -z "${2-}" ]; then
+    echo "No version given as an argument" >&2
+    return 1
+  fi
+
+  GOPATH="$(go env GOPATH)"
+  PATH="${PATH}:${GOPATH}/bin"
+
+  tool="$1"
+  version="$2"
+  force_reinstall="$(printf '%s' "${3-}" | tr '[:upper:]' '[:lower:]')"
+
+  if [ "${force_reinstall}" = "1" ]; then
+    force_reinstall="true"
+  fi
+
+  check_cmd=""
+  installed=""
+  current_version=""
+
+  case "${tool}" in
+  addlicense | go-licenses) ;;
+  gci)
+    check_cmd="gci --version 2>/dev/null | awk '{print \$3}'"
+    ;;
+  gofumpt)
+    check_cmd="gofumpt --version | awk '{print \$1}' | cut -c 2-"
+    ;;
+  golangci-lint)
+    check_cmd="golangci-lint --version 2>/dev/null | awk '{print \$4}'"
+    ;;
+  golines)
+    check_cmd="golines --version | head -n 1 | awk '{print \$2}' | cut -c 2-"
+    ;;
+  *)
+    echo "Invalid tool: ${tool}" >&2
+    return 1
+    ;;
+  esac
+
+  if [ -n "${check_cmd}" ]; then
+    installed="$(is_version_installed "${tool}" "${version}" "${check_cmd}")"
+    current_version="$(tool_version "${tool}" "${check_cmd}")"
+  else
+    installed="$(is_installed "${tool}")"
+  fi
+
+  if [ "${installed}" = "true" ]; then
+    if [ -n "${current_version}" ]; then
+      printf 'found %s version %s\n' "${tool}" "${current_version}"
+    else
+      printf 'found %s\n' "${tool}"
+    fi
+  fi
+
+  should_install="false"
+
+  if [ "${installed}" != "true" ]; then
+    should_install="true"
+  fi
+
+  if [ -n "${current_version}" ] && [ "${current_version}" != "${version}" ]; then
+    should_install="true"
+  fi
+
+  if [ "${force_reinstall}" = "true" ]; then
+    should_install="true"
+  fi
+
+  if [ "${should_install}" != "true" ]; then
+    return 0
+  fi
+
+  printf 'installing %s version %s\n' "${tool}" "${version}"
+
+  case "${tool}" in
+  addlicense | go-licenses)
+    go_install "github.com/google/${tool}" "${version}"
+    ;;
+  gci)
+    go_install "github.com/daixiang0/${tool}" "${version}"
+    ;;
+  gofumpt)
+    go_install "mvdan.cc/${tool}" "${version}"
+    ;;
+  golangci-lint)
+    curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "${GOPATH}/bin" "v${version}"
+    ;;
+  golines)
+    install_golines "${version}"
+    ;;
+  *)
+    echo "Invalid tool: ${tool}" >&2
+    return 1
+    ;;
+  esac
+
+  printf 'installed %s version %s\n' "${tool}" "${version}"
+}
+
+main "$@"
