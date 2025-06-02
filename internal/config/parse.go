@@ -366,9 +366,15 @@ func (p *ValueParser) ApplyOverrides(ctx context.Context) error {
 			return fmt.Errorf("%w: config for plugin %q is not a map", errInvalidConfig, plugin.Name)
 		}
 
+		// Use the name of the plugin as the prefix for the environment
+		// variable.
+		p.EnvName = p.Plugin.Name
+
 		if err := p.applyPluginOverrides(ctx, pluginMap, plugin.PluginConfigs); err != nil {
 			return fmt.Errorf("failed to apply configs for plugins: %w", err)
 		}
+
+		p.Cfg.Plugins[plugin.Name] = pluginMap
 
 		for _, cmd := range plugin.Commands {
 			// Plugin configs take precedence.
@@ -388,9 +394,15 @@ func (p *ValueParser) ApplyOverrides(ctx context.Context) error {
 				return fmt.Errorf("%w: config for plugin command %q is not a map", errInvalidConfig, cmd.Name)
 			}
 
+			// Use the name of the command as the prefix for the environment
+			// variable.
+			p.EnvName = cmd.Name
+
 			if err := p.applyPluginOverrides(ctx, cmdMap, cmd.Configs); err != nil {
 				return fmt.Errorf("failed to apply configs for plugin commands: %w", err)
 			}
+
+			p.Cfg.Plugins[cmd.Name] = cmdMap
 		}
 	}
 
@@ -418,7 +430,7 @@ func (p *ValueParser) applyPluginOverrides(
 		}
 
 		if cfgVal.EnvName == "" {
-			prefix := toEnv(p.Plugin.Name, EnvPrefix)
+			prefix := toEnv(p.EnvName, EnvPrefix)
 			parser.envName = toEnv(cfgVal.Key, prefix)
 		} else {
 			parser.envName = EnvPrefix + "_" + cfgVal.EnvName
