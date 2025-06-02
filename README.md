@@ -51,8 +51,8 @@ This builds Reginald as `./reginald` at the root of the repository.
 
 ## License
 
-Reginald is licensed under the MIT License. See the [LICENSE](LICENSE) file for
-more information.
+Reginald is licensed under the Apache-2.0 license. See the [LICENSE](LICENSE)
+file for more information.
 
 Reginald the gopher valet is based on the Go gopher. Reginald the gopher valet
 is licensed under the
