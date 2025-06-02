@@ -6,10 +6,14 @@
 .SUFFIXES:
 
 GCI_VERSION = 0.13.6
+GO_LICENSES_VERSION = 1.6.0
 GOFUMPT_VERSION = 0.8.0
 GOLANGCI_LINT_VERSION = 2.1.6
 GOLINES_VERSION = 0.12.2
 
+ALLOWED_LICENSES = Apache-2.0,BSD-2-Clause,BSD-3-Clause,MIT
+
+GO_MODULE = github.com/anttikivi/reginald
 VERSION_PACKAGE = github.com/anttikivi/reginald/pkg/version
 
 # Default target.
@@ -21,9 +25,15 @@ all: build plugins
 # ============================================================================ #
 
 .PHONY: audit
-audit: test lint
+audit: license-check test lint
 	go mod tidy -diff
 	go mod verify
+
+.PHONY: license-check
+license-check: install-go-licenses
+	go mod verify
+	go mod download
+	go-licenses check --include_tests $(GO_MODULE)/... --allowed_licenses="$(ALLOWED_LICENSES)"
 
 .PHONY: lint
 lint: install-golangci-lint
@@ -129,6 +139,10 @@ install-gci:
 		echo "found gci version $${current_version}, installing version $(GCI_VERSION)..."; \
 		go install github.com/daixiang0/gci@v$(GCI_VERSION); \
 	fi
+
+.PHONY: install-go-licenses
+install-go-licenses:
+	go install github.com/google/go-licenses@v$(GO_LICENSES_VERSION)
 
 .PHONY: install-gofumpt
 install-gofumpt:

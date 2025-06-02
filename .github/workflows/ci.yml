@@ -8,6 +8,22 @@ permissions:
   contents: read
 
 jobs:
+  license-check:
+    name: Check dependencies’ licenses
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone the source code
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up the Go toolchain
+        uses: actions/setup-go@v5.5.0
+        with:
+          go-version-file: go.mod
+
+      - name: Check licenses
+        run: make license-check
+
   build:
     name: Build on ${{ matrix.goos }}/${{ matrix.goarch }}
     if:
@@ -15,6 +31,7 @@ jobs:
       !contains(github.event.head_commit.message, '[skip ci]') &&
       !startsWith(github.event.head_commit.message, 'docs')"
     runs-on: ${{ matrix.os }}
+    needs: [license-check]
     strategy:
       matrix:
         include:
