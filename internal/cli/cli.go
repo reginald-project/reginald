@@ -171,7 +171,7 @@ func (c *CLI) DeferredErr() error {
 // correct command to run, and executes it. An error is returned on user errors.
 // The function panics if it is called with invalid program configuration.
 //
-//nolint:cyclop,funlen // one function to rule them all
+//nolint:funlen // one function to rule them all
 func (c *CLI) Execute(ctx context.Context) error {
 	var flagSet *flags.FlagSet
 
