@@ -35,6 +35,7 @@ import (
 	"github.com/anttikivi/reginald/internal/panichandler"
 	"github.com/anttikivi/reginald/pkg/logs"
 	"github.com/anttikivi/reginald/pkg/rpp"
+	"github.com/anttikivi/semver"
 )
 
 // Default values associated with the plugin client.
@@ -150,6 +151,7 @@ func New(ctx context.Context, path fspath.Path) (*Plugin, error) {
 		HandshakeResult: rpp.HandshakeResult{
 			Handshake:     rpp.DefaultHandshakeParams().Handshake,
 			Name:          string(path.Base()),
+			Version:       "0.0.0",
 			PluginConfigs: []rpp.ConfigValue{},
 			Commands:      []rpp.CommandInfo{},
 			Tasks:         []rpp.TaskInfo{},
@@ -430,6 +432,21 @@ func (p *Plugin) handshake(ctx context.Context) error {
 		return fmt.Errorf("%w: plugin provided no name", errHandshake)
 	}
 
+	versionStr := result.Version
+
+	if version, err := semver.ParseLax(result.Version); err != nil {
+		logging.WarnContext(
+			ctx,
+			"invalid plugin version",
+			"plugin",
+			result.Name,
+			"version",
+			result.Version,
+		)
+	} else {
+		versionStr = version.String()
+	}
+
 	for _, t := range result.Tasks {
 		for _, c := range t.Configs {
 			if c.Flag != nil {
@@ -455,6 +472,7 @@ func (p *Plugin) handshake(ctx context.Context) error {
 	}
 
 	p.HandshakeResult = result
+	p.Version = versionStr
 
 	logging.TraceContext(ctx, "handshake succeeded", "plugin", p.Name)
 

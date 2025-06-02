@@ -79,7 +79,7 @@ func (s *SleepCommand) Run(cfg []rpp.ConfigValue) error {
 }
 
 func main() {
-	p := plugin.New("example", &SleepCommand{})
+	p := plugin.New("example", "0.1.0-0.dev", &SleepCommand{})
 
 	if err := p.Serve(); err != nil {
 		fmt.Fprintf(os.Stderr, "plugin %q is going to exit with an error: %v", "sleep", err)

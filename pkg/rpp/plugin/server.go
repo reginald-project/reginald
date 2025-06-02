@@ -30,6 +30,7 @@ import (
 // plugin. It holds the implementation of the plugin's commands and tasks.
 type Plugin struct {
 	name    string
+	version string
 	configs []rpp.ConfigValue
 
 	// cmdConfig contains the parsed config values for the command that is
@@ -44,7 +45,7 @@ type Plugin struct {
 }
 
 // New returns a new Plugin for the given parameters.
-func New(name string, impls ...any) *Plugin {
+func New(name, version string, impls ...any) *Plugin {
 	var (
 		cmds  []Command
 		tasks []Task
@@ -64,6 +65,7 @@ func New(name string, impls ...any) *Plugin {
 
 	return &Plugin{
 		name:      name,
+		version:   version,
 		configs:   []rpp.ConfigValue{},
 		cmdConfig: []rpp.ConfigValue{},
 		cmds:      cmds,
@@ -150,6 +152,7 @@ func (p *Plugin) handshake(msg *rpp.Message) error {
 			ProtocolVersion: rpp.Version,
 		},
 		Name:          p.name,
+		Version:       p.version,
 		PluginConfigs: p.configs,
 		Commands:      cmdInfos,
 		Tasks:         taskInfos,

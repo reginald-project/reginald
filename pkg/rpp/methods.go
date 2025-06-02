@@ -61,6 +61,10 @@ type HandshakeResult struct {
 	// config entries.
 	Name string `json:"name"`
 
+	// Version is the version of the plugin. It should be a valid version number
+	// according to the semantic versioning 2.0.0 specification.
+	Version string `json:"version"`
+
 	// PluginConfigs contains the plugin-level config entries. If the name of
 	// the plugin and the name of a command are the same, PluginConfigs takes
 	// precedence over the configs defined by the command.
