@@ -17,14 +17,28 @@ package cli
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/anttikivi/reginald/pkg/version"
 )
 
 // printVersion prints the version information of the standard output.
-func printVersion() error {
-	if _, err := fmt.Fprintf(os.Stdout, "%s %v\n", ProgramName, version.Version()); err != nil {
-		return fmt.Errorf("%w", err)
+func printVersion(cmd *Command) error {
+	var sb strings.Builder
+
+	if cmd != nil && cmd.plugin != nil {
+		sb.WriteString(
+			fmt.Sprintf("%s (plugin %s) %s\n\n", cmd.Name, cmd.plugin.Name, cmd.plugin.Version),
+		)
+	}
+
+	sb.WriteString(fmt.Sprintf("%s %v\n", ProgramName, version.Version()))
+	sb.WriteString("Copyright (c) 2025 Antti Kivi\n")
+	sb.WriteString("Licensed under Apache-2.0: <http://www.apache.org/licenses/LICENSE-2.0>")
+
+	_, err := fmt.Fprintln(os.Stdout, sb.String())
+	if err != nil {
+		return fmt.Errorf("failed to write the version information: %w", err)
 	}
 
 	return nil

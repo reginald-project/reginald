@@ -228,7 +228,8 @@ func (c *CLI) Execute(ctx context.Context) error {
 	}
 
 	// Reset the arguments for parsing them when all of the plugins and
-	// the correct subcommand has been loaded.
+	// the correct subcommand has been loaded. There is no need to remove
+	// the first element of the slice as findSubcommand takes care of that.
 	args = os.Args
 
 	// Make sure that `CommandLine` is not used.
@@ -252,8 +253,19 @@ func (c *CLI) Execute(ctx context.Context) error {
 
 	c.args = flagSet.Args()
 
+	logging.DebugContext(ctx, "command-line arguments parsed", "args", c.args)
+
 	if err := c.checkMutuallyExclusiveFlags(c.cmd); err != nil {
 		return fmt.Errorf("%w", err)
+	}
+
+	ok, err = c.shortCircuitPlugin(flagSet)
+	if err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	if !ok {
+		return nil
 	}
 
 	valueParser := &config.ValueParser{
@@ -308,6 +320,7 @@ func (c *CLI) add(cmd *Command) {
 	}
 
 	cmd.mutuallyExclusiveFlags = append(cmd.mutuallyExclusiveFlags, c.mutuallyExclusiveFlags...)
+	cmd.plugin = nil // ensure that internal commands do not have a plugin
 
 	c.commands = append(c.commands, cmd)
 }
@@ -433,6 +446,7 @@ func (c *CLI) addPluginCommands() error { //nolint:gocognit // no problem
 
 					return nil
 				},
+				plugin: plugin,
 			}
 
 			for _, cv := range info.Configs {
@@ -650,6 +664,56 @@ func (c *CLI) shortCircuit(flagSet *flags.FlagSet) (bool, error) {
 		return true, nil
 	}
 
+	helpSet, err := flagSet.GetBool("help")
+	if err != nil {
+		return false, fmt.Errorf(
+			"failed to get the value for command-line option '--help': %w",
+			err,
+		)
+	}
+
+	if helpSet {
+		if err = printHelp(); err != nil {
+			return false, fmt.Errorf("failed to print the usage info: %w", err)
+		}
+
+		return false, nil
+	}
+
+	versionSet, err := flagSet.GetBool("version")
+	if err != nil {
+		return false, fmt.Errorf(
+			"failed to get the value for command-line option '--version': %w",
+			err,
+		)
+	}
+
+	if versionSet {
+		if err = printVersion(nil); err != nil {
+			return false, fmt.Errorf("failed to print the version info: %w", err)
+		}
+
+		return false, nil
+	}
+
+	return true, nil
+}
+
+// shortCircuitPlugin checks if the program should display the help or
+// the version info after the plugins have loaded. If either of those options
+// are set, the function does the operation for the currently selected command.
+// For help this means that the subcommands help message is displayed and for
+// version that the version information of the program is displayed if
+// the subcommand is not from a plugin. If it is from a plugin, that plugin's
+// version is displayed instead.
+//
+// If the program should short-circuit, shortCircuitPlugin returns false.
+// Otherwise, it returns true and the execution should continue.
+func (c *CLI) shortCircuitPlugin(flagSet *flags.FlagSet) (bool, error) {
+	if len(flagSet.Args()) > 0 {
+		return true, nil
+	}
+
 	// TODO: Help should be implemented for all commands.
 	helpSet, err := flagSet.GetBool("help")
 	if err != nil {
@@ -676,7 +740,7 @@ func (c *CLI) shortCircuit(flagSet *flags.FlagSet) (bool, error) {
 	}
 
 	if versionSet {
-		if err = printVersion(); err != nil {
+		if err = printVersion(c.cmd); err != nil {
 			return false, fmt.Errorf("failed to print the version info: %w", err)
 		}
 

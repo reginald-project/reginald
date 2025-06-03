@@ -71,6 +71,7 @@ linters:
         - g *errgroup.Group
         - id rpp.ID
         - mu sync.Mutex
+        - ok bool
         - wg sync.WaitGroup
 
 formatters:
