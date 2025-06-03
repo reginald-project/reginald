@@ -19,6 +19,8 @@
 .POSIX:
 .SUFFIXES:
 
+GO = go
+
 ADDLICENSE_VERSION = 1.1.1
 GCI_VERSION = 0.13.6
 GO_LICENSES_VERSION = 1.6.0
@@ -43,13 +45,13 @@ all: build plugins
 
 .PHONY: audit
 audit: license-check test lint
-	go mod tidy -diff
-	go mod verify
+	$(GO) mod tidy -diff
+	$(GO) mod verify
 
 .PHONY: license-check
 license-check: go-licenses
-	go mod verify
-	go mod download
+	$(GO) mod verify
+	$(GO) mod download
 	go-licenses check --include_tests $(GO_MODULE)/... --allowed_licenses="$(ALLOWED_LICENSES)"
 
 .PHONY: lint
@@ -58,15 +60,15 @@ lint: addlicense golangci-lint
 	golangci-lint run
 
 .PHONY: test
-test:
-	go test $(GOFLAGS) ./...
+test: go
+	$(GO) test $(GOFLAGS) ./...
 
 # DEVELOPMENT & BUILDING
 
 .PHONY: tidy
-tidy: addlicense gci gofumpt golines
+tidy: addlicense gci go gofumpt golines
 	addlicense -v -c "$(COPYRIGHT_HOLDER)" -l "$(LICENSE)" $(ADDLICENSE_PATTERNS)
-	go mod tidy -v
+	$(GO) mod tidy -v
 	gci write .
 	golines --no-chain-split-dots -w .
 	gofumpt -extra -l -w .
@@ -75,7 +77,7 @@ tidy: addlicense gci gofumpt golines
 fmt: tidy
 
 .PHONY: build
-build:
+build: go
 	@base_version="$$(cat VERSION)"; \
 	prerelease="$(PRERELEASE)"; \
 	\
@@ -102,7 +104,7 @@ build:
 	\
 	exe=""; \
 	\
-	case "$$(go env GOOS)" in \
+	case "$$($(GO) env GOOS)" in \
 		windows) exe=".exe";; \
 	esac; \
 	\
@@ -113,20 +115,20 @@ build:
 	fi; \
 	\
 	echo "building Reginald version $${version}"; \
-	go build $${goflags} -ldflags "$${ldflags}" -o "$${output}"
+	$(GO) build $${goflags} -ldflags "$${ldflags}" -o "$${output}"
 
 .PHONY: plugins
 plugins: example-plugin
 
 .PHONY: example-plugin
-example-plugin:
-	go build -o reginald-example ./examples
+example-plugin: go
+	$(GO) build -o reginald-example ./examples
 
 .PHONY: clean
 clean:
 	@exe=""; \
 	\
-	case "$$(go env GOOS)" in \
+	case "$$($(GO) env GOOS)" in \
 		windows) exe=".exe";; \
 	esac; \
 	\
@@ -143,24 +145,33 @@ clean:
 
 .PHONY: addlicense
 addlicense:
-	@./scripts/install_tool "$@" "$(ADDLICENSE_VERSION)" "$(FORCE_REINSTALL)"
+	@./scripts/install_tool "$(GO)" "$@" "$(ADDLICENSE_VERSION)" "$(FORCE_REINSTALL)"
 
 .PHONY: gci
 gci:
-	@./scripts/install_tool "$@" "$(GCI_VERSION)" "$(FORCE_REINSTALL)"
+	@./scripts/install_tool "$(GO)" "$@" "$(GCI_VERSION)" "$(FORCE_REINSTALL)"
+
+.PHONY: go
+go:
+	@if ! command -v "$(GO)" >/dev/null 2>&1; then \
+		printf 'Error: the Go executable was not found, tried: %s\n' "$(GO)" >&2; \
+		exit 1; \
+	else \
+		printf 'using Go version %s\n' "$$("$(GO)" version | awk '{print $$3}' | cut -c 3-)"; \
+	fi
 
 .PHONY: go-licenses
 go-licenses:
-	@./scripts/install_tool "$@" "$(GO_LICENSES_VERSION)" "$(FORCE_REINSTALL)"
+	@./scripts/install_tool "$(GO)" "$@" "$(GO_LICENSES_VERSION)" "$(FORCE_REINSTALL)"
 
 .PHONY: gofumpt
 gofumpt:
-	@./scripts/install_tool "$@" "$(GOFUMPT_VERSION)" "$(FORCE_REINSTALL)"
+	@./scripts/install_tool "$(GO)" "$@" "$(GOFUMPT_VERSION)" "$(FORCE_REINSTALL)"
 
 .PHONY: golangci-lint
 golangci-lint:
-	@./scripts/install_tool "$@" "$(GOLANGCI_LINT_VERSION)" "$(FORCE_REINSTALL)"
+	@./scripts/install_tool "$(GO)" "$@" "$(GOLANGCI_LINT_VERSION)" "$(FORCE_REINSTALL)"
 
 .PHONY: golines
 golines:
-	@./scripts/install_tool "$@" "$(GOLINES_VERSION)" "$(FORCE_REINSTALL)"
+	@./scripts/install_tool "$(GO)" "$@" "$(GOLINES_VERSION)" "$(FORCE_REINSTALL)"

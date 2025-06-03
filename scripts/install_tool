@@ -180,7 +180,7 @@ is_version_installed() {
 ################################################################################
 # Install a tool using "go install".
 # Globals:
-#   None
+#   GO: the Go executable to use.
 # Arguments:
 #   Name of the Go module to install.
 #   Wanted version of the tool.
@@ -203,7 +203,7 @@ go_install() {
   _module="$1"
   _version="$2"
 
-  go install "${_module}"@v"${_version}"
+  "${GO}" install "${_module}"@v"${_version}"
 
   return
 }
@@ -212,7 +212,7 @@ go_install() {
 # Install the given version of golines. Golines recommended a more involved
 # installation process so that is implemented here.
 # Globals:
-#   None
+#   GOPATH: the GOPATH environment variable.
 # Arguments:
 #   Wanted version of golines.
 # Outputs:
@@ -273,25 +273,36 @@ install_golines() {
 
 main() {
   if [ -z "${1-}" ]; then
-    echo "No tool given as an argument" >&2
+    echo "No Go executable given as an argument" >&2
+    return 1
+  fi
+
+  if ! command -v "$1" >/dev/null 2>&1; then
+    printf 'The given Go executable does not exist: %s\n' "$1" >&2
     return 1
   fi
 
   if [ -z "${2-}" ]; then
+    echo "No tool given as an argument" >&2
+    return 1
+  fi
+
+  if [ -z "${3-}" ]; then
     echo "No version given as an argument" >&2
     return 1
   fi
 
-  GOPATH="$(go env GOPATH)"
-  PATH="${PATH}:${GOPATH}/bin"
-
-  tool="$1"
-  version="$2"
-  force_reinstall="$(printf '%s' "${3-}" | tr '[:upper:]' '[:lower:]')"
+  GO="$1"
+  tool="$2"
+  version="$3"
+  force_reinstall="$(printf '%s' "${4-}" | tr '[:upper:]' '[:lower:]')"
 
   if [ "${force_reinstall}" = "1" ]; then
     force_reinstall="true"
   fi
+
+  GOPATH="$("${GO}" env GOPATH)"
+  PATH="${PATH}:${GOPATH}/bin"
 
   check_cmd=""
   installed=""
@@ -342,6 +353,8 @@ main() {
     should_install="true"
   fi
 
+  # TODO: Add support for giving a comma-separated list of the tools that should
+  # be force-reinstalled.
   if [ "${force_reinstall}" = "true" ]; then
     should_install="true"
   fi
