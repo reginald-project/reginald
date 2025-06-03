@@ -175,7 +175,7 @@ func (c *CLI) DeferredErr() error {
 func (c *CLI) Execute(ctx context.Context) error {
 	var flagSet *flags.FlagSet
 
-	args := os.Args
+	args := os.Args[1:]
 	flagSet = flags.NewFlagSet(c.flags.Name(), pflag.ContinueOnError)
 
 	flagSet.AddFlagSet(c.flags)
@@ -184,30 +184,12 @@ func (c *CLI) Execute(ctx context.Context) error {
 	// first.
 	_ = flagSet.Parse(args)
 
-	// TODO: Help should be implemented for all commands.
-	helpSet, err := flagSet.GetBool("help")
+	ok, err := c.shortCircuit(flagSet)
 	if err != nil {
-		return fmt.Errorf("failed to get the value for command-line option '--help': %w", err)
+		return fmt.Errorf("%w", err)
 	}
 
-	if helpSet {
-		if err = printHelp(); err != nil {
-			return fmt.Errorf("failed to print the usage info: %w", err)
-		}
-
-		return nil
-	}
-
-	versionSet, err := flagSet.GetBool("version")
-	if err != nil {
-		return fmt.Errorf("failed to get the value for command-line option '--version': %w", err)
-	}
-
-	if versionSet {
-		if err = printVersion(); err != nil {
-			return fmt.Errorf("failed to print the version info: %w", err)
-		}
-
+	if !ok {
 		return nil
 	}
 
@@ -653,4 +635,53 @@ func (c *CLI) setup(ctx context.Context, args []string) error {
 	}
 
 	return nil
+}
+
+// shortCircuit checks if the program run can be short-circuited. This means
+// that the program was run using the "--help" or the "--version" flag and there
+// are no other arguments left after the initial parsing of the command-line
+// flags. If there are more arguments, the meaning of the flags might change
+// and, thus, the program should continue running.
+//
+// If the program should short-circuit, shortCircuit returns false. Otherwise,
+// it returns true and the execution should continue.
+func (c *CLI) shortCircuit(flagSet *flags.FlagSet) (bool, error) {
+	if len(flagSet.Args()) > 0 {
+		return true, nil
+	}
+
+	// TODO: Help should be implemented for all commands.
+	helpSet, err := flagSet.GetBool("help")
+	if err != nil {
+		return false, fmt.Errorf(
+			"failed to get the value for command-line option '--help': %w",
+			err,
+		)
+	}
+
+	if helpSet {
+		if err = printHelp(); err != nil {
+			return false, fmt.Errorf("failed to print the usage info: %w", err)
+		}
+
+		return false, nil
+	}
+
+	versionSet, err := flagSet.GetBool("version")
+	if err != nil {
+		return false, fmt.Errorf(
+			"failed to get the value for command-line option '--version': %w",
+			err,
+		)
+	}
+
+	if versionSet {
+		if err = printVersion(); err != nil {
+			return false, fmt.Errorf("failed to print the version info: %w", err)
+		}
+
+		return false, nil
+	}
+
+	return true, nil
 }
