@@ -30,6 +30,7 @@ import (
 // Errors returned from flag operations.
 var (
 	errDefaultValueType = errors.New("failed to cast the plugin flag value to correct type")
+	errDuplicateFlag    = errors.New("trying to add a flag that already exists")
 	errInvalidFlagType  = errors.New("plugin has a flag with an invalid type")
 )
 
@@ -102,6 +103,10 @@ func (f *FlagSet) AddPluginFlag(cv rpp.ConfigValue) error {
 		flag = *rf
 	} else {
 		return nil
+	}
+
+	if f := f.Lookup(flag.Name); f != nil {
+		return fmt.Errorf("%w: %s", errDuplicateFlag, f.Name)
 	}
 
 	// TODO: Add inverted flags.

@@ -20,9 +20,14 @@ import (
 )
 
 // printHelp prints the printHelp message to the standard output.
-func printHelp() error {
+func printHelp(c *CLI) error {
 	if _, err := fmt.Fprintln(os.Stdout, "HELP MESSAGE"); err != nil {
 		return fmt.Errorf("%w", err)
+	}
+
+	cmd := c.cmd
+	if cmd != nil {
+		cmd.Flags().Usage()
 	}
 
 	return nil

@@ -25,8 +25,10 @@ import (
 	"syscall"
 
 	"github.com/anttikivi/reginald/internal/cli"
+	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/panichandler"
+	"github.com/anttikivi/reginald/internal/plugins"
 	"github.com/anttikivi/reginald/pkg/version"
 )
 
@@ -72,18 +74,50 @@ func run() int {
 		version.Revision(),
 	)
 
-	c := cli.New()
-	if err := c.Execute(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-
-		return 1
-	}
-
-	if err := c.DeferredErr(); err != nil {
+	if err := runCLI(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 
 		return 1
 	}
 
 	return 0
+}
+
+func runCLI(ctx context.Context) error {
+	c := cli.New()
+	if ok, err := c.Initialize(ctx); err != nil {
+		return fmt.Errorf("%w", err)
+	} else if !ok {
+		return nil
+	}
+
+	iostreams.Streams = iostreams.New(c.Cfg.Quiet, c.Cfg.Verbose, c.Cfg.Color)
+
+	if err := logging.Init(c.Cfg.Logging); err != nil {
+		return fmt.Errorf("failed to initialize logging: %w", err)
+	}
+
+	logging.DebugContext(ctx, "logging initialized")
+	logging.InfoContext(ctx, "executing Reginald", "version", version.Version())
+
+	if err := c.LoadPlugins(ctx); err != nil {
+		return fmt.Errorf("failed to resolve plugins: %w", err)
+	}
+
+	// We want to aim for a clean plugin shutdown in all cases, so the shut down
+	// should be run in all cases where the plugins have been initialized.
+	defer func() {
+		timeoutCtx, cancel := context.WithTimeout(ctx, plugins.DefaultShutdownTimeout)
+		defer cancel()
+
+		if err := plugins.ShutdownAll(timeoutCtx, c.Plugins); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: failed to shut down plugins: %v\n", err)
+		}
+	}()
+
+	if err := c.Execute(ctx); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	return nil
 }

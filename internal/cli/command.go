@@ -161,14 +161,9 @@ func (c *Command) flagSet() *flags.FlagSet {
 
 // mergeFlags merges the global options of this Command to the set of all
 // options and adds the global options from parents.
+
+// mergeFlags merges all of the global command-line flags from its parent Commands to its flag set.
 func (c *Command) mergeFlags() {
-	// TODO: Should we make sure that CommandLine is not used and should we do
-	// it this way?
-	pflag.CommandLine.VisitAll(func(f *pflag.Flag) {
-		panic(fmt.Sprintf("flag %q is set in the CommandLine flag set", f.Name))
-	})
-	// c.cli.flags.AddFlagSet(pflag.CommandLine)
-	c.Root().GlobalFlags().AddFlagSet(c.cli.allFlags)
 	c.VisitParents(func(p *Command) {
 		c.GlobalFlags().AddFlagSet(p.GlobalFlags())
 	})

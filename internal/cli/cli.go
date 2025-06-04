@@ -27,12 +27,10 @@ import (
 	"github.com/anttikivi/reginald/internal/config"
 	"github.com/anttikivi/reginald/internal/flags"
 	"github.com/anttikivi/reginald/internal/fspath"
-	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/plugins"
 	"github.com/anttikivi/reginald/internal/tasks"
 	"github.com/anttikivi/reginald/pkg/rpp"
-	"github.com/anttikivi/reginald/pkg/version"
 	"github.com/spf13/pflag"
 )
 
@@ -52,46 +50,63 @@ var (
 // subcommands, global command-line flags, and the program execution. The "root
 // command" of the CLI is represented by the CLI itself and should not a
 // separate [Command] within the CLI.
-//
-// NOTE: This struct creates some duplications as some of the functionality from
-// the commands must be copied to the CLI. I still find the model where we have
-// one CLI struct instead of a CLI and a separate root command much simpler to
-// handle.
 type CLI struct {
-	UsageLine string // one-line synopsis of the program
+	// UsageLine is the one-line synopsis of the program.
+	UsageLine string
 
-	args                   []string          // command-line arguments after parsing
-	cmd                    *Command          // command to run
-	cfg                    *config.Config    // parsed config of the run
-	commands               []*Command        // list of subcommands
-	pluginCommands         []*Command        // commands received from plugins
-	allCommands            []*Command        // internal and plugin subcommands combined
-	tasks                  []*tasks.Task     // list of the task instances according to the config
-	allFlags               *flags.FlagSet    // own and plugin command-line flags combined
-	flags                  *flags.FlagSet    // global command-line flags
-	pluginFlags            *flags.FlagSet    // plugin-wide flags
-	mutuallyExclusiveFlags [][]string        // list of flag names that are marked as mutually exclusive
-	plugins                []*plugins.Plugin // loaded plugins
-	deferredErr            error             // error returned by the plugin shutdown not captured by the return value
+	// Cfg is the instance of [config.Config] that is used for this run.
+	Cfg *config.Config
+
+	// Plugins is a list of all of the currently loaded Plugins.
+	Plugins []*plugins.Plugin
+
+	// cmd is the subcommand that is run.
+	cmd *Command
+
+	// builtinCommands contains the subcommands of the CLI that are not from
+	// plugins.
+	builtinCommands []*Command // list of subcommands
+
+	// pluginCommands contains the subcommands that are defined by plugins.
+	pluginCommands []*Command
+
+	// commands is the list of all subcommands combined.
+	commands []*Command
+
+	// TODO: tasks is a list of tasks instances according to the config.
+	tasks []*tasks.Task
+
+	// flagSet is the flag set that contains all of the flags that are supported
+	// by the current subcommand that is run. The flags are combined from
+	// the global flags from this CLI, the global flags of the parent commands
+	// of the subcommand, and the flags of the subcommand itself.
+	flagSet *flags.FlagSet
+
+	// flags is the flag set that registers the global command-line flags of
+	// this CLI. It should be noted that all of the flags registered to the CLI
+	// are in fact global.
+	flags *flags.FlagSet
+
+	// mutuallyExclusiveFlags is the list of flag names that are marked as
+	// mutually exclusive. Each element of the slice is a slice that contains
+	// the full names of the mutually exclusive flags in that group.
+	mutuallyExclusiveFlags [][]string
 }
 
 // New creates a new CLI and returns it. It panics on errors.
 func New() *CLI {
 	cli := &CLI{
 		UsageLine:              Name + " [--version] [-h | --help] <command> [<args>]",
-		args:                   []string{},
+		Cfg:                    nil,
+		Plugins:                []*plugins.Plugin{},
 		cmd:                    nil,
-		cfg:                    nil,
-		commands:               []*Command{},
+		builtinCommands:        []*Command{},
 		pluginCommands:         []*Command{},
-		allCommands:            []*Command{},
+		commands:               []*Command{},
 		tasks:                  []*tasks.Task{},
-		allFlags:               flags.NewFlagSet(Name, pflag.ContinueOnError),
+		flagSet:                nil,
 		flags:                  flags.NewFlagSet(Name, pflag.ContinueOnError),
-		pluginFlags:            flags.NewFlagSet(Name, pflag.ContinueOnError),
 		mutuallyExclusiveFlags: [][]string{},
-		plugins:                []*plugins.Plugin{},
-		deferredErr:            nil,
 	}
 
 	defaults := config.DefaultConfig()
@@ -161,105 +176,22 @@ func New() *CLI {
 	return cli
 }
 
-// DeferredErr returns the error from the CLI that was set during cleaning up
-// the execution.
-func (c *CLI) DeferredErr() error {
-	return c.deferredErr
-}
-
 // Execute executes the CLI. It parses the command-line options, finds the
 // correct command to run, and executes it. An error is returned on user errors.
 // The function panics if it is called with invalid program configuration.
-//
-//nolint:funlen // one function to rule them all
 func (c *CLI) Execute(ctx context.Context) error {
-	var flagSet *flags.FlagSet
-
-	args := os.Args[1:]
-	flagSet = flags.NewFlagSet(c.flags.Name(), pflag.ContinueOnError)
-
-	flagSet.AddFlagSet(c.flags)
-
-	// Ignore errors for now as we want to get all of the flags from plugins
-	// first.
-	_ = flagSet.Parse(args)
-
-	ok, err := c.shortCircuit(flagSet)
-	if err != nil {
-		return fmt.Errorf("%w", err)
-	}
-
-	if !ok {
-		return nil
-	}
-
-	c.cfg, err = config.Parse(ctx, flagSet)
-	if err != nil {
-		return fmt.Errorf("failed to parse the config: %w", err)
-	}
-
-	// Initialize the output streams for user output.
-	iostreams.Streams = iostreams.New(c.cfg.Quiet, c.cfg.Verbose, c.cfg.Color)
-
-	if err := logging.Init(c.cfg.Logging); err != nil {
-		return fmt.Errorf("failed to init the logger: %w", err)
-	}
-
-	logging.DebugContext(ctx, "logging initialized")
-	logging.InfoContext(ctx, "running Reginald", "version", version.Version())
-
-	if err := c.loadPlugins(ctx); err != nil {
-		return fmt.Errorf("failed to resolve plugins: %w", err)
-	}
-
-	// We want to aim for a clean plugin shutdown in all cases, so the shut down
-	// should be run in all cases where the plugins have been initialized.
-	defer func() {
-		timeoutCtx, cancel := context.WithTimeout(ctx, plugins.DefaultShutdownTimeout)
-		defer cancel()
-
-		if err := plugins.ShutdownAll(timeoutCtx, c.plugins); err != nil {
-			c.deferredErr = fmt.Errorf("failed to shut down plugins: %w", err)
-		}
-	}()
-
 	if err := c.addPluginCommands(); err != nil {
 		return fmt.Errorf("failed to add plugin commands: %w", err)
 	}
 
-	// Reset the arguments for parsing them when all of the plugins and
-	// the correct subcommand has been loaded. There is no need to remove
-	// the first element of the slice as findSubcommand takes care of that.
-	args = os.Args
+	c.commands = append(c.commands, c.builtinCommands...)
+	c.commands = append(c.commands, c.pluginCommands...)
 
-	// Make sure that `CommandLine` is not used.
-	pflag.CommandLine.VisitAll(func(f *pflag.Flag) {
-		panic(fmt.Sprintf("flag %q is set in the CommandLine flag set", f.Name))
-	})
-	logging.DebugContext(ctx, "parsing command-line arguments", "args", args)
-
-	c.cmd, args = c.findSubcommand(ctx, args)
-
-	if c.cmd == nil {
-		flagSet = c.allFlags
-	} else {
-		c.cmd.mergeFlags()
-		flagSet = c.cmd.Flags()
-	}
-
-	if err := flagSet.Parse(args); err != nil {
+	if err := c.parseArgs(ctx); err != nil {
 		return fmt.Errorf("failed to parse command-line arguments: %w", err)
 	}
 
-	c.args = flagSet.Args()
-
-	logging.DebugContext(ctx, "command-line arguments parsed", "args", c.args)
-
-	if err := c.checkMutuallyExclusiveFlags(c.cmd); err != nil {
-		return fmt.Errorf("%w", err)
-	}
-
-	ok, err = c.shortCircuitPlugin(flagSet)
+	ok, err := c.shortCircuitPlugin()
 	if err != nil {
 		return fmt.Errorf("%w", err)
 	}
@@ -269,10 +201,10 @@ func (c *CLI) Execute(ctx context.Context) error {
 	}
 
 	valueParser := &config.ValueParser{
-		Cfg:      c.cfg,
-		FlagSet:  flagSet,
-		Plugins:  c.plugins,
-		Value:    reflect.ValueOf(c.cfg).Elem(),
+		Cfg:      c.Cfg,
+		FlagSet:  c.flagSet,
+		Plugins:  c.Plugins,
+		Value:    reflect.ValueOf(c.Cfg).Elem(),
 		Field:    reflect.StructField{}, //nolint:exhaustruct // zero value wanted
 		Plugin:   nil,
 		FullName: "",
@@ -284,9 +216,9 @@ func (c *CLI) Execute(ctx context.Context) error {
 		return fmt.Errorf("failed to apply config values: %w", err)
 	}
 
-	logging.DebugContext(ctx, "full config parsed", "cfg", c.cfg)
+	logging.DebugContext(ctx, "full config parsed", "cfg", c.Cfg)
 
-	if err = plugins.Initialize(ctx, c.plugins, c.cfg.Plugins); err != nil {
+	if err = plugins.Initialize(ctx, c.Plugins, c.Cfg.Plugins); err != nil {
 		return fmt.Errorf("failed to initialize plugins: %w", err)
 	}
 
@@ -295,7 +227,7 @@ func (c *CLI) Execute(ctx context.Context) error {
 		return nil
 	}
 
-	if err = c.setup(ctx, args); err != nil {
+	if err = c.setup(ctx); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
@@ -310,50 +242,46 @@ func (c *CLI) Execute(ctx context.Context) error {
 	return nil
 }
 
-// add adds the given command to the list of commands of c and marks c as the
-// CLI of cmd.
-func (c *CLI) add(cmd *Command) {
-	cmd.cli = c
+// Initialize initializes the CLI by checking if the "--help" or "--version"
+// flags are set without any other arguments and by doing the first round of
+// configuration parsing. As the program should not continue its execution if
+// the "--help" or "--version" flags are invoked here, Initialize return false
+// if the execution should not continue. Otherwise, the first return value is
+// true.
+func (c *CLI) Initialize(ctx context.Context) (bool, error) {
+	// Create a temporary flag set for the initialization.
+	flagSet := flags.NewFlagSet(c.flags.Name(), pflag.ContinueOnError)
 
-	if cmd.mutuallyExclusiveFlags == nil {
-		cmd.mutuallyExclusiveFlags = [][]string{}
+	flagSet.AddFlagSet(c.flags)
+
+	// Ignore errors for now as we want to get all of the flags from plugins
+	// first.
+	_ = flagSet.Parse(os.Args[1:])
+
+	ok, err := c.shortCircuit(flagSet)
+	if err != nil {
+		return false, fmt.Errorf("%w", err)
 	}
 
-	cmd.mutuallyExclusiveFlags = append(cmd.mutuallyExclusiveFlags, c.mutuallyExclusiveFlags...)
-	cmd.plugin = nil // ensure that internal commands do not have a plugin
+	if !ok {
+		return false, nil
+	}
 
-	c.commands = append(c.commands, cmd)
+	c.Cfg, err = config.Parse(ctx, flagSet)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse the config: %w", err)
+	}
+
+	return true, nil
 }
 
-// addPluginCmd adds the given command to the list of plugin commands of c and
-// marks c as the CLI of cmd.
-func (c *CLI) addPluginCmd(cmd *Command) error {
-	if slices.ContainsFunc(c.commands, func(e *Command) bool {
-		return e.Name == cmd.Name
-	}) {
-		return fmt.Errorf("%w: %s", errDuplicateCommand, cmd.Name)
-	}
-
-	cmd.cli = c
-
-	if cmd.mutuallyExclusiveFlags == nil {
-		cmd.mutuallyExclusiveFlags = [][]string{}
-	}
-
-	cmd.mutuallyExclusiveFlags = append(cmd.mutuallyExclusiveFlags, c.mutuallyExclusiveFlags...)
-
-	c.pluginCommands = append(c.pluginCommands, cmd)
-
-	return nil
-}
-
-// loadPlugins finds and executes all of the plugins in the plugins directory
+// LoadPlugins finds and executes all of the plugins in the plugins directory
 // found in the configuration in c. It sets plugins in c to a slice of pointers
 // to the found and executed plugins.
-func (c *CLI) loadPlugins(ctx context.Context) error {
+func (c *CLI) LoadPlugins(ctx context.Context) error {
 	var pluginFiles []fspath.Path
 
-	dir := c.cfg.PluginDir
+	dir := c.Cfg.PluginDir
 
 	entries, err := dir.ReadDir()
 	if err != nil {
@@ -387,20 +315,55 @@ func (c *CLI) loadPlugins(ctx context.Context) error {
 
 	logging.DebugContext(ctx, "performed the plugin lookup", "plugins", pluginFiles)
 
-	if c.plugins, err = plugins.Load(ctx, pluginFiles); err != nil {
+	if c.Plugins, err = plugins.Load(ctx, pluginFiles); err != nil {
 		return fmt.Errorf("failed to load the plugins: %w", err)
 	}
 
 	return nil
 }
 
+// add adds the given command to the list of commands of c and marks c as the
+// CLI of cmd.
+func (c *CLI) add(cmd *Command) {
+	cmd.cli = c
+
+	if cmd.mutuallyExclusiveFlags == nil {
+		cmd.mutuallyExclusiveFlags = [][]string{}
+	}
+
+	cmd.mutuallyExclusiveFlags = append(cmd.mutuallyExclusiveFlags, c.mutuallyExclusiveFlags...)
+	cmd.plugin = nil // ensure that internal commands do not have a plugin
+
+	c.builtinCommands = append(c.builtinCommands, cmd)
+}
+
+// addPluginCmd adds the given command to the list of plugin commands of c and
+// marks c as the CLI of cmd.
+func (c *CLI) addPluginCmd(cmd *Command) error {
+	if slices.ContainsFunc(c.builtinCommands, func(e *Command) bool {
+		return e.Name == cmd.Name
+	}) {
+		return fmt.Errorf("%w: %s", errDuplicateCommand, cmd.Name)
+	}
+
+	cmd.cli = c
+
+	if cmd.mutuallyExclusiveFlags == nil {
+		cmd.mutuallyExclusiveFlags = [][]string{}
+	}
+
+	cmd.mutuallyExclusiveFlags = append(cmd.mutuallyExclusiveFlags, c.mutuallyExclusiveFlags...)
+
+	c.pluginCommands = append(c.pluginCommands, cmd)
+
+	return nil
+}
+
 // addPluginCommands adds the commands from the loaded plugins to c.
 func (c *CLI) addPluginCommands() error { //nolint:gocognit // no problem
-	for _, plugin := range c.plugins {
-		for _, cv := range plugin.PluginConfigs {
-			if err := c.pluginFlags.AddPluginFlag(cv); err != nil {
-				return fmt.Errorf("failed to add flag from plugin %q: %w", plugin.Name, err)
-			}
+	for _, plugin := range c.Plugins {
+		if err := c.registerPluginFlags(plugin); err != nil {
+			return fmt.Errorf("failed to add plugin-wide flags from %q: %w", plugin.Name, err)
 		}
 
 		for _, info := range plugin.Commands {
@@ -411,7 +374,7 @@ func (c *CLI) addPluginCommands() error { //nolint:gocognit // no problem
 				Setup: func(ctx context.Context, cmd *Command, _ []string) error {
 					var values []rpp.ConfigValue
 
-					if c, ok := cmd.cli.cfg.Plugins[cmd.Name].(map[string]any); ok {
+					if c, ok := cmd.cli.Cfg.Plugins[cmd.Name].(map[string]any); ok {
 						for k, v := range c {
 							cfgVal, err := rpp.NewConfigValue(k, v)
 							if err != nil {
@@ -466,11 +429,18 @@ func (c *CLI) addPluginCommands() error { //nolint:gocognit // no problem
 		}
 	}
 
-	c.allCommands = append(c.allCommands, c.commands...)
-	c.allCommands = append(c.allCommands, c.pluginCommands...)
+	return nil
+}
 
-	c.allFlags.AddFlagSet(c.flags)
-	c.allFlags.AddFlagSet(c.pluginFlags)
+// registerPluginFlags adds the plugin-wide flags from the configuration of
+// the given plugin to flags in c. Plugin-wide flags are treated as global
+// flags.
+func (c *CLI) registerPluginFlags(plugin *plugins.Plugin) error {
+	for _, cv := range plugin.PluginConfigs {
+		if err := c.flags.AddPluginFlag(cv); err != nil {
+			return fmt.Errorf("failed to add flag from plugin %q: %w", plugin.Name, err)
+		}
+	}
 
 	return nil
 }
@@ -479,20 +449,20 @@ func (c *CLI) addPluginCommands() error { //nolint:gocognit // no problem
 // are set at the same time by the user. The function returns an error if two
 // mutually exclusive flags are set.
 func (c *CLI) checkMutuallyExclusiveFlags(cmd *Command) error {
-	var (
-		fs                     *flags.FlagSet
-		mutuallyExclusiveFlags [][]string
-	)
+	mutuallyExclusiveFlags := [][]string{}
+	mutuallyExclusiveFlags = append(mutuallyExclusiveFlags, c.mutuallyExclusiveFlags...)
 
-	if cmd == nil {
-		fs = c.allFlags
-		mutuallyExclusiveFlags = c.mutuallyExclusiveFlags
-	} else {
-		fs = cmd.Flags()
-		mutuallyExclusiveFlags = cmd.mutuallyExclusiveFlags
+	for cmd != nil {
+		mutuallyExclusiveFlags = append(mutuallyExclusiveFlags, cmd.mutuallyExclusiveFlags...)
+
+		if cmd.HasParent() {
+			cmd = cmd.parent
+		} else {
+			cmd = nil
+		}
 	}
 
-	if !fs.Parsed() {
+	if !c.flagSet.Parsed() {
 		panic("checkMutuallyExclusiveFlags called before the flags were parsed")
 	}
 
@@ -500,7 +470,7 @@ func (c *CLI) checkMutuallyExclusiveFlags(cmd *Command) error {
 		var set string
 
 		for _, s := range a {
-			f := fs.Lookup(s)
+			f := c.flagSet.Lookup(s)
 			if f == nil {
 				panic("nil flag in the set of mutually exclusive flags: " + s)
 			}
@@ -534,7 +504,7 @@ func (c *CLI) findSubcommand(ctx context.Context, args []string) (*Command, []st
 
 	var cmd *Command
 
-	fs := c.allFlags
+	fs := c.flags
 	flags := []string{}
 
 	for len(args) >= 1 {
@@ -556,6 +526,7 @@ func (c *CLI) findSubcommand(ctx context.Context, args []string) (*Command, []st
 			}
 
 			cmd = next
+			fs = c.mergedFlagSet(cmd)
 		}
 	}
 
@@ -586,11 +557,11 @@ func (c *CLI) findSubcommand(ctx context.Context, args []string) (*Command, []st
 // lookup returns the command from this CLI for the given name, if any.
 // Otherwise it returns nil.
 func (c *CLI) lookup(name string) *Command {
-	if c.allCommands == nil {
+	if c.commands == nil {
 		panic("called CLI function lookup before initializing all of the list of all commands")
 	}
 
-	for _, cmd := range c.allCommands {
+	for _, cmd := range c.commands {
 		if strings.EqualFold(cmd.Name, name) {
 			return cmd
 		}
@@ -628,9 +599,58 @@ func (c *CLI) markFlagsMutuallyExclusive(a ...string) {
 	c.mutuallyExclusiveFlags = append(c.mutuallyExclusiveFlags, a)
 }
 
+// mergedFlagSet allocates a new flag set and merges the command-line flags from
+// the given command, the global flags from its parents, and the flags from c to
+// it.
+func (c *CLI) mergedFlagSet(cmd *Command) *flags.FlagSet {
+	flagSet := flags.NewFlagSet(c.flags.Name(), pflag.ContinueOnError)
+
+	flagSet.AddFlagSet(c.flags)
+
+	if cmd != nil {
+		cmd.mergeFlags()
+		flagSet.AddFlagSet(cmd.Flags())
+	}
+
+	return flagSet
+}
+
+// parseArgs parses the command-line arguments and sets the main flag set and
+// the command to run to c according to them. After the function run, flagSet in
+// c will always have at least all of the global flags from c and additionally
+// the effective global flags and the local flags for the subcommand that was
+// found, if any. However, cmd in c might be left nil if no subcommand was found
+// from the command-line arguments.
+func (c *CLI) parseArgs(ctx context.Context) error {
+	// There is no need to remove the first element of the arguments slice as
+	// findSubcommand takes care of that.
+	args := os.Args
+
+	// Make sure that `CommandLine` is not used.
+	pflag.CommandLine.VisitAll(func(f *pflag.Flag) {
+		panic(fmt.Sprintf("flag %q is set in the CommandLine flag set", f.Name))
+	})
+	logging.DebugContext(ctx, "parsing command-line arguments", "args", args)
+
+	c.cmd, args = c.findSubcommand(ctx, args)
+	c.flagSet = c.mergedFlagSet(c.cmd)
+
+	if err := c.flagSet.Parse(args); err != nil {
+		return fmt.Errorf("failed to parse command-line arguments: %w", err)
+	}
+
+	logging.DebugContext(ctx, "command-line arguments parsed", "args", c.flagSet.Args())
+
+	if err := c.checkMutuallyExclusiveFlags(c.cmd); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	return nil
+}
+
 // setupCommands runs [Command.Setup] for all of the commands, starting from the
 // root command. It exits on the first error it encounters.
-func (c *CLI) setup(ctx context.Context, args []string) error {
+func (c *CLI) setup(ctx context.Context) error {
 	cmd := c.cmd
 	cmdStack := make([]*Command, 0)
 	cmdStack = append(cmdStack, cmd)
@@ -642,7 +662,7 @@ func (c *CLI) setup(ctx context.Context, args []string) error {
 
 	for _, cmd := range slices.Backward(cmdStack) {
 		if cmd.Setup != nil {
-			if err := cmd.Setup(ctx, cmd, args); err != nil {
+			if err := cmd.Setup(ctx, cmd, c.flagSet.Args()); err != nil {
 				return fmt.Errorf("%w", err)
 			}
 		}
@@ -673,7 +693,7 @@ func (c *CLI) shortCircuit(flagSet *flags.FlagSet) (bool, error) {
 	}
 
 	if helpSet {
-		if err = printHelp(); err != nil {
+		if err = printHelp(c); err != nil {
 			return false, fmt.Errorf("failed to print the usage info: %w", err)
 		}
 
@@ -709,13 +729,13 @@ func (c *CLI) shortCircuit(flagSet *flags.FlagSet) (bool, error) {
 //
 // If the program should short-circuit, shortCircuitPlugin returns false.
 // Otherwise, it returns true and the execution should continue.
-func (c *CLI) shortCircuitPlugin(flagSet *flags.FlagSet) (bool, error) {
-	if len(flagSet.Args()) > 0 {
+func (c *CLI) shortCircuitPlugin() (bool, error) {
+	if len(c.flagSet.Args()) > 0 {
 		return true, nil
 	}
 
 	// TODO: Help should be implemented for all commands.
-	helpSet, err := flagSet.GetBool("help")
+	helpSet, err := c.flagSet.GetBool("help")
 	if err != nil {
 		return false, fmt.Errorf(
 			"failed to get the value for command-line option '--help': %w",
@@ -724,14 +744,14 @@ func (c *CLI) shortCircuitPlugin(flagSet *flags.FlagSet) (bool, error) {
 	}
 
 	if helpSet {
-		if err = printHelp(); err != nil {
+		if err = printHelp(c); err != nil {
 			return false, fmt.Errorf("failed to print the usage info: %w", err)
 		}
 
 		return false, nil
 	}
 
-	versionSet, err := flagSet.GetBool("version")
+	versionSet, err := c.flagSet.GetBool("version")
 	if err != nil {
 		return false, fmt.Errorf(
 			"failed to get the value for command-line option '--version': %w",
