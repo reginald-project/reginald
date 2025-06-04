@@ -98,14 +98,9 @@ build: go
 		fi; \
 	fi; \
 	\
-	ldflags="$(LDFLAGS)"; \
-	ldflags="$${ldflags} -X $(VERSION_PACKAGE).buildVersion=$${version}"; \
-	\
-	goflags="$(GOFLAGS)"; \
-	\
 	exe=""; \
 	\
-	case "$$($(GO) env GOOS)" in \
+	case "$$("$(GO)" env GOOS)" in \
 		windows) exe=".exe";; \
 	esac; \
 	\
@@ -115,8 +110,14 @@ build: go
 		output="reginald$${exe}"; \
 	fi; \
 	\
-	echo "building Reginald version $${version}"; \
-	$(GO) build $${goflags} -ldflags "$${ldflags}" -o "$${output}"
+	set -- \
+		-o "$${output}" \
+		$(GOFLAGS) \
+		-ldflags "-X $(VERSION_PACKAGE).buildVersion=$${version}" \
+	; \
+	\
+	printf 'building Reginald version %s\n' "$${version}"; \
+	GOFLAGS= $(GO) build "$$@"
 
 .PHONY: plugins
 plugins: example-plugin
