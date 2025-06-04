@@ -20,6 +20,7 @@
 .SUFFIXES:
 
 GO = go
+GOFLAGS ?=
 
 ADDLICENSE_VERSION = 1.1.1
 GCI_VERSION = 0.13.6
@@ -154,7 +155,7 @@ gci:
 .PHONY: go
 go:
 	@if ! command -v "$(GO)" >/dev/null 2>&1; then \
-		printf 'Error: the Go executable was not found, tried: %s\n' "$(GO)" >&2; \
+		printf 'Error: the Go executable was not found, tried "%s"\n' "$(GO)" >&2; \
 		exit 1; \
 	else \
 		printf 'using Go version %s\n' "$$("$(GO)" version | awk '{print $$3}' | cut -c 3-)"; \
