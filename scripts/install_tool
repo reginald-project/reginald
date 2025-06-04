@@ -33,7 +33,7 @@ set -eu
 ################################################################################
 get_url() {
   if [ -z "${1-}" ]; then
-    echo "No URL provided" >&2
+    printf 'No URL provided\n' >&2
     return 1
   fi
 
@@ -42,7 +42,7 @@ get_url() {
   elif command -v wget >/dev/null 2>&1; then
     wget -qO - "$1"
   else
-    echo 'Error: neither curl nor wget is installed' >&2
+    printf 'Error: neither curl nor wget is installed\n' >&2
     return 1
   fi
 
@@ -65,12 +65,12 @@ get_url() {
 ################################################################################
 tool_version() {
   if [ -z "${1-}" ]; then
-    echo "No tool given as an argument" >&2
+    printf 'No tool given as an argument\n' >&2
     return 1
   fi
 
   if [ -z "${2-}" ]; then
-    echo "No version check command given as an argument" >&2
+    printf 'No version check command given as an argument\n' >&2
     return 1
   fi
 
@@ -103,7 +103,7 @@ tool_version() {
 ################################################################################
 is_installed() {
   if [ -z "${1-}" ]; then
-    echo "No tool given as an argument" >&2
+    printf 'No tool given as an argument\n' >&2
     return 1
   fi
 
@@ -138,17 +138,17 @@ is_installed() {
 ################################################################################
 is_version_installed() {
   if [ -z "${1-}" ]; then
-    echo "No tool given as an argument" >&2
+    printf 'No tool given as an argument\n' >&2
     return 1
   fi
 
   if [ -z "${2-}" ]; then
-    echo "No version given as an argument" >&2
+    printf 'No version given as an argument\n' >&2
     return 1
   fi
 
   if [ -z "${3-}" ]; then
-    echo "No version check command given as an argument" >&2
+    printf 'No version check command given as an argument\n' >&2
     return 1
   fi
 
@@ -191,12 +191,12 @@ is_version_installed() {
 ################################################################################
 go_install() {
   if [ -z "${1-}" ]; then
-    echo "No Go module given as an argument" >&2
+    printf 'No Go module given as an argument\n' >&2
     return 1
   fi
 
   if [ -z "${2-}" ]; then
-    echo "No version given as an argument" >&2
+    printf 'No version given as an argument\n' >&2
     return 1
   fi
 
@@ -222,7 +222,7 @@ go_install() {
 ################################################################################
 install_golines() {
   if [ -z "${1-}" ]; then
-    echo "No version given as an argument" >&2
+    printf 'No version given as an argument\n' >&2
     return 1
   fi
 
@@ -273,7 +273,7 @@ install_golines() {
 
 main() {
   if [ -z "${1-}" ]; then
-    echo "No Go executable given as an argument" >&2
+    printf 'No Go executable given as an argument\n' >&2
     return 1
   fi
 
@@ -283,12 +283,12 @@ main() {
   fi
 
   if [ -z "${2-}" ]; then
-    echo "No tool given as an argument" >&2
+    printf 'No tool given as an argument\n' >&2
     return 1
   fi
 
   if [ -z "${3-}" ]; then
-    echo "No version given as an argument" >&2
+    printf 'No version given as an argument\n' >&2
     return 1
   fi
 
@@ -323,7 +323,7 @@ main() {
     check_cmd="golines --version | head -n 1 | awk '{print \$2}' | cut -c 2-"
     ;;
   *)
-    echo "Invalid tool: ${tool}" >&2
+    printf 'Invalid tool: %s\n' "${tool}" >&2
     return 1
     ;;
   esac
@@ -382,7 +382,7 @@ main() {
     install_golines "${version}"
     ;;
   *)
-    echo "Invalid tool: ${tool}" >&2
+    printf 'Invalid tool: %s\n' "${tool}" >&2
     return 1
     ;;
   esac
