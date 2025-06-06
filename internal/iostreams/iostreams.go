@@ -53,12 +53,12 @@ type code int
 // lock before writing. If the reading or writing operations using this type
 // return an error, it will be stored within the struct.
 type IOStreams struct {
-	errs          []error
 	out           io.Writer
 	errOut        io.Writer
 	buf           *bufio.Writer
+	errs          []error
 	quiet         bool
-	verbose       bool
+	verbose       bool //nolint:unused // TODO: Will be used soon.
 	colorsEnabled bool
 }
 
@@ -72,9 +72,9 @@ func New(quiet, verbose bool, colors ColorMode) *IOStreams {
 	case ColorNever:
 		colorsEnabled = false
 	case ColorAuto:
-		fallthrough
-	default:
 		colorsEnabled = term.IsTerminal(int(os.Stdout.Fd()))
+	default:
+		panic(fmt.Sprintf("invalid IOStreams color mode: %v", colors))
 	}
 
 	s := &IOStreams{ //nolint:exhaustruct // buf is set later

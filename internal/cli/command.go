@@ -31,14 +31,14 @@ type Command struct {
 	// they run the command.
 	Name string
 
+	// UsageLine is the one-line usage synopsis for the command. It should start
+	// with the command name without including the parent commands.
+	UsageLine string
+
 	// Aliases are the aliases for the command that can be used instead of
 	// the real name of the command to run it. All of the aliases and command
 	// names must be unique.
 	Aliases []string
-
-	// UsageLine is the one-line usage synopsis for the command. It should start
-	// with the command name without including the parent commands.
-	UsageLine string
 
 	// Setup runs the setup required for the Command.
 	Setup func(ctx context.Context, cmd *Command, args []string) error
@@ -48,12 +48,12 @@ type Command struct {
 	Run func(ctx context.Context, cmd *Command) error
 
 	cli                    *CLI            // containing CLI struct
-	commands               []*Command      // list of subcommands
 	plugin                 *plugins.Plugin // plugin that provided the command, nil for internal commands
 	flags                  *flags.FlagSet  // all of the command-line options
 	globalFlags            *flags.FlagSet  // options that are inherited by the subcommands
-	mutuallyExclusiveFlags [][]string      // list of flag names that are marked as mutually exclusive
 	parent                 *Command        // parent command of this command if it is a subcommand
+	commands               []*Command      // list of subcommands
+	mutuallyExclusiveFlags [][]string      // list of flag names that are marked as mutually exclusive
 }
 
 // Add adds the given command to the list of subcommands of c and marks c as the

@@ -74,7 +74,7 @@ type CLI struct {
 	commands []*Command
 
 	// TODO: tasks is a list of tasks instances according to the config.
-	tasks []*tasks.Task
+	tasks []*tasks.Task //nolint:unused // TODO: Will be used soon.
 
 	// flagSet is the flag set that contains all of the flags that are supported
 	// by the current subcommand that is run. The flags are combined from
@@ -212,7 +212,7 @@ func (c *CLI) Execute(ctx context.Context) error {
 		EnvValue: "",
 		FlagName: "",
 	}
-	if err := valueParser.ApplyOverrides(ctx); err != nil {
+	if err = valueParser.ApplyOverrides(ctx); err != nil {
 		return fmt.Errorf("failed to apply config values: %w", err)
 	}
 
@@ -256,9 +256,14 @@ func (c *CLI) Initialize(ctx context.Context) (bool, error) {
 
 	// Ignore errors for now as we want to get all of the flags from plugins
 	// first.
-	_ = flagSet.Parse(os.Args[1:])
+	err := flagSet.Parse(os.Args[1:])
+	if err != nil {
+		logging.DebugContext(ctx, "initial flag parsing yielded an error", "err", err.Error())
+	}
 
-	ok, err := c.shortCircuit(flagSet)
+	var ok bool
+
+	ok, err = c.shortCircuit(flagSet)
 	if err != nil {
 		return false, fmt.Errorf("%w", err)
 	}
@@ -297,7 +302,9 @@ func (c *CLI) LoadPlugins(ctx context.Context) error {
 			continue
 		}
 
-		info, err := os.Stat(string(path))
+		var info os.FileInfo
+
+		info, err = os.Stat(string(path))
 		if err != nil {
 			return fmt.Errorf("failed to check the file info for %s: %w", path, err)
 		}
@@ -413,7 +420,7 @@ func (c *CLI) addPluginCommands() error { //nolint:gocognit // no problem
 			}
 
 			for _, cv := range info.Configs {
-				if err := cmd.Flags().AddPluginFlag(cv); err != nil {
+				if err := cmd.Flags().AddPluginFlag(&cv); err != nil {
 					return fmt.Errorf(
 						"failed to add flag from plugin %q and command %q: %w",
 						plugin.Name,
@@ -437,7 +444,7 @@ func (c *CLI) addPluginCommands() error { //nolint:gocognit // no problem
 // flags.
 func (c *CLI) registerPluginFlags(plugin *plugins.Plugin) error {
 	for _, cv := range plugin.PluginConfigs {
-		if err := c.flags.AddPluginFlag(cv); err != nil {
+		if err := c.flags.AddPluginFlag(&cv); err != nil {
 			return fmt.Errorf("failed to add flag from plugin %q: %w", plugin.Name, err)
 		}
 	}
@@ -505,11 +512,11 @@ func (c *CLI) findSubcommand(ctx context.Context, args []string) (*Command, []st
 	var cmd *Command
 
 	fs := c.flags
-	flags := []string{}
+	flagsFound := []string{}
 
 	for len(args) >= 1 {
 		if len(args) > 1 {
-			args, flags = collectFlags(fs, args[1:], flags)
+			args, flagsFound = collectFlags(fs, args[1:], flagsFound)
 		}
 
 		if len(args) >= 1 {
@@ -543,13 +550,13 @@ func (c *CLI) findSubcommand(ctx context.Context, args []string) (*Command, []st
 			"args",
 			args,
 			"flags",
-			flags,
+			flagsFound,
 		)
 	} else {
-		logging.TraceContext(ctx, "found subcommand", "cmd", cmd.Name, "args", args, "flags", flags)
+		logging.TraceContext(ctx, "found subcommand", "cmd", cmd.Name, "args", args, "flags", flagsFound)
 	}
 
-	args = append(args, flags...)
+	args = append(args, flagsFound...)
 
 	return cmd, args
 }
@@ -656,7 +663,7 @@ func (c *CLI) setup(ctx context.Context) error {
 	cmdStack = append(cmdStack, cmd)
 
 	for cmd.HasParent() {
-		cmd := cmd.parent
+		cmd = cmd.parent
 		cmdStack = append(cmdStack, cmd)
 	}
 

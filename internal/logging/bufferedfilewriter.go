@@ -36,8 +36,8 @@ const (
 // the end of the program.
 type BufferedFileWriter struct {
 	buf  *bytes.Buffer
-	mu   sync.Mutex
 	file fspath.Path
+	mu   sync.Mutex
 }
 
 // NewBufferedFileWriter returns a new bootstrap writer for the given file.

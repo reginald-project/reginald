@@ -27,9 +27,9 @@ import (
 // found in the flag set are treated as regular command-line arguments. If the
 // user has run the program correctly, this function should return the next
 // subcommand as the first element of the argument slice.
-func collectFlags(fs *flags.FlagSet, args, flags []string) ([]string, []string) {
+func collectFlags(fs *flags.FlagSet, args, collected []string) ([]string, []string) {
 	if len(args) == 0 {
-		return args, flags
+		return args, collected
 	}
 
 	rest := []string{}
@@ -49,22 +49,22 @@ Loop:
 			// All of the cases with "=": "--flag=value", "-f=value", and
 			// "-abf=value".
 			if hasFlag(fs, s) {
-				flags = append(flags, s)
+				collected = append(collected, s)
 			} else {
 				rest = append(rest, s)
 			}
 		case strings.HasPrefix(s, "--") && !hasNoOptDefVal(s[2:], fs):
 			// The '--flag arg' case.
-			fallthrough
+			fallthrough //nolint:gocritic // this is much clearer with an empty fallthrough
 		case strings.HasPrefix(s, "-") && !strings.HasPrefix(s, "--") && !shortHasNoOptDefVal(s[len(s)-1:], fs):
 			// The '-f arg' and '-abcf arg' cases. Only the last flag in can
 			// have a argument, so other ones aren't checked for the default
 			// value.
 			if hasFlag(fs, s) {
 				if len(args) == 0 {
-					flags = append(flags, s)
+					collected = append(collected, s)
 				} else {
-					flags = append(flags, s, args[0])
+					collected = append(collected, s, args[0])
 					args = args[1:]
 				}
 			} else {
@@ -73,7 +73,7 @@ Loop:
 		case strings.HasPrefix(s, "-") && len(s) >= 2:
 			// Rest of the flags.
 			if hasFlag(fs, s) {
-				flags = append(flags, s)
+				collected = append(collected, s)
 			} else {
 				rest = append(rest, s)
 			}
@@ -84,7 +84,7 @@ Loop:
 
 	rest = append(rest, args...)
 
-	return rest, flags
+	return rest, collected
 }
 
 // hasFlag checks whether the given flag s is in fs. The whole flag string must

@@ -48,34 +48,34 @@ const (
 // After the parsing, Config should not be written to and, thus, the lock should
 // no longer be used.
 type Config struct {
-	// Color tells whether colors should be enabled in the user output.
-	Color iostreams.ColorMode `mapstructure:"color"`
-
 	// Directory is the "dotfiles" directory option. If it is set, Reginald
 	// looks for all of the relative filenames from this directory. Most
 	// absolute paths are still resolved relative to actual current working
 	// directory of the program.
 	Directory fspath.Path `mapstructure:"directory"`
 
-	// Logging contains the config values for logging.
-	Logging logging.Config `flag:"log" mapstructure:"logging"`
-
 	// PluginDir is the directory where Reginald looks for the plugins.
 	PluginDir fspath.Path `mapstructure:"plugin-dir"`
 
-	// Quiet tells the program to suppress all other output than errors.
-	Quiet bool `mapstructure:"quiet"`
+	// Plugins contains the rest of the config options which should only be
+	// plugin-defined options.
+	Plugins map[string]any `mapstructure:",remain"` //nolint:tagliatelle // linter doesn't know about "remain"
 
 	// Tasks contains tasks and the configs for them as given in the config
 	// file.
 	Tasks []task.Config `mapstructure:"tasks"`
 
+	// Logging contains the config values for logging.
+	Logging logging.Config `flag:"log" mapstructure:"logging"`
+
+	// Color tells whether colors should be enabled in the user output.
+	Color iostreams.ColorMode `mapstructure:"color"`
+
+	// Quiet tells the program to suppress all other output than errors.
+	Quiet bool `mapstructure:"quiet"`
+
 	// Verbose tells the program to print more verbose output.
 	Verbose bool `mapstructure:"verbose"`
-
-	// Plugins contains the rest of the config options which should only be
-	// plugin-defined options.
-	Plugins map[string]any `mapstructure:",remain"`
 }
 
 // DefaultConfig returns the default values for configuration. The function
@@ -125,7 +125,7 @@ func DefaultDir() (fspath.Path, error) {
 
 // DefaultPluginsDir returns the default plugins directory to use.
 func DefaultPluginsDir() (fspath.Path, error) {
-	path, err := defaultPluginsDir()
+	path, err := defaultPlatformPluginsDir()
 	if err != nil {
 		return "", fmt.Errorf("%w", err)
 	}
@@ -258,7 +258,7 @@ func genFlagName(s string, invert bool) string {
 			// far.
 			flagName = tags[j]
 		} else {
-			if len(flagName) > 0 {
+			if flagName != "" {
 				flagName += "-"
 			}
 
@@ -308,7 +308,9 @@ func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
 
 	// Use the fileValue if it is an absolute path.
 	if file.IsAbs() {
-		if ok, err := file.IsFile(); err != nil {
+		var ok bool
+
+		if ok, err = file.IsFile(); err != nil {
 			return "", fmt.Errorf("%w", err)
 		} else if ok {
 			return file.Clean(), nil

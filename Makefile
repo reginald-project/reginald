@@ -71,7 +71,7 @@ tidy: addlicense gci go gofumpt golines
 	addlicense -v -c "$(COPYRIGHT_HOLDER)" -l "$(LICENSE)" $(ADDLICENSE_PATTERNS)
 	$(GO) mod tidy -v
 	gci write .
-	golines --no-chain-split-dots -w .
+	golines --no-chain-split-dots --no-reformat-tags -w .
 	gofumpt -extra -l -w .
 
 .PHONY: fmt

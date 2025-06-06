@@ -23,6 +23,7 @@ import (
 func TestLevelString(t *testing.T) {
 	t.Parallel()
 
+	//nolint:govet // don't care about this in tests
 	for _, test := range []struct {
 		in   Level
 		want string

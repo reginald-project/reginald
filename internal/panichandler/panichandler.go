@@ -60,6 +60,7 @@ func Handle() {
 	panicMu.Lock()
 	defer panicMu.Unlock()
 
+	//revive:disable-next-line:defer This is a deferred function.
 	r := recover()
 
 	panicHandler(r, nil)
@@ -76,6 +77,7 @@ func WithStackTrace() func() {
 		panicMu.Lock()
 		defer panicMu.Unlock()
 
+		//revive:disable-next-line:defer This is a deferred function.
 		r := recover()
 
 		panicHandler(r, trace)
@@ -130,6 +132,7 @@ func panicHandler(r any, t []byte) {
 	}
 
 	iostreams.StdioMu.Unlock()
+	//revive:disable-next-line:deep-exit Panic handler has to exit with error.
 	os.Exit(1)
 }
 

@@ -31,18 +31,18 @@ type SleepCommand struct{}
 // Name returns the name of the command as it should be written by the user when
 // they run the command. It must not match any existing commands either within
 // Reginald or other plugins.
-func (s *SleepCommand) Name() string {
+func (*SleepCommand) Name() string {
 	return "sleep"
 }
 
 // UsageLine returns the one-line usage synopsis for the command. It should
 // start with the command name.
-func (s *SleepCommand) UsageLine() string {
+func (*SleepCommand) UsageLine() string {
 	return "sleep [options]"
 }
 
 // Configs returns the config entries of s.
-func (s *SleepCommand) Configs() []rpp.ConfigValue {
+func (*SleepCommand) Configs() []rpp.ConfigValue {
 	return []rpp.ConfigValue{
 		{ //nolint:exhaustruct // use the default values
 			Key:   "time",
@@ -57,7 +57,7 @@ func (s *SleepCommand) Configs() []rpp.ConfigValue {
 }
 
 // Run executes the command for the plugin.
-func (s *SleepCommand) Run(cfg []rpp.ConfigValue) error {
+func (*SleepCommand) Run(cfg []rpp.ConfigValue) error {
 	var (
 		err error
 		t   int

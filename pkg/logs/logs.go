@@ -74,7 +74,7 @@ func (l Level) String() string {
 
 // MarshalJSON implements [encoding/json.Marshaler] by quoting the output of
 // [Level.String].
-func (l Level) MarshalJSON() ([]byte, error) {
+func (l Level) MarshalJSON() ([]byte, error) { //nolint:unparam // implements interface
 	return strconv.AppendQuote(nil, l.String()), nil
 }
 
@@ -109,22 +109,18 @@ func (l *Level) UnmarshalText(data []byte) error {
 	return l.parse(string(data))
 }
 
-func (l *Level) parse(s string) (err error) {
-	defer func() {
-		if err != nil {
-			err = fmt.Errorf("logs: level string %q: %w", s, err)
-		}
-	}()
-
+func (l *Level) parse(s string) error {
 	name := s
 	offset := 0
 
 	if i := strings.IndexAny(s, "+-"); i >= 0 {
 		name = s[:i]
 
+		var err error
+
 		offset, err = strconv.Atoi(s[i:])
 		if err != nil {
-			return fmt.Errorf("%w", err)
+			return fmt.Errorf("logs: level string %q: %w", s, err)
 		}
 	}
 

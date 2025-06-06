@@ -23,7 +23,7 @@ import (
 	"github.com/anttikivi/reginald/internal/fspath"
 )
 
-func defaultPluginsDir() (fspath.Path, error) {
+func defaultPlatformPluginsDir() (fspath.Path, error) {
 	if env := os.Getenv("XDG_DATA_HOME"); env != "" {
 		path, err := fspath.NewAbs(env, defaultFileName, "plugins")
 		if err != nil {

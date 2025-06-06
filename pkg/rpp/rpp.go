@@ -105,15 +105,15 @@ type Message struct {
 
 // An Error is the Go representation of a JSON-RCP error object using RPP.
 type Error struct {
-	// Code is the error code that tells the error type. See the constant error
-	// codes for the different supported values.
-	Code int `json:"code"`
+	// Data contains optional additional information about the error.
+	Data any `json:"data,omitempty"`
 
 	// Message is the error message.
 	Message string `json:"message"`
 
-	// Data contains optional additional information about the error.
-	Data any `json:"data,omitempty"`
+	// Code is the error code that tells the error type. See the constant error
+	// codes for the different supported values.
+	Code int `json:"code"`
 }
 
 // CommandInfo contains information on a command that a plugin implements.
@@ -177,18 +177,18 @@ type ConfigValue struct {
 	// a nil here clear.
 	Flag any `json:"flag,omitempty"`
 
-	// FlagOnly tells Reginald whether this config value should only be
-	// controlled by a command-line flag. If this is set to true, Reginald won't
-	// read the value of this config entry from the config file or from
-	// environment variables.
-	FlagOnly bool `json:"flagOnly,omitempty"`
-
 	// EnvName optionally defines a string to use in the environment variable
 	// name instead of the automatic name of the variable that will be composed
 	// using Key. It is appended after the prefix `REGINALD_` but if EnvName is
 	// used to set the name of the environment variable, the name of the plugin
 	// or the name of the command is not added to variable name automatically.
 	EnvName string `json:"envOverride,omitempty"`
+
+	// FlagOnly tells Reginald whether this config value should only be
+	// controlled by a command-line flag. If this is set to true, Reginald won't
+	// read the value of this config entry from the config file or from
+	// environment variables.
+	FlagOnly bool `json:"flagOnly,omitempty"`
 }
 
 // Flag is a field in [ConfigValue] that describes the command-line flag
@@ -244,7 +244,7 @@ func NewConfigValue(key string, value any) (ConfigValue, error) {
 }
 
 // Int returns value of c as an int.
-func (c ConfigValue) Int() (int, error) {
+func (c *ConfigValue) Int() (int, error) {
 	if c.Type != ConfigInt {
 		return 0, fmt.Errorf("%w: %q is not an int", errConfigRead, c.Key)
 	}
@@ -269,7 +269,7 @@ func (c ConfigValue) Int() (int, error) {
 //
 // As the Flag may inherit its name from ConfigValue, the function also sets
 // the correct name for the Flag.
-func (c ConfigValue) RealFlag() (*Flag, error) {
+func (c *ConfigValue) RealFlag() (*Flag, error) {
 	switch v := c.Flag.(type) {
 	case nil:
 		return nil, nil //nolint:nilnil // TODO: See if sentinel error should be used.

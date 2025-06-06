@@ -94,16 +94,19 @@ func (f *FlagSet) AddFlagSet(newSet *FlagSet) {
 
 // AddPluginFlag adds a flag to the flag set according to the given config value
 // specification from a plugin.
-func (f *FlagSet) AddPluginFlag(cv rpp.ConfigValue) error {
+func (f *FlagSet) AddPluginFlag(cv *rpp.ConfigValue) error {
 	var flag rpp.Flag
 
-	if rf, err := cv.RealFlag(); err != nil {
+	rf, err := cv.RealFlag()
+	if err != nil {
 		return fmt.Errorf("%w", err)
-	} else if rf != nil {
-		flag = *rf
-	} else {
+	}
+
+	if rf == nil {
 		return nil
 	}
+
+	flag = *rf
 
 	if f := f.Lookup(flag.Name); f != nil {
 		return fmt.Errorf("%w: %s", errDuplicateFlag, f.Name)

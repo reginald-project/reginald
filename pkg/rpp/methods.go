@@ -115,17 +115,17 @@ type LoggingConfig struct {
 // structured logging where the given message is one field of the log output and
 // additional information can be given as Fields.
 type LogParams struct {
-	// Level is the logging level of the message. It should have a string value
-	// "trace", "debug", "info", "warn", or "error".
-	Level logs.Level `json:"level"`
-
-	// Message is the logging message.
-	Message string `json:"msg"`
-
 	// Fields contains additional fields that should be included with the
 	// message. Reginald automatically adds information about the plugin from
 	// which the message came from.
 	Fields map[string]any `json:"fields,omitempty"`
+
+	// Message is the logging message.
+	Message string `json:"msg"`
+
+	// Level is the logging level of the message. It should have a string value
+	// "trace", "debug", "info", "warn", or "error".
+	Level logs.Level `json:"level"`
 }
 
 // RunCmdParams are the parameters passed when the client runs a command from

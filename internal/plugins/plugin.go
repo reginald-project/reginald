@@ -59,13 +59,6 @@ var (
 // A Plugin represents a plugin that acts as an RPP server and is run from this
 // client.
 type Plugin struct {
-	rpp.HandshakeResult
-
-	// lastID is the ID that was last used in a method call. Even though
-	// the protocol supports both strings and ints as the ID, we just default to
-	// ints to make the client more reasonable.
-	lastID atomic.Int64
-
 	// cmd is the underlying command running the plugin process.
 	cmd *exec.Cmd
 
@@ -81,10 +74,6 @@ type Plugin struct {
 	// a scanner.
 	stderr *bufio.Scanner
 
-	// writeMu is used to lock writing to the plugins standard input to
-	// serialize the message.
-	writeMu sync.Mutex
-
 	// pending is used to store channels for the method calls that when calling
 	// the method. Each method has its own channel stored by ID as
 	// an JSON-encoded string in pending. The IDs are JSON-encoded to avoid
@@ -96,11 +85,22 @@ type Plugin struct {
 	// the plugin.
 	pending map[string]chan *rpp.Message
 
+	// doneCh is closed when the plugin is done running.
+	doneCh chan error
+
+	rpp.HandshakeResult
+
+	// writeMu is used to lock writing to the plugins standard input to
+	// serialize the message.
+	writeMu sync.Mutex
+
 	// pendingMu is used to lock pending.
 	pendingMu sync.Mutex
 
-	// doneCh is closed when the plugin is done running.
-	doneCh chan error
+	// lastID is the ID that was last used in a method call. Even though
+	// the protocol supports both strings and ints as the ID, we just default to
+	// ints to make the client more reasonable.
+	lastID atomic.Int64
 
 	// protocolErrors is a counter of protocol errors this plugin has made. If
 	// the number of protocol errors in a plugin exceeds a threshold, the plugin

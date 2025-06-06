@@ -31,6 +31,8 @@ import (
 type Plugin struct {
 	name    string
 	version string
+	in      *bufio.Reader
+	out     *bufio.Writer
 	configs []rpp.ConfigValue
 
 	// cmdConfig contains the parsed config values for the command that is
@@ -38,8 +40,6 @@ type Plugin struct {
 	cmdConfig []rpp.ConfigValue
 	cmds      []Command
 	tasks     []Task
-	in        *bufio.Reader
-	out       *bufio.Writer
 	shutdown  bool // set to true when the plugin should start shutdown
 	exit      bool // set to true when the plugin should exit right away
 }
@@ -88,7 +88,7 @@ func (p *Plugin) Serve() error {
 		}
 
 		if p.shutdown && msg.Method != rpp.MethodExit {
-			err := p.respondError(msg.ID, &rpp.Error{
+			err = p.respondError(msg.ID, &rpp.Error{
 				Code: rpp.InvalidRequest,
 				Message: fmt.Sprintf(
 					"method %q was called after the plugin was requested to shut down",
@@ -183,7 +183,7 @@ func (p *Plugin) initialize(msg *rpp.Message) error {
 	var params rpp.InitializeParams
 
 	if err := json.Unmarshal(msg.Params, &params); err != nil {
-		err := p.respondError(msg.ID, &rpp.Error{
+		err = p.respondError(msg.ID, &rpp.Error{
 			Code:    rpp.InvalidParams,
 			Message: "Failed to decode params",
 			Data:    err,
@@ -374,7 +374,7 @@ func (p *Plugin) runCmd(msg *rpp.Message) error {
 	var params rpp.RunCmdParams
 
 	if err := json.Unmarshal(msg.Params, &params); err != nil {
-		err := p.respondError(msg.ID, &rpp.Error{
+		err = p.respondError(msg.ID, &rpp.Error{
 			Code:    rpp.InvalidParams,
 			Message: "Failed to decode params",
 			Data:    err,
@@ -405,7 +405,7 @@ func (p *Plugin) runCmd(msg *rpp.Message) error {
 	cmd := p.cmds[i]
 
 	if err := cmd.Run(p.cmdConfig); err != nil {
-		err := p.respondError(msg.ID, &rpp.Error{
+		err = p.respondError(msg.ID, &rpp.Error{
 			Code:    -32000,
 			Message: "Command failed",
 			Data:    err,
@@ -442,7 +442,7 @@ func (p *Plugin) setupCmd(msg *rpp.Message) error {
 	var params rpp.SetupCmdParams
 
 	if err := json.Unmarshal(msg.Params, &params); err != nil {
-		err := p.respondError(msg.ID, &rpp.Error{
+		err = p.respondError(msg.ID, &rpp.Error{
 			Code:    rpp.InvalidParams,
 			Message: "Failed to decode params",
 			Data:    err,

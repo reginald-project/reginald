@@ -52,25 +52,6 @@ var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem(
 // A ValueParser is a helper type that holds the current values for the config
 // value that is currently being parsed.
 type ValueParser struct {
-	// Cfg is the Config that is currently being parsed.
-	Cfg *Config
-
-	// FlagSet is the flag set used for checking the values.
-	FlagSet *flags.FlagSet
-
-	// Plugins are the loaded Plugins.
-	Plugins []*plugins.Plugin
-
-	// Value is the Value of the currently parsed field.
-	Value reflect.Value
-
-	// Field is the currently parsed struct Field.
-	Field reflect.StructField
-
-	// Plugin is the plugin currently being parsed if the parser has moved to
-	// parsing plugin configs. Otherwise, it should be nil.
-	Plugin *plugins.Plugin
-
 	// FullName is the name of the field including the names of the parent
 	// fields before it separated by dots.
 	FullName string
@@ -85,20 +66,30 @@ type ValueParser struct {
 	// FlagName is the name of the command-line flag for checking the value for
 	// the current field.
 	FlagName string
+
+	// Cfg is the Config that is currently being parsed.
+	Cfg *Config
+
+	// FlagSet is the flag set used for checking the values.
+	FlagSet *flags.FlagSet
+
+	// Plugin is the plugin currently being parsed if the parser has moved to
+	// parsing plugin configs. Otherwise, it should be nil.
+	Plugin *plugins.Plugin
+
+	// Plugins are the loaded Plugins.
+	Plugins []*plugins.Plugin
+
+	// Value is the Value of the currently parsed field.
+	Value reflect.Value
+
+	// Field is the currently parsed struct Field.
+	Field reflect.StructField
 }
 
 // A pluginParser is a helper type that holds the current values for the config
 // value from a plugin that is currently being parsed.
 type pluginParser struct {
-	// FlagSet is the flag set used for checking the values.
-	flagSet *flags.FlagSet
-
-	// m is the config map that is currently being modified.
-	m map[string]any
-
-	// c is the [rpp.ConfigValue] that is currently being checked.
-	c rpp.ConfigValue
-
 	// envName is the name of the environment variable for checking the value
 	// for the current field.
 	envName string
@@ -109,6 +100,15 @@ type pluginParser struct {
 	// flagName is the name of the command-line flag for checking the value for
 	// the current field.
 	flagName string
+
+	// FlagSet is the flag set used for checking the values.
+	flagSet *flags.FlagSet
+
+	// m is the config map that is currently being modified.
+	m map[string]any
+
+	// c is the [rpp.ConfigValue] that is currently being checked.
+	c rpp.ConfigValue
 }
 
 // LogValue implements [slog.LogValuer] for [valueParser]. It returns a group
@@ -130,17 +130,14 @@ func (p *ValueParser) LogValue() slog.Value {
 		pluginNames = append(pluginNames, plugin.Name)
 	}
 
-	attrs = append(attrs, slog.Any("plugins", pluginNames))
 	attrs = append(
 		attrs,
+		slog.Any("Plugins", pluginNames),
 		slog.Group(
-			"value",
+			"Value",
 			slog.String("type", p.Value.Type().Name()),
 			slog.Any("value", p.Value.Interface()),
 		),
-	)
-	attrs = append(
-		attrs,
 		slog.Group(
 			"field",
 			slog.String("name", p.Field.Name),
@@ -154,10 +151,13 @@ func (p *ValueParser) LogValue() slog.Value {
 		attrs = append(attrs, slog.String("Plugin", p.Plugin.Name))
 	}
 
-	attrs = append(attrs, slog.String("FullName", p.FullName))
-	attrs = append(attrs, slog.String("envName", p.EnvName))
-	attrs = append(attrs, slog.String("envValue", p.EnvValue))
-	attrs = append(attrs, slog.String("flagName", p.FlagName))
+	attrs = append(
+		attrs,
+		slog.String("FullName", p.FullName),
+		slog.String("EnvName", p.EnvName),
+		slog.String("EnvValue", p.EnvValue),
+		slog.String("FlagName", p.FlagName),
+	)
 
 	return slog.GroupValue(attrs...)
 }
@@ -273,9 +273,71 @@ func normalizeKeys(cfg map[string]any) {
 
 // ApplyOverrides applies the overrides of the config values from environment
 // variables and command-line flags to cfg. It modifies the pointed cfg.
-//
-//nolint:cyclop,funlen,gocognit // no problem
 func (p *ValueParser) ApplyOverrides(ctx context.Context) error {
+	if err := p.applyStructOverrides(ctx); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	if len(p.Plugins) == 0 {
+		return nil
+	}
+
+	for _, plugin := range p.Plugins {
+		p.Plugin = plugin
+		pluginMap := make(map[string]any)
+		rawVal := p.Cfg.Plugins[plugin.Name]
+
+		m, ok := rawVal.(map[string]any)
+		if ok {
+			pluginMap = m
+		} else if rawVal != nil {
+			return fmt.Errorf("%w: config for plugin %q is not a map", errInvalidConfig, plugin.Name)
+		}
+
+		// Use the name of the plugin as the prefix for the environment
+		// variable.
+		p.EnvName = p.Plugin.Name
+
+		if err := p.applyPluginOverrides(ctx, pluginMap, plugin.PluginConfigs); err != nil {
+			return fmt.Errorf("failed to apply configs for plugins: %w", err)
+		}
+
+		p.Cfg.Plugins[plugin.Name] = pluginMap
+
+		for _, cmd := range plugin.Commands {
+			// Plugin configs take precedence.
+			if cmd.Name == plugin.Name && len(plugin.PluginConfigs) > 0 {
+				continue
+			}
+
+			cmdMap := make(map[string]any)
+			// All of the tables for the plugins and commands should be in
+			// the root of the config.
+			rawVal := p.Cfg.Plugins[cmd.Name]
+
+			m, ok := rawVal.(map[string]any)
+			if ok {
+				cmdMap = m
+			} else if rawVal != nil {
+				return fmt.Errorf("%w: config for plugin command %q is not a map", errInvalidConfig, cmd.Name)
+			}
+
+			// Use the name of the command as the prefix for the environment
+			// variable.
+			p.EnvName = cmd.Name
+
+			if err := p.applyPluginOverrides(ctx, cmdMap, cmd.Configs); err != nil {
+				return fmt.Errorf("failed to apply configs for plugin commands: %w", err)
+			}
+
+			p.Cfg.Plugins[cmd.Name] = cmdMap
+		}
+	}
+
+	return nil
+}
+
+func (p *ValueParser) applyStructOverrides(ctx context.Context) error {
 	for i := range p.Value.NumField() {
 		var err error
 
@@ -362,62 +424,6 @@ func (p *ValueParser) ApplyOverrides(ctx context.Context) error {
 		}
 
 		logging.TraceContext(ctx, "config value set", "parser", parser)
-	}
-
-	if len(p.Plugins) == 0 {
-		return nil
-	}
-
-	for _, plugin := range p.Plugins {
-		p.Plugin = plugin
-		pluginMap := make(map[string]any)
-		rawVal := p.Cfg.Plugins[plugin.Name]
-
-		m, ok := rawVal.(map[string]any)
-		if ok {
-			pluginMap = m
-		} else if rawVal != nil {
-			return fmt.Errorf("%w: config for plugin %q is not a map", errInvalidConfig, plugin.Name)
-		}
-
-		// Use the name of the plugin as the prefix for the environment
-		// variable.
-		p.EnvName = p.Plugin.Name
-
-		if err := p.applyPluginOverrides(ctx, pluginMap, plugin.PluginConfigs); err != nil {
-			return fmt.Errorf("failed to apply configs for plugins: %w", err)
-		}
-
-		p.Cfg.Plugins[plugin.Name] = pluginMap
-
-		for _, cmd := range plugin.Commands {
-			// Plugin configs take precedence.
-			if cmd.Name == plugin.Name && len(plugin.PluginConfigs) > 0 {
-				continue
-			}
-
-			cmdMap := make(map[string]any)
-			// All of the tables for the plugins and commands should be in
-			// the root of the config.
-			rawVal := p.Cfg.Plugins[cmd.Name]
-
-			m, ok := rawVal.(map[string]any)
-			if ok {
-				cmdMap = m
-			} else if rawVal != nil {
-				return fmt.Errorf("%w: config for plugin command %q is not a map", errInvalidConfig, cmd.Name)
-			}
-
-			// Use the name of the command as the prefix for the environment
-			// variable.
-			p.EnvName = cmd.Name
-
-			if err := p.applyPluginOverrides(ctx, cmdMap, cmd.Configs); err != nil {
-				return fmt.Errorf("failed to apply configs for plugin commands: %w", err)
-			}
-
-			p.Cfg.Plugins[cmd.Name] = cmdMap
-		}
 	}
 
 	return nil
@@ -540,7 +546,9 @@ func (p *ValueParser) setBool() error {
 
 	if p.EnvValue != "" {
 		if p.canUnmarshal() {
-			v, err := p.unmarshal(p.EnvValue)
+			var v reflect.Value
+
+			v, err = p.unmarshal(p.EnvValue)
 			if err != nil {
 				return fmt.Errorf("%s=%q: %w", p.EnvName, p.EnvValue, err)
 			}
@@ -628,7 +636,9 @@ func (p *ValueParser) setInt() error {
 
 	if p.EnvValue != "" {
 		if p.canUnmarshal() {
-			v, err := p.unmarshal(p.EnvValue)
+			var v reflect.Value
+
+			v, err = p.unmarshal(p.EnvValue)
 			if err != nil {
 				return fmt.Errorf("%s=%q: %w", p.EnvName, p.EnvValue, err)
 			}
@@ -764,7 +774,9 @@ func (p *pluginParser) int() (int64, error) {
 
 	val, ok := p.m[p.c.Key]
 	if !ok {
-		v, err := p.c.Int()
+		var v int
+
+		v, err = p.c.Int()
 		if err != nil {
 			return x, fmt.Errorf("failed to get int value for %q: %w", p.c.Key, err)
 		}

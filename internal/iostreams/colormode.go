@@ -65,7 +65,7 @@ func (c *ColorMode) Set(s string) error {
 }
 
 // Type returns type of c as a string for command-line flags.
-func (c *ColorMode) Type() string {
+func (*ColorMode) Type() string {
 	return "ColorMode"
 }
 
@@ -98,7 +98,7 @@ func (c *ColorMode) UnmarshalJSON(data []byte) error {
 }
 
 // MarshalText encodes c in a textual form.
-func (c ColorMode) MarshalText() ([]byte, error) {
+func (c ColorMode) MarshalText() ([]byte, error) { //nolint:unparam // implements interface
 	return []byte(c.String()), nil
 }
 

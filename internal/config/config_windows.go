@@ -22,7 +22,7 @@ import (
 	"github.com/anttikivi/reginald/internal/fspath"
 )
 
-func defaultPluginsDir() (fspath.Path, error) {
+func defaultPlatformPluginsDir() (fspath.Path, error) {
 	path, err := fspath.NewAbs("%LOCALAPPDATA%", defaultFileName, "plugins")
 	if err != nil {
 		return "", fmt.Errorf(
