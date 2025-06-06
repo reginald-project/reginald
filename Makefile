@@ -58,6 +58,7 @@ license-check: go-licenses
 .PHONY: lint
 lint: addlicense golangci-lint
 	addlicense -check -c "$(COPYRIGHT_HOLDER)" -l "$(LICENSE)" $(ADDLICENSE_PATTERNS)
+	golangci-lint config verify
 	golangci-lint run
 
 .PHONY: test
