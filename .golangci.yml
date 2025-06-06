@@ -211,9 +211,7 @@ linters:
       static-msg: true
       msg-style: lowercased
       no-raw-keys: false
-      # TODO: Decide a style.
-      # https://github.com/go-simpler/sloglint?tab=readme-ov-file#key-naming-convention
-      key-naming-case: ""
+      key-naming-case: "camel" # normal logging output is JSON
       forbidden-keys:
         - time
         - level
