@@ -13,14 +13,13 @@
 # limitations under the License.
 
 # This Makefile is POSIX-compliant, and non-compliance is considered a bug. It
-# follows the POSIX base specification IEEE Std 1003.1-2024. Documentation can
-# be found here: https://pubs.opengroup.org/onlinepubs/9799919799/.
+# follows POSIX.1-2008. Documentation can be found here:
+# https://pubs.opengroup.org/onlinepubs/9699919799.2008edition/.
 
 .POSIX:
 .SUFFIXES:
 
 GO = go
-GOFLAGS ?=
 
 ADDLICENSE_VERSION = 1.1.1
 GCI_VERSION = 0.13.6
@@ -36,70 +35,52 @@ LICENSE = apache
 ADDLICENSE_PATTERNS = *.go examples internal pkg scripts
 
 GO_MODULE = github.com/anttikivi/reginald
-VERSION_PACKAGE = github.com/anttikivi/reginald/pkg/version
+
+RM = rm -f
 
 # Default target.
-.PHONY: all
-all: build plugins
+all: FORCE build plugins
 
 # CODE QUALITY & CHECKS
 
-.PHONY: audit
-audit: license-check test lint
-	$(GO) mod tidy -diff
-	$(GO) mod verify
+audit: FORCE license-check test lint
+	"$(GO)" mod tidy -diff
+	"$(GO)" mod verify
 
-.PHONY: license-check
-license-check: go-licenses
-	$(GO) mod verify
-	$(GO) mod download
+license-check: FORCE go-licenses
+	"$(GO)" mod verify
+	"$(GO)" mod download
 	go-licenses check --include_tests $(GO_MODULE)/... --allowed_licenses="$(ALLOWED_LICENSES)"
 
-.PHONY: lint
-lint: addlicense golangci-lint
+lint: FORCE addlicense golangci-lint
 	addlicense -check -c "$(COPYRIGHT_HOLDER)" -l "$(LICENSE)" $(ADDLICENSE_PATTERNS)
 	golangci-lint config verify
 	golangci-lint run
 
-.PHONY: test
-test: go
-	$(GO) test $(GOFLAGS) ./...
+test: FORCE go
+	"$(GO)" test $(GOFLAGS) ./...
 
 # DEVELOPMENT & BUILDING
 
-.PHONY: tidy
-tidy: addlicense gci go gofumpt golines
+tidy: FORCE addlicense gci go gofumpt golines
 	addlicense -v -c "$(COPYRIGHT_HOLDER)" -l "$(LICENSE)" $(ADDLICENSE_PATTERNS)
-	$(GO) mod tidy -v
+	"$(GO)" mod tidy -v
 	gci write .
 	golines --no-chain-split-dots --no-reformat-tags -w .
 	gofumpt -extra -l -w .
 
-.PHONY: fmt
-fmt: tidy
+fmt: FORCE tidy
 
-.PHONY: build
-build: go
-	@base_version="$$(cat VERSION)"; \
-	prerelease="$(PRERELEASE)"; \
-	\
-	if [ -z "$${prerelease}" ]; then \
-		prerelease="0.dev.$$(date -u +"%Y%m%d%H%M%S")"; \
-	fi; \
-	\
-	if [ -n "$(VERSION)" ]; then \
-		version="$(VERSION)"; \
-	else \
-		version="$${base_version}"; \
-		if [ -n "$${prerelease}" ]; then \
-			version="$${version}-$${prerelease}"; \
-		fi; \
-		if [ -n "$(BUILD_METADATA)" ]; then \
-			version="$${version}+$(BUILD_METADATA)"; \
-		fi; \
-	fi; \
-	\
-	exe=""; \
+build: FORCE go
+	@./scripts/build "$(GO)" "$(VERSION)" "$(PRERELEASE)" "$(BUILD_METADATA)" "" "$(GOFLAGS)"
+
+plugins: FORCE example-plugin
+
+example-plugin: FORCE go
+	"$(GO)" build -o reginald-example ./examples
+
+clean: FORCE
+	@exe=""; \
 	\
 	case "$$("$(GO)" env GOOS)" in \
 		windows) exe=".exe";; \
@@ -111,70 +92,38 @@ build: go
 		output="reginald$${exe}"; \
 	fi; \
 	\
-	set -- \
-		-o "$${output}" \
-		$(GOFLAGS) \
-		-ldflags "-X $(VERSION_PACKAGE).buildVersion=$${version}" \
-	; \
-	\
-	printf 'building Reginald version %s\n' "$${version}"; \
-	GOFLAGS= $(GO) build "$$@"
-
-.PHONY: plugins
-plugins: example-plugin
-
-.PHONY: example-plugin
-example-plugin: go
-	$(GO) build -o reginald-example ./examples
-
-.PHONY: clean
-clean:
-	@exe=""; \
-	\
-	case "$$($(GO) env GOOS)" in \
-		windows) exe=".exe";; \
-	esac; \
-	\
-	output="$(OUTPUT)"; \
-	\
-	if [ -z "$${output}" ]; then \
-		output="reginald$${exe}"; \
-	fi; \
-	\
-	rm "$${output}"
-	@rm reginald-example
+	$(RM) "$${output}"
+	@$(RM) reginald-example
 
 # TOOL HELPERS
 
-.PHONY: addlicense
-addlicense:
+addlicense: FORCE
 	@./scripts/install_tool "$(GO)" "$@" "$(ADDLICENSE_VERSION)" "$(FORCE_REINSTALL)"
 
-.PHONY: gci
-gci:
+gci: FORCE
 	@./scripts/install_tool "$(GO)" "$@" "$(GCI_VERSION)" "$(FORCE_REINSTALL)"
 
-.PHONY: go
-go:
+go: FORCE
 	@if ! command -v "$(GO)" >/dev/null 2>&1; then \
 		printf 'Error: the Go executable was not found, tried "%s"\n' "$(GO)" >&2; \
 		exit 1; \
 	else \
+		GOFLAGS= ; \
 		printf 'using Go version %s\n' "$$("$(GO)" version | awk '{print $$3}' | cut -c 3-)"; \
 	fi
 
-.PHONY: go-licenses
-go-licenses:
+go-licenses: FORCE
 	@./scripts/install_tool "$(GO)" "$@" "$(GO_LICENSES_VERSION)" "$(FORCE_REINSTALL)"
 
-.PHONY: gofumpt
-gofumpt:
+gofumpt: FORCE
 	@./scripts/install_tool "$(GO)" "$@" "$(GOFUMPT_VERSION)" "$(FORCE_REINSTALL)"
 
-.PHONY: golangci-lint
-golangci-lint:
+golangci-lint: FORCE
 	@./scripts/install_tool "$(GO)" "$@" "$(GOLANGCI_LINT_VERSION)" "$(FORCE_REINSTALL)"
 
-.PHONY: golines
-golines:
+golines: FORCE
 	@./scripts/install_tool "$(GO)" "$@" "$(GOLINES_VERSION)" "$(FORCE_REINSTALL)"
+
+# SPECIAL TARGET
+
+FORCE: ;

@@ -1,0 +1,77 @@
+#!/bin/sh
+
+# Copyright 2025 Antti Kivi
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# This script is POSIX-compliant, and non-compliance is considered a bug. It
+# follows POSIX.1-2008. Documentation can be found here:
+# https://pubs.opengroup.org/onlinepubs/9699919799.2008edition/.
+
+set -eu
+
+if [ -z "${1-}" ]; then
+  printf 'No Go executable given as an argument\n' >&2
+  exit 1
+fi
+
+if ! command -v "$1" >/dev/null 2>&1; then
+  printf 'The given Go executable does not exist: %s\n' "$1" >&2
+  exit 1
+fi
+
+GO="$1"
+version="$2"
+prerelease="$3"
+build_metadata="$4"
+output="$5"
+goflags="$6"
+
+base_version="$(cat VERSION)"
+
+if [ -z "${prerelease}" ]; then
+  prerelease="0.dev.$(date -u +"%Y%m%d%H%M%S")"
+fi
+
+if [ -z "${version}" ]; then
+  version="${base_version}"
+
+  if [ -n "${prerelease}" ]; then
+    version="${version}-${prerelease}"
+  fi
+
+  if [ -n "${build_metadata}" ]; then
+    version="${version}+${build_metadata}"
+  fi
+fi
+
+exe=""
+
+case "$("${GO}" env GOOS)" in
+windows) exe=".exe" ;;
+esac
+
+if [ -z "${output}" ]; then
+  output="reginald${exe}"
+fi
+
+VERSION_PACKAGE="github.com/anttikivi/reginald/pkg/version"
+
+set -- \
+  -o "${output}" \
+  ${goflags} \
+  -ldflags "-X ${VERSION_PACKAGE}.buildVersion=${version}"
+
+printf 'building Reginald version %s\n' "${version}"
+set -x
+GOFLAGS= "${GO}" build "$@"
