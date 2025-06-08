@@ -241,8 +241,12 @@ install_golines() {
   TMP="${PWD}/golines_tmp_$$"
   mkdir "${TMP}" || return 1
 
+  printf 'downloading golines to %s\n' "${TMP}"
+
   get_url "https://github.com/segmentio/golines/releases/download/v${_version}/${_checksum_file}" >"${TMP}/${_checksum_file}" || return 1
   get_url "https://github.com/segmentio/golines/releases/download/v${_version}/${_archive_file}" >"${TMP}/${_archive_file}" || return 1
+
+  printf 'download complete, checking checksum\n'
 
   if command -v sha256sum >/dev/null 2>&1; then
     (
@@ -353,10 +357,15 @@ main() {
     should_install="true"
   fi
 
-  # TODO: Add support for giving a comma-separated list of the tools that should
-  # be force-reinstalled.
   if [ "${force_reinstall}" = "true" ]; then
     should_install="true"
+  else
+    case ",${force_reinstall}," in
+    *",${tool},"*)
+      should_install="true"
+      ;;
+    *) ;;
+    esac
   fi
 
   if [ "${should_install}" != "true" ]; then
