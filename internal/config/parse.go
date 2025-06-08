@@ -271,6 +271,36 @@ func normalizeKeys(cfg map[string]any) {
 	}
 }
 
+// Validate checks if all of the config values that were left after unmarshaling
+// the config are valid plugin or plugin command names.
+func Validate(cfg *Config, p []*plugins.Plugin) error {
+	for k := range cfg.Plugins {
+		ok := false
+	PluginLoop:
+		for _, plugin := range p {
+			if plugin.Name == k {
+				ok = true
+
+				break PluginLoop
+			}
+
+			for _, c := range plugin.Commands {
+				if c.Name == k {
+					ok = true
+
+					break PluginLoop
+				}
+			}
+		}
+
+		if !ok {
+			return fmt.Errorf("%w: invalid config key %q", errInvalidConfig, k)
+		}
+	}
+
+	return nil
+}
+
 // ApplyOverrides applies the overrides of the config values from environment
 // variables and command-line flags to cfg. It modifies the pointed cfg.
 func (p *ValueParser) ApplyOverrides(ctx context.Context) error {

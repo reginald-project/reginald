@@ -200,6 +200,10 @@ func (c *CLI) Execute(ctx context.Context) error {
 		return nil
 	}
 
+	if err = config.Validate(c.Cfg, c.Plugins); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
 	valueParser := &config.ValueParser{
 		Cfg:      c.Cfg,
 		FlagSet:  c.flagSet,
