@@ -23,6 +23,29 @@ import (
 	"github.com/anttikivi/reginald/internal/fspath"
 )
 
+func defaultPlatformLogFile() (fspath.Path, error) {
+	if env := os.Getenv("XDG_STATE_HOME"); env != "" {
+		path, err := fspath.NewAbs(env, defaultFileName, defaultLogFileName)
+		if err != nil {
+			return "", fmt.Errorf("failed to convert log file to absolute path: %w", err)
+		}
+
+		return path, nil
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get the user home directory: %w", err)
+	}
+
+	path, err := fspath.NewAbs(home, ".local", "state", defaultFileName, defaultLogFileName)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert plugins directory to absolute path: %w", err)
+	}
+
+	return path, nil
+}
+
 func defaultPlatformPluginsDir() (fspath.Path, error) {
 	if env := os.Getenv("XDG_DATA_HOME"); env != "" {
 		path, err := fspath.NewAbs(env, defaultFileName, "plugins")

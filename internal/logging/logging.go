@@ -41,6 +41,7 @@ import (
 // Default values for the logger.
 const (
 	defaultFilePerm       os.FileMode = 0o644                              // log file permissions
+	defaultDirPerm        os.FileMode = 0o755                              // log directory permissions
 	defaultJSONTimeFormat             = "2006-01-02T15:04:05.000000-07:00" // time format for JSON output
 	defaultTextTimeFormat             = time.DateTime                      // time format for text output
 	defaultTimeFormat                 = "2006-01-02T15:04:05.000-07:00"    // default time format in Go
@@ -139,10 +140,16 @@ func Init(cfg Config) error {
 	case "stdout":
 		w = iostreams.NewLockedWriter(os.Stdout)
 	default:
-		// TODO: This does not respect the file system in use. Should it?
-		fw, err := os.OpenFile(cfg.Output, os.O_WRONLY|os.O_APPEND|os.O_CREATE, defaultFilePerm)
+		path := fspath.Path(cfg.Output)
+
+		err := path.Dir().MkdirAll(defaultDirPerm)
 		if err != nil {
-			return fmt.Errorf("failed to open log file at %s: %w", cfg.Output, err)
+			return fmt.Errorf("failed to create directory %q for log output: %w", path.Dir(), err)
+		}
+
+		fw, err := os.OpenFile(path.String(), os.O_WRONLY|os.O_APPEND|os.O_CREATE, defaultFilePerm)
+		if err != nil {
+			return fmt.Errorf("failed to open log file at %s: %w", path.String(), err)
 		}
 
 		w = fw

@@ -37,8 +37,8 @@ import (
 const EnvPrefix = "REGINALD" // prefix used for the environment variables.
 
 const (
-	defaultFileName  = "reginald"
-	defaultLogOutput = "~/.local/state/reginald.log"
+	defaultFileName    = "reginald"
+	defaultLogFileName = defaultFileName + ".log"
 )
 
 // Config is the parsed configuration of the program run. There should be only
@@ -86,6 +86,11 @@ func DefaultConfig() *Config {
 		panic(fmt.Sprintf("failed to get default directory: %v", err))
 	}
 
+	logOutput, err := DefaultLogOutput()
+	if err != nil {
+		panic(fmt.Sprintf("failed to get the default log output: %v", err))
+	}
+
 	pluginDir, err := DefaultPluginsDir()
 	if err != nil {
 		panic(fmt.Sprintf("failed to get default plugin directory: %v", err))
@@ -98,7 +103,7 @@ func DefaultConfig() *Config {
 			Enabled: true,
 			Format:  "json",
 			Level:   logs.LevelInfo,
-			Output:  "stdout", // TODO: Default to file.
+			Output:  logOutput.String(),
 		},
 		PluginDir: pluginDir,
 		Quiet:     false,
@@ -118,6 +123,16 @@ func DefaultDir() (fspath.Path, error) {
 	path, err := fspath.NewAbs(home, ".dotfiles")
 	if err != nil {
 		return "", fmt.Errorf("failed to convert directory to absolute path: %w", err)
+	}
+
+	return path, nil
+}
+
+// DefaultLogOutput returns the default logging output file to use.
+func DefaultLogOutput() (fspath.Path, error) {
+	path, err := defaultPlatformLogFile()
+	if err != nil {
+		return "", fmt.Errorf("%w", err)
 	}
 
 	return path, nil
