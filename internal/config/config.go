@@ -57,6 +57,9 @@ type Config struct {
 	// PluginDir is the directory where Reginald looks for the plugins.
 	PluginDir fspath.Path `mapstructure:"plugin-dir"`
 
+	// Defaults contains the default options set for tasks.
+	Defaults map[string]any `mapstructure:"defaults"`
+
 	// Plugins contains the rest of the config options which should only be
 	// plugin-defined options.
 	Plugins map[string]any `mapstructure:",remain"` //nolint:tagliatelle // linter doesn't know about "remain"

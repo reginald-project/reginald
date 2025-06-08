@@ -401,7 +401,8 @@ func (p *ValueParser) applyStructOverrides(ctx context.Context) error {
 			continue
 		}
 
-		if parser.Field.Name == "Plugins" || parser.Field.Name == "Tasks" {
+		if parser.Field.Name == "Defaults" || parser.Field.Name == "Plugins" ||
+			parser.Field.Name == "Tasks" {
 			continue
 		}
 
