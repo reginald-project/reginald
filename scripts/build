@@ -73,5 +73,5 @@ set -- \
   -ldflags "-X ${VERSION_PACKAGE}.buildVersion=${version}"
 
 printf 'building Reginald version %s\n' "${version}"
-set -x
+
 GOFLAGS= "${GO}" build "$@"
