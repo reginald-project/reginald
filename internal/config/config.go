@@ -101,6 +101,7 @@ func DefaultConfig() *Config {
 
 	return &Config{
 		Color:     iostreams.ColorAuto,
+		Defaults:  map[string]any{},
 		Directory: dir,
 		Logging: logging.Config{
 			Enabled: true,
