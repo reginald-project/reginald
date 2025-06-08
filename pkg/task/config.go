@@ -25,6 +25,6 @@ type Config struct {
 	// called when this task is executed.
 	Type string `mapstructure:"type"`
 
-	// ID is the unique ID for this task. It most be unique.
-	ID string `mapstructure:"id"`
+	// ID is the unique ID for this task. It must be unique.
+	ID string `mapstructure:"id,omitempty"`
 }
