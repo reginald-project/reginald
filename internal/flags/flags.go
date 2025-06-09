@@ -114,14 +114,14 @@ func (f *FlagSet) AddPluginFlag(entry *rpp.ConfigEntry) error {
 
 	// TODO: Add inverted flags.
 	switch entry.Type {
-	case rpp.ConfigBool:
+	case rpp.BoolValue:
 		defVal, ok := entry.Value.(bool)
 		if !ok {
 			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, entry.Value)
 		}
 
 		f.BoolP(flag.Name, flag.Shorthand, defVal, flag.Usage, "")
-	case rpp.ConfigInt:
+	case rpp.IntValue:
 		switch v := entry.Value.(type) {
 		case int:
 			f.IntP(flag.Name, flag.Shorthand, v, flag.Usage, "")
@@ -134,7 +134,7 @@ func (f *FlagSet) AddPluginFlag(entry *rpp.ConfigEntry) error {
 		default:
 			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, entry.Value)
 		}
-	case rpp.ConfigString:
+	case rpp.StringValue:
 		defVal, ok := entry.Value.(string)
 		if !ok {
 			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, entry.Value)

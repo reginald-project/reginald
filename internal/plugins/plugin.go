@@ -447,30 +447,6 @@ func (p *Plugin) handshake(ctx context.Context) error {
 		versionStr = version.String()
 	}
 
-	for _, t := range result.Tasks {
-		for _, c := range t.Configs {
-			if c.Flag != nil {
-				return fmt.Errorf(
-					"%w: plugin %q defined flag %q for task %q",
-					errHandshake,
-					result.Name,
-					c.Key,
-					t.Type,
-				)
-			}
-
-			if c.FlagOnly {
-				return fmt.Errorf(
-					"%w: plugin %q marked config %q for task %q as flag only",
-					errHandshake,
-					result.Name,
-					c.Key,
-					t.Type,
-				)
-			}
-		}
-	}
-
 	p.HandshakeResult = result
 	p.Version = versionStr
 

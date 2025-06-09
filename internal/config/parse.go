@@ -502,7 +502,7 @@ func (p *ValueParser) applyPluginOverrides(
 		logging.TraceContext(ctx, "checking plugin config", "parser", parser)
 
 		switch cfgVal.Type {
-		case rpp.ConfigBool:
+		case rpp.BoolValue:
 			x, err := parser.bool()
 			if err != nil {
 				return fmt.Errorf(
@@ -514,7 +514,7 @@ func (p *ValueParser) applyPluginOverrides(
 			}
 
 			cfgMap[cfgVal.Key] = x
-		case rpp.ConfigInt:
+		case rpp.IntValue:
 			x, err := parser.int()
 			if err != nil {
 				return fmt.Errorf(
@@ -526,7 +526,7 @@ func (p *ValueParser) applyPluginOverrides(
 			}
 
 			cfgMap[cfgVal.Key] = x
-		case rpp.ConfigString:
+		case rpp.StringValue:
 			x, err := parser.string()
 			if err != nil {
 				return fmt.Errorf(

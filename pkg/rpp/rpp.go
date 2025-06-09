@@ -49,22 +49,22 @@ const (
 
 // The different type values for config values and flags defined by the plugins.
 const (
-	ConfigBool   ConfigType = "bool"
-	ConfigInt    ConfigType = "int"
-	ConfigString ConfigType = "string"
+	BoolValue   ValueType = "bool"
+	IntValue    ValueType = "int"
+	StringValue ValueType = "string"
 )
 
 // Errors returned by the RPP helper functions.
 var (
-	errInvalidConfig  = errors.New("invalid config value type")
+	errInvalidValue   = errors.New("invalid value type")
 	errInvalidFlagDef = errors.New("invalid flag definition")
-	errConfigRead     = errors.New("reading config value failed")
+	errKVRead         = errors.New("reading value failed")
 	errZeroLength     = errors.New("content-length is zero")
 )
 
-// ConfigType is used as the type indicator of the fields that define the type
-// of a config entry or a flag.
-type ConfigType string
+// ValueType is used as the type indicator of the fields that define the type of
+// a KeyValue.
+type ValueType string
 
 // A Message is the Go representation of a message using RPP. It includes all of
 // the possible fields for a message. Thus, the values that are not used for a
@@ -142,7 +142,26 @@ type TaskInfo struct {
 	Type string `json:"type"`
 
 	// Configs contains the config entries for this task.
-	Configs []ConfigEntry `json:"configs,omitempty"`
+	Configs []KeyValue `json:"configs,omitempty"`
+}
+
+// KeyValue is a key-value entry in the protocol. It is used for simple config
+// entries and as a part of ConfigEntry.
+type KeyValue struct {
+	// Key is the key of the KeyValue as it would be written in the config file.
+	Key string `json:"key"`
+
+	// Value is the current value of the config entry as the type it should be
+	// defined as. If this KeyValue is used in a result to a handshake, this
+	// should be the default value of the KeyValue. When Reginald sends
+	// the configuration data to the plugin at different steps after that, Value
+	// contains the configured value of this KeyValue.
+	Value any `json:"value"`
+
+	// Type is a string representation of the type of the value that this
+	// KeyValue holds. The possible values can be found in the protocol
+	// description and in the constants of this package.
+	Type ValueType `json:"type"`
 }
 
 // A ConfigEntry is an entry in the config file that can also be set using
@@ -152,21 +171,7 @@ type TaskInfo struct {
 // a command (under the commands name in the file), or in a task (in a task
 // entry in the file).
 type ConfigEntry struct {
-	// Key is the key of the ConfigEntry as it would be written in the config
-	// file.
-	Key string `json:"key"`
-
-	// Value is the current value of the config entry as the type it should be
-	// defined as. If this ConfigEntry is used in a result to a handshake, this
-	// should be the default value of the ConfigEntry. When Reginald sends
-	// the configuration data to the plugin at different steps after that, Value
-	// contains the configured value of this ConfigEntry.
-	Value any `json:"value"`
-
-	// Type is a string representation of the type of the value that this config
-	// entry holds. The possible values can be found in the protocol description
-	// and in the constants of this package.
-	Type ConfigType `json:"type"`
+	KeyValue
 
 	// Flags contains the information on the possible command-line flag that is
 	// associated with this ConfigEntry. Flag must be nil if the ConfigEntry has
@@ -217,39 +222,53 @@ type Flag struct {
 	// TODO: Add invert and remove IgnoreInConfig.
 }
 
-// NewConfigEntry creates a new ConfigValue and returns it. This function is
-// primarily meant to be used outside of the handshake during the later method
-// calls. It only assigns the Key, Value, and Type fields.
-func NewConfigEntry(key string, value any) (ConfigEntry, error) {
-	var t ConfigType
+// NewKeyValue creates a new NewKeyValue and returns it.
+func NewKeyValue(key string, value any) (KeyValue, error) {
+	var t ValueType
 
 	switch value.(type) {
 	case bool:
-		t = ConfigBool
+		t = BoolValue
 	case int, int64:
-		t = ConfigInt
+		t = IntValue
 	case string:
-		t = ConfigString
+		t = StringValue
 	default:
-		return ConfigEntry{}, fmt.Errorf("%w: %[2]v (%[2]T) for %s", errInvalidConfig, value, key)
+		return KeyValue{}, fmt.Errorf("%w: %[2]v (%[2]T) for %s", errInvalidValue, value, key)
 	}
 
-	cfg := ConfigEntry{ //nolint:exhaustruct // rest are up to the caller
+	kv := KeyValue{
 		Key:   key,
 		Value: value,
 		Type:  t,
 	}
 
+	return kv, nil
+}
+
+// NewConfigEntry creates a new ConfigValue and returns it. This function is
+// primarily meant to be used outside of the handshake during the later method
+// calls. It only assigns the Key, Value, and Type fields.
+func NewConfigEntry(key string, value any) (ConfigEntry, error) {
+	kv, err := NewKeyValue(key, value)
+	if err != nil {
+		return ConfigEntry{}, fmt.Errorf("%w", err)
+	}
+
+	cfg := ConfigEntry{ //nolint:exhaustruct // rest are up to the caller
+		KeyValue: kv,
+	}
+
 	return cfg, nil
 }
 
-// Int returns value of c as an int.
-func (c *ConfigEntry) Int() (int, error) {
-	if c.Type != ConfigInt {
-		return 0, fmt.Errorf("%w: %q is not an int", errConfigRead, c.Key)
+// Int returns value of k as an int.
+func (k *KeyValue) Int() (int, error) {
+	if k.Type != IntValue {
+		return 0, fmt.Errorf("%w: %q is not an int", errKVRead, k.Key)
 	}
 
-	switch v := c.Value.(type) {
+	switch v := k.Value.(type) {
 	case int:
 		return v, nil
 	case int64:
@@ -258,7 +277,7 @@ func (c *ConfigEntry) Int() (int, error) {
 	case float64:
 		return int(v), nil
 	default:
-		return 0, fmt.Errorf("%w: invalid type %T", errConfigRead, v)
+		return 0, fmt.Errorf("%w: invalid type %T", errKVRead, v)
 	}
 }
 

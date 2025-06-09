@@ -55,9 +55,11 @@ func (*SleepCommand) UsageLine() string {
 func (*SleepCommand) Configs() []rpp.ConfigEntry {
 	return []rpp.ConfigEntry{
 		{ //nolint:exhaustruct // use the default values
-			Key:   "time",
-			Value: 5, //nolint:mnd // default value of 5s
-			Type:  rpp.ConfigInt,
+			KeyValue: rpp.KeyValue{
+				Key:   "time",
+				Value: 5, //nolint:mnd // default value of 5s
+				Type:  rpp.IntValue,
+			},
 			Flag: rpp.Flag{ //nolint:exhaustruct // use the default values
 				Shorthand: "t",
 				Usage:     "time to sleep in seconds (default 5s)",
