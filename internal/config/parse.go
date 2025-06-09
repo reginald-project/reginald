@@ -38,9 +38,9 @@ import (
 
 // Errors returned from the configuration parser.
 var (
+	ErrInvalidConfig      = errors.New("invalid config")
 	errConfigFileNotFound = errors.New("config file not found")
 	errInvalidCast        = errors.New("cannot convert type")
-	errInvalidConfig      = errors.New("invalid config")
 )
 
 // textUnmarshalerType is a helper variable for checking if types of fields in
@@ -294,7 +294,7 @@ func Validate(cfg *Config, p []*plugins.Plugin) error {
 		}
 
 		if !ok {
-			return fmt.Errorf("%w: invalid config key %q", errInvalidConfig, k)
+			return fmt.Errorf("%w: invalid config key %q", ErrInvalidConfig, k)
 		}
 	}
 
@@ -321,7 +321,7 @@ func (p *ValueParser) ApplyOverrides(ctx context.Context) error {
 		if ok {
 			pluginMap = m
 		} else if rawVal != nil {
-			return fmt.Errorf("%w: config for plugin %q is not a map", errInvalidConfig, plugin.Name)
+			return fmt.Errorf("%w: config for plugin %q is not a map", ErrInvalidConfig, plugin.Name)
 		}
 
 		// Use the name of the plugin as the prefix for the environment
@@ -349,7 +349,7 @@ func (p *ValueParser) ApplyOverrides(ctx context.Context) error {
 			if ok {
 				cmdMap = m
 			} else if rawVal != nil {
-				return fmt.Errorf("%w: config for plugin command %q is not a map", errInvalidConfig, cmd.Name)
+				return fmt.Errorf("%w: config for plugin command %q is not a map", ErrInvalidConfig, cmd.Name)
 			}
 
 			// Use the name of the command as the prefix for the environment
@@ -541,7 +541,7 @@ func (p *ValueParser) applyPluginOverrides(
 		default:
 			return fmt.Errorf(
 				"%w: ConfigEntry %q in plugin %q has invalid type: %s",
-				errInvalidConfig,
+				ErrInvalidConfig,
 				cfgVal.Key,
 				p.Plugin.Name,
 				cfgVal.Type,

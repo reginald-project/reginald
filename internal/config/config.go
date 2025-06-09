@@ -28,8 +28,8 @@ import (
 	"github.com/anttikivi/reginald/internal/fspath"
 	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/logging"
+	"github.com/anttikivi/reginald/internal/taskcfg"
 	"github.com/anttikivi/reginald/pkg/logs"
-	"github.com/anttikivi/reginald/pkg/task"
 )
 
 // EnvPrefix is the prefix added to the names of the config values when reading
@@ -58,7 +58,7 @@ type Config struct {
 	PluginDir fspath.Path `mapstructure:"plugin-dir"`
 
 	// Defaults contains the default options set for tasks.
-	Defaults map[string]any `mapstructure:"defaults"`
+	Defaults taskcfg.Defaults `mapstructure:"defaults"`
 
 	// Plugins contains the rest of the config options which should only be
 	// plugin-defined options.
@@ -66,7 +66,7 @@ type Config struct {
 
 	// Tasks contains tasks and the configs for them as given in the config
 	// file.
-	Tasks []task.Config `mapstructure:"tasks"`
+	Tasks []taskcfg.Config `mapstructure:"tasks"`
 
 	// Logging contains the config values for logging.
 	Logging logging.Config `flag:"log" mapstructure:"logging"`
@@ -101,7 +101,7 @@ func DefaultConfig() *Config {
 
 	return &Config{
 		Color:     iostreams.ColorAuto,
-		Defaults:  map[string]any{},
+		Defaults:  taskcfg.Defaults{},
 		Directory: dir,
 		Logging: logging.Config{
 			Enabled: true,
@@ -111,7 +111,7 @@ func DefaultConfig() *Config {
 		},
 		PluginDir: pluginDir,
 		Quiet:     false,
-		Tasks:     []task.Config{},
+		Tasks:     []taskcfg.Config{},
 		Verbose:   false,
 		Plugins:   map[string]any{},
 	}

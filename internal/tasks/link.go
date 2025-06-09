@@ -14,9 +14,31 @@
 
 package tasks
 
+import (
+	"context"
+	"fmt"
+
+	"github.com/anttikivi/reginald/internal/config"
+	"github.com/anttikivi/reginald/internal/taskcfg"
+)
+
 // NewLink returns a new instance of the link task.
 func NewLink() *Task {
 	return &Task{
-		Type: "link",
+		Type:     "link",
+		Validate: validateLink,
 	}
+}
+
+func validateLink(_ context.Context, _ *Task, opts taskcfg.Options) error {
+	for k, v := range opts {
+		switch k {
+		case "force":
+			continue
+		default:
+			return fmt.Errorf("%w: %q (value %v)", config.ErrInvalidConfig, k, v)
+		}
+	}
+
+	return nil
 }

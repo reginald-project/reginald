@@ -45,6 +45,8 @@ const (
 	MethodNotFound = -32601
 	InvalidParams  = -32602
 	InternalError  = -32603
+
+	InvalidConfig = -32050 // returned from the validation methods if the given config is invalid
 )
 
 // The different type values for config values and flags defined by the plugins.

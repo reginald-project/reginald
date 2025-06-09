@@ -14,6 +14,8 @@
 
 package plugin
 
+import "github.com/anttikivi/reginald/pkg/rpp"
+
 // Task is a task that Reginald can run. The task implementation is resolved by
 // the applying commands from either Reginald itself or plugins.
 type Task interface {
@@ -22,4 +24,9 @@ type Task interface {
 	// must not match any existing tasks either within Reginald or other
 	// plugins.
 	Type() string
+
+	// Validate runs the validation of the config for the matching task type.
+	// Only the actual task options are checked as the ID, type, and
+	// dependencies are validated by Reginald.
+	Validate(cfg []rpp.KeyValue) error
 }

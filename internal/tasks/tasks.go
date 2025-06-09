@@ -17,16 +17,23 @@
 package tasks
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 
+	"github.com/anttikivi/reginald/internal/config"
+	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/plugins"
+	"github.com/anttikivi/reginald/internal/taskcfg"
+	"github.com/anttikivi/reginald/pkg/rpp"
 )
 
 // Errors returned by the general taks functions.
 var (
-	ErrDuplicate = errors.New("duplicate task")
+	ErrDuplicate   = errors.New("duplicate task")
+	errNilValidate = errors.New("func Validate is nil")
 )
 
 // TaskTypes is a map of the available task types by type.
@@ -34,6 +41,9 @@ type TaskTypes map[string]*Task
 
 // A Task is a task within Reginald.
 type Task struct {
+	// Validate validates the given cfg for this task type.
+	Validate func(ctx context.Context, t *Task, opts taskcfg.Options) error
+
 	// Type is the name of the task type.
 	Type string
 }
@@ -56,6 +66,13 @@ func Tasks(ps []*plugins.Plugin) (TaskTypes, error) {
 			}
 
 			t := &Task{
+				Validate: func(ctx context.Context, t *Task, opts taskcfg.Options) error {
+					if err := p.ValidateTask(ctx, t.Type, opts); err != nil {
+						return fmt.Errorf("%w", err)
+					}
+
+					return nil
+				},
 				Type: info.Type,
 			}
 
@@ -75,4 +92,157 @@ func (t TaskTypes) LogValue() slog.Value {
 	}
 
 	return slog.GroupValue(attrs...)
+}
+
+// Configure propagates the default values for task configs, assigns missing
+// task IDs, and validates the task configs. The functions returns the new tasks
+// configs and does not edit the slice in place.
+func Configure(
+	ctx context.Context,
+	cfg []taskcfg.Config,
+	defaults taskcfg.Defaults,
+	types TaskTypes,
+) ([]taskcfg.Config, error) {
+	result := make([]taskcfg.Config, 0, len(cfg))
+	counts := make(map[string]int)
+
+	if err := validateDefaults(ctx, defaults, types); err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+
+	for _, tc := range cfg {
+		task, ok := types[tc.Type]
+		if !ok {
+			return nil, fmt.Errorf("%w: task type %q not found", config.ErrInvalidConfig, tc.Type)
+		}
+
+		id := tc.ID
+		if id == "" {
+			id = tc.Type + "-" + strconv.Itoa(counts[task.Type])
+		}
+
+		counts[task.Type]++
+
+		c := taskcfg.Config{
+			Options: tc.Options,
+			ID:      id,
+			Type:    task.Type,
+		}
+
+		if def, ok := defaults[task.Type]; ok {
+			m, ok := def.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf(
+					"%w: defaults for task type %q are not a map but %[3]T: %[3]v",
+					config.ErrInvalidConfig,
+					task.Type,
+					def,
+				)
+			}
+
+			addDefaults(&c, m)
+		}
+
+		logging.TraceContext(
+			ctx,
+			"running task validation",
+			"id",
+			c.ID,
+			"type",
+			c.Type,
+			"options",
+			c.Options,
+		)
+
+		if task.Validate == nil {
+			return nil, fmt.Errorf(
+				"cannot check config for %q (type %q): %w",
+				id,
+				task.Type,
+				errNilValidate,
+			)
+		}
+
+		if err := validate(ctx, task, c.Options); err != nil {
+			return nil, fmt.Errorf("%w: ID %q", err, id)
+		}
+
+		result = append(result, c)
+	}
+
+	logging.DebugContext(ctx, "task config parsed", "cfg", result)
+
+	return result, nil
+}
+
+// addDefaults adds the default config values to the given task Config. It
+// modifies the config in place.
+func addDefaults(cfg *taskcfg.Config, defaults map[string]any) {
+	// This should never be nil, but safeguard.
+	if cfg.Options == nil {
+		cfg.Options = make(map[string]any)
+	}
+
+	for k, v := range defaults {
+		if _, ok := cfg.Options[k]; ok {
+			continue
+		}
+
+		cfg.Options[k] = v
+	}
+}
+
+// validate is a helper function that runs the Validate function from the task
+// and resolves the error type to return a more informative message.
+func validate(ctx context.Context, t *Task, opts taskcfg.Options) error {
+	if err := t.Validate(ctx, t, opts); err != nil {
+		if errors.Is(err, config.ErrInvalidConfig) {
+			return fmt.Errorf("invalid config for %q: %w", t.Type, err)
+		}
+
+		var rppErr *rpp.Error
+		if errors.As(err, &rppErr) && rppErr.Code == rpp.InvalidConfig {
+			return fmt.Errorf("invalid config for %q: %w", t.Type, err)
+		}
+
+		return fmt.Errorf("failed to validate config for %q: %w", t.Type, err)
+	}
+
+	return nil
+}
+
+// validateDefaults runs the task config validation for the defaults given for
+// each task. The defaults should pass the same validation check as the actual
+// config values.
+func validateDefaults(ctx context.Context, defaults taskcfg.Defaults, types TaskTypes) error {
+	for tt, opts := range defaults {
+		t, ok := types[tt]
+		if !ok {
+			return fmt.Errorf("%w: task type %q not found", config.ErrInvalidConfig, tt)
+		}
+
+		if t.Validate == nil {
+			return fmt.Errorf("cannot check defaults for %q: %w", tt, errNilValidate)
+		}
+
+		m, ok := opts.(map[string]any)
+		if !ok {
+			return fmt.Errorf(
+				"%w: defaults for task type %q are not a map but %[3]T: %[3]v",
+				config.ErrInvalidConfig,
+				tt,
+				opts,
+			)
+		}
+
+		logging.TraceContext(ctx, "running defaults validation", "type", tt, "options", m)
+
+		if err := validate(ctx, t, m); err != nil {
+			return fmt.Errorf("%w: invalid defaults", err)
+		}
+	}
+
+	logging.DebugContext(ctx, "defaults validated", "defaults", defaults)
+
+	return nil
 }

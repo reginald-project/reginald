@@ -17,6 +17,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -24,6 +25,8 @@ import (
 	"github.com/anttikivi/reginald/pkg/rpp"
 	"github.com/anttikivi/reginald/pkg/rpp/plugin"
 )
+
+var errInvalidConfig = errors.New("invalid config")
 
 // EchoTask is the task implementation for the task type echo in this plugin.
 type EchoTask struct{}
@@ -36,6 +39,23 @@ type SleepCommand struct{}
 // any existing tasks either within Reginald or other plugins.
 func (*EchoTask) Type() string {
 	return "echo"
+}
+
+// Validate runs the validation of the config for the matching task type. Only
+// the actual task options are checked as the ID, type, and dependencies are
+// validated by Reginald.
+func (*EchoTask) Validate(cfg []rpp.KeyValue) error {
+	for _, c := range cfg {
+		if c.Key != "msg" {
+			return fmt.Errorf("%w: unknown key %q", errInvalidConfig, c.Key)
+		}
+
+		if c.Type != rpp.StringValue {
+			return fmt.Errorf("%w: invalid value for %q: %q", errInvalidConfig, c.Key, c.Type)
+		}
+	}
+
+	return nil
 }
 
 // Name returns the name of the command as it should be written by the user when

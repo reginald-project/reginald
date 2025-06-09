@@ -12,14 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package task offers utilities related to tasks in Reginald. These are shared
-// between Reginald implementations and the plugin utilities.
-package task
+// Package taskcfg provides the configuration types for the tasks.
+package taskcfg
+
+// Defaults is the type for the default config values set for the tasks.
+type Defaults map[string]any
+
+// Options is the type for the config options in a task config entry.
+type Options map[string]any
 
 // A Config is the configuration of a task.
 type Config struct {
 	// Options contains the rest of the config options for the task.
-	Options map[string]any `mapstructure:",remain"` //nolint:tagliatelle // linter doesn't know about "remain"
+	Options Options `mapstructure:",remain"` //nolint:tagliatelle // linter doesn't know about "remain"
 
 	// Type is the type of this task. It defines which task implementation is
 	// called when this task is executed.

@@ -33,6 +33,7 @@ import (
 	"github.com/anttikivi/reginald/internal/iostreams"
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/panichandler"
+	"github.com/anttikivi/reginald/internal/taskcfg"
 	"github.com/anttikivi/reginald/pkg/logs"
 	"github.com/anttikivi/reginald/pkg/rpp"
 	"github.com/anttikivi/semver"
@@ -52,6 +53,7 @@ var (
 	errNoParams        = errors.New("notification has no params")
 	errNoResponse      = errors.New("plugin disconnected before responding")
 	errNotFile         = errors.New("plugin path is not a file")
+	errTaskNotFound    = errors.New("given task is not present in the plugin")
 	errUnknownMethod   = errors.New("invalid method")
 	errWrongProtocol   = errors.New("mismatch in plugin protocol info")
 )
@@ -260,6 +262,77 @@ func (p *Plugin) SetupCmd(ctx context.Context, name string, cfg []rpp.ConfigEntr
 	}
 
 	logging.DebugContext(ctx, "setting up command succeeded", "plugin", p.Name, "result", result)
+
+	return nil
+}
+
+// ValidateTask runs the task validation for a task in a plugin with the given
+// task type tt and the given opts which should be validated.
+func (p *Plugin) ValidateTask(ctx context.Context, tt string, opts taskcfg.Options) error {
+	ok := false
+
+	for _, t := range p.Tasks {
+		if t.Type == tt {
+			ok = true
+
+			break
+		}
+	}
+
+	if !ok {
+		return fmt.Errorf("%w: task %q in plugin %q", errTaskNotFound, tt, p.Name)
+	}
+
+	params := rpp.ValidateTaskParams{
+		Type:   tt,
+		Config: make([]rpp.KeyValue, 0, len(opts)),
+	}
+
+	for k, v := range opts {
+		kv, err := rpp.NewKeyValue(k, v)
+		if err != nil {
+			return fmt.Errorf("failed to construct params for validating task %q: %w", tt, err)
+		}
+
+		params.Config = append(params.Config, kv)
+	}
+
+	method := rpp.MethodValidateTask
+
+	res, err := p.call(ctx, method, params)
+	if err != nil {
+		var rpcErr *rpp.Error
+		if errors.As(err, &rpcErr) && rpcErr.Code == rpp.InvalidConfig {
+			return fmt.Errorf("invalid task config: %w", rpcErr)
+		}
+
+		return fmt.Errorf(
+			"method call %q to plugin %s failed: %w",
+			method,
+			p.Name,
+			err,
+		)
+	}
+
+	// TODO: Add some sensible return type, maybe.
+	var result any
+	if err = json.Unmarshal(res.Result, &result); err != nil {
+		return fmt.Errorf(
+			"failed to unmarshal result for the %q method call to %s: %w",
+			method,
+			p.Name,
+			err,
+		)
+	}
+
+	logging.DebugContext(
+		ctx,
+		"validating task config succeeded",
+		"plugin",
+		p.Name,
+		"result",
+		result,
+	)
 
 	return nil
 }

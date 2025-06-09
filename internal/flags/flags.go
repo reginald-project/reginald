@@ -142,7 +142,13 @@ func (f *FlagSet) AddPluginFlag(entry *rpp.ConfigEntry) error {
 
 		f.StringP(flag.Name, flag.Shorthand, defVal, flag.Usage, "")
 	default:
-		return fmt.Errorf("%w: flag %q: %v (%T)", errInvalidFlagType, flag.Name, entry.Type, entry.Value)
+		return fmt.Errorf(
+			"%w: flag %q: %v (%T)",
+			errInvalidFlagType,
+			flag.Name,
+			entry.Type,
+			entry.Value,
+		)
 	}
 
 	return nil

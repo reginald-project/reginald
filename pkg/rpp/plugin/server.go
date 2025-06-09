@@ -295,6 +295,10 @@ func (p *Plugin) runMethod(msg *rpp.Message) error {
 		if err := p.setupCmd(msg); err != nil {
 			return fmt.Errorf("%w", err)
 		}
+	case rpp.MethodValidateTask:
+		if err := p.validateTask(msg); err != nil {
+			return fmt.Errorf("%w", err)
+		}
 	default:
 		err := p.respondError(msg.ID, &rpp.Error{
 			Code:    rpp.MethodNotFound,
@@ -514,6 +518,72 @@ func (p *Plugin) setupCmd(msg *rpp.Message) error {
 	}
 
 	// TODO: Call the seutp function defined by cmd.
+
+	if err := p.respond(msg.ID, struct{}{}); err != nil {
+		return fmt.Errorf("response in %s failed: %w", p.name, err)
+	}
+
+	return nil
+}
+
+// validateTask runs the "validateTask" method.
+func (p *Plugin) validateTask(msg *rpp.Message) error {
+	if msg.ID == nil {
+		err := p.respondError(msg.ID, &rpp.Error{
+			Code:    rpp.InvalidRequest,
+			Message: fmt.Sprintf("Method %q was called using a notification", msg.Method),
+			Data:    nil,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send error response: %w", err)
+		}
+
+		return nil
+	}
+
+	var params rpp.ValidateTaskParams
+
+	if err := json.Unmarshal(msg.Params, &params); err != nil {
+		err = p.respondError(msg.ID, &rpp.Error{
+			Code:    rpp.InvalidParams,
+			Message: "Failed to decode params",
+			Data:    err,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send error response: %w", err)
+		}
+
+		return nil
+	}
+
+	i := slices.IndexFunc(p.tasks, func(t Task) bool {
+		return t.Type() == params.Type
+	})
+	if i < 0 {
+		err := p.respondError(msg.ID, &rpp.Error{
+			Code:    rpp.InvalidParams,
+			Message: fmt.Sprintf("Invalid task type: %q", params.Type),
+			Data:    nil,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send error response: %w", err)
+		}
+
+		return nil
+	}
+
+	if err := p.tasks[i].Validate(params.Config); err != nil {
+		err = p.respondError(msg.ID, &rpp.Error{
+			Code:    rpp.InvalidConfig,
+			Message: err.Error(),
+			Data:    nil,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send error response: %w", err)
+		}
+
+		return nil
+	}
 
 	if err := p.respond(msg.ID, struct{}{}); err != nil {
 		return fmt.Errorf("response in %s failed: %w", p.name, err)

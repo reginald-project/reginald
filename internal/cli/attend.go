@@ -52,6 +52,15 @@ func setupAttend(ctx context.Context, cmd *Command, args []string) error {
 
 	logging.DebugContext(ctx, "loaded task types", "tasks", taskTypes)
 
+	cfg := cmd.cli.Cfg
+
+	cfg.Tasks, err = tasks.Configure(ctx, cfg.Tasks, cfg.Defaults, taskTypes)
+	if err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	logging.DebugContext(ctx, "config valid", "cfg", cfg)
+
 	return nil
 }
 

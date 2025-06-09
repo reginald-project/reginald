@@ -25,6 +25,7 @@ const (
 	MethodRunCommand   = "runCommand"
 	MethodRunTask      = "runTask"
 	MethodSetupCommand = "setupCommand"
+	MethodValidateTask = "validateTask"
 	MethodShutdown     = "shutdown"
 )
 
@@ -148,6 +149,20 @@ type SetupCmdParams struct {
 	// Config contains the config values of the command with the values set from
 	// the configuration sources.
 	Config []ConfigEntry `json:"config,omitempty"`
+}
+
+// ValidateTaskParams are the parameters for calling the "validateTask" method
+// in a plugin. The method checks if the given config values for a task are
+// valid. The same method is run for both the default values and the actual
+// parsed task configs.
+type ValidateTaskParams struct {
+	// Type is the name of task type for which the config is being validated.
+	Type string `json:"type"`
+
+	// Config contains the configuration options set for this task. These do not
+	// contain the "type", "id", or "depends-on" fields as they are validated
+	// internally by Reginald.
+	Config []KeyValue `json:"config,omitempty"`
 }
 
 // DefaultHandshakeParams returns the default parameters used by the client in
