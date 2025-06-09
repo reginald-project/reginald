@@ -25,8 +25,18 @@ import (
 	"github.com/anttikivi/reginald/pkg/rpp/plugin"
 )
 
+// EchoTask is the task implementation for the task type echo in this plugin.
+type EchoTask struct{}
+
 // SleepCommand is the command implementation for the sleep plugin.
 type SleepCommand struct{}
+
+// Type returns the name of the task type as it should be written by the user
+// when they specify it in, for example, their configuration. It must not match
+// any existing tasks either within Reginald or other plugins.
+func (*EchoTask) Type() string {
+	return "echo"
+}
 
 // Name returns the name of the command as it should be written by the user when
 // they run the command. It must not match any existing commands either within
@@ -79,7 +89,7 @@ func (*SleepCommand) Run(cfg []rpp.ConfigValue) error {
 }
 
 func main() {
-	p := plugin.New("example", "0.1.0-0.dev", &SleepCommand{})
+	p := plugin.New("example", "0.1.0-0.dev", &EchoTask{}, &SleepCommand{})
 
 	if err := p.Serve(); err != nil {
 		fmt.Fprintf(os.Stderr, "plugin %q is going to exit with an error: %v", "sleep", err)

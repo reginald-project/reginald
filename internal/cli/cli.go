@@ -40,6 +40,11 @@ const (
 	Name        = "reginald" // name of the command that's run
 )
 
+// Global errors returned by the commands.
+var (
+	ErrUnknownArg = errors.New("unknown command-line argument")
+)
+
 // Errors returned by the CLI commands.
 var (
 	errDuplicateCommand  = errors.New("duplicate command")

@@ -136,10 +136,10 @@ type CommandInfo struct {
 // only used for discovering the plugin capabilities, and the actual task
 // functionality is not implemented within this type.
 type TaskInfo struct {
-	// Name is the name of the task type as it should be written by the user
+	// Type is the name of the task type as it should be written by the user
 	// when they specify it in, for example, their configuration. It must not
 	// match any existing tasks either within Reginald or other plugins.
-	Name string `json:"name"`
+	Type string `json:"type"`
 
 	// Configs contains the config entries for this task.
 	Configs []ConfigValue `json:"configs,omitempty"`

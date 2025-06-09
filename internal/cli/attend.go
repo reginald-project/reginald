@@ -16,8 +16,10 @@ package cli
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/anttikivi/reginald/internal/logging"
+	"github.com/anttikivi/reginald/internal/tasks"
 )
 
 // NewAttend returns a new apply command.
@@ -36,8 +38,19 @@ func NewAttend() *Command {
 	return c
 }
 
-func setupAttend(ctx context.Context, _ *Command, _ []string) error {
+func setupAttend(ctx context.Context, cmd *Command, args []string) error {
 	logging.InfoContext(ctx, "setting up attend")
+
+	if len(args) > 0 {
+		return fmt.Errorf("%w: %q", ErrUnknownArg, args[0])
+	}
+
+	taskTypes, err := tasks.Tasks(cmd.cli.Plugins)
+	if err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	logging.DebugContext(ctx, "loaded task types", "tasks", taskTypes)
 
 	return nil
 }

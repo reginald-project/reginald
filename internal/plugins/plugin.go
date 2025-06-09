@@ -455,7 +455,7 @@ func (p *Plugin) handshake(ctx context.Context) error {
 					errHandshake,
 					result.Name,
 					c.Key,
-					t.Name,
+					t.Type,
 				)
 			}
 
@@ -465,7 +465,7 @@ func (p *Plugin) handshake(ctx context.Context) error {
 					errHandshake,
 					result.Name,
 					c.Key,
-					t.Name,
+					t.Type,
 				)
 			}
 		}

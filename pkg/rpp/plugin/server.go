@@ -140,7 +140,7 @@ func (p *Plugin) handshake(msg *rpp.Message) error {
 
 	for _, t := range p.tasks {
 		info := rpp.TaskInfo{
-			Name:    t.Name(),
+			Type:    t.Type(),
 			Configs: nil,
 		}
 		taskInfos = append(taskInfos, info)
