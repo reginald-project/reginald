@@ -107,8 +107,8 @@ type pluginParser struct {
 	// m is the config map that is currently being modified.
 	m map[string]any
 
-	// c is the [rpp.ConfigValue] that is currently being checked.
-	c rpp.ConfigValue
+	// c is the [rpp.ConfigEntry] that is currently being checked.
+	c rpp.ConfigEntry
 }
 
 // LogValue implements [slog.LogValuer] for [valueParser]. It returns a group
@@ -466,7 +466,7 @@ func (p *ValueParser) applyStructOverrides(ctx context.Context) error {
 func (p *ValueParser) applyPluginOverrides(
 	ctx context.Context,
 	cfgMap map[string]any,
-	configs []rpp.ConfigValue,
+	configs []rpp.ConfigEntry,
 ) error {
 	logging.TraceContext(ctx, "applying plugin overrides", "cfgs", configs)
 

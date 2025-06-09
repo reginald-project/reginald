@@ -41,11 +41,11 @@ func Initialize(ctx context.Context, plugins []*Plugin, cfgs map[string]any) err
 			tctx, cancel := context.WithTimeout(gctx, DefaultHandshakeTimeout)
 			defer cancel()
 
-			var cfg []rpp.ConfigValue
+			var cfg []rpp.ConfigEntry
 
 			if c, ok := cfgs[p.Name].(map[string]any); ok {
 				for k, v := range c {
-					cfgVal, err := rpp.NewConfigValue(k, v)
+					cfgVal, err := rpp.NewConfigEntry(k, v)
 					if err != nil {
 						return fmt.Errorf("%w", err)
 					}

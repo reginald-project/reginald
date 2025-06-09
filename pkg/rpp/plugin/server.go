@@ -33,11 +33,11 @@ type Plugin struct {
 	version string
 	in      *bufio.Reader
 	out     *bufio.Writer
-	configs []rpp.ConfigValue
+	configs []rpp.ConfigEntry
 
 	// cmdConfig contains the parsed config values for the command that is
 	// currently called by the client.
-	cmdConfig []rpp.ConfigValue
+	cmdConfig []rpp.ConfigEntry
 	cmds      []Command
 	tasks     []Task
 	shutdown  bool // set to true when the plugin should start shutdown
@@ -66,8 +66,8 @@ func New(name, version string, impls ...any) *Plugin {
 	return &Plugin{
 		name:      name,
 		version:   version,
-		configs:   []rpp.ConfigValue{},
-		cmdConfig: []rpp.ConfigValue{},
+		configs:   []rpp.ConfigEntry{},
+		cmdConfig: []rpp.ConfigEntry{},
 		cmds:      cmds,
 		tasks:     tasks,
 		in:        bufio.NewReader(os.Stdin),
@@ -196,7 +196,7 @@ func (p *Plugin) initialize(msg *rpp.Message) error {
 	}
 
 	for _, cfg := range params.Config {
-		i := slices.IndexFunc(p.configs, func(c rpp.ConfigValue) bool {
+		i := slices.IndexFunc(p.configs, func(c rpp.ConfigEntry) bool {
 			return c.Key == cfg.Key
 		})
 		if i < 0 {
@@ -473,7 +473,7 @@ func (p *Plugin) setupCmd(msg *rpp.Message) error {
 	cmd := p.cmds[i]
 
 	for _, cfg := range params.Config {
-		i := slices.IndexFunc(cmd.Configs(), func(c rpp.ConfigValue) bool {
+		i := slices.IndexFunc(cmd.Configs(), func(c rpp.ConfigEntry) bool {
 			return c.Key == cfg.Key
 		})
 		if i < 0 {

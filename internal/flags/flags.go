@@ -94,10 +94,10 @@ func (f *FlagSet) AddFlagSet(newSet *FlagSet) {
 
 // AddPluginFlag adds a flag to the flag set according to the given config value
 // specification from a plugin.
-func (f *FlagSet) AddPluginFlag(cv *rpp.ConfigValue) error {
+func (f *FlagSet) AddPluginFlag(entry *rpp.ConfigEntry) error {
 	var flag rpp.Flag
 
-	rf, err := cv.RealFlag()
+	rf, err := entry.RealFlag()
 	if err != nil {
 		return fmt.Errorf("%w", err)
 	}
@@ -113,16 +113,16 @@ func (f *FlagSet) AddPluginFlag(cv *rpp.ConfigValue) error {
 	}
 
 	// TODO: Add inverted flags.
-	switch cv.Type {
+	switch entry.Type {
 	case rpp.ConfigBool:
-		defVal, ok := cv.Value.(bool)
+		defVal, ok := entry.Value.(bool)
 		if !ok {
-			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cv.Value)
+			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, entry.Value)
 		}
 
 		f.BoolP(flag.Name, flag.Shorthand, defVal, flag.Usage, "")
 	case rpp.ConfigInt:
-		switch v := cv.Value.(type) {
+		switch v := entry.Value.(type) {
 		case int:
 			f.IntP(flag.Name, flag.Shorthand, v, flag.Usage, "")
 		case float64:
@@ -132,17 +132,17 @@ func (f *FlagSet) AddPluginFlag(cv *rpp.ConfigValue) error {
 
 			f.IntP(flag.Name, flag.Shorthand, u, flag.Usage, "")
 		default:
-			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cv.Value)
+			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, entry.Value)
 		}
 	case rpp.ConfigString:
-		defVal, ok := cv.Value.(string)
+		defVal, ok := entry.Value.(string)
 		if !ok {
-			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cv.Value)
+			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, entry.Value)
 		}
 
 		f.StringP(flag.Name, flag.Shorthand, defVal, flag.Usage, "")
 	default:
-		return fmt.Errorf("%w: flag %q: %v (%T)", errInvalidFlagType, flag.Name, cv.Type, cv.Value)
+		return fmt.Errorf("%w: flag %q: %v (%T)", errInvalidFlagType, flag.Name, entry.Type, entry.Value)
 	}
 
 	return nil

@@ -129,7 +129,7 @@ type CommandInfo struct {
 	UsageLine string `json:"usage"`
 
 	// Configs contains the config entries for this command.
-	Configs []ConfigValue `json:"configs,omitempty"`
+	Configs []ConfigEntry `json:"configs,omitempty"`
 }
 
 // TaskInfo contains information on a task that a plugin implements. TaskInfo is
@@ -142,16 +142,16 @@ type TaskInfo struct {
 	Type string `json:"type"`
 
 	// Configs contains the config entries for this task.
-	Configs []ConfigValue `json:"configs,omitempty"`
+	Configs []ConfigEntry `json:"configs,omitempty"`
 }
 
-// A ConfigValue is an entry in the config file that can also be set using
+// A ConfigEntry is an entry in the config file that can also be set using
 // an environment variable. As tasks are configured on a per-task basis,
 // the config values in tasks cannot be set using environment variables.
-// ConfigValue can be in the plugin (under the plugin's name in the file), in
+// ConfigEntry can be in the plugin (under the plugin's name in the file), in
 // a command (under the commands name in the file), or in a task (in a task
 // entry in the file).
-type ConfigValue struct {
+type ConfigEntry struct {
 	// Key is the key of the ConfigEntry as it would be written in the config
 	// file.
 	Key string `json:"key"`
@@ -191,7 +191,7 @@ type ConfigValue struct {
 	FlagOnly bool `json:"flagOnly,omitempty"`
 }
 
-// Flag is a field in [ConfigValue] that describes the command-line flag
+// Flag is a field in [ConfigEntry] that describes the command-line flag
 // associated with that ConfigValue. The default value and the value of Flag are
 // given using ConfigValue.Value. Only a ConfigValue for a command or a plugin
 // can have flags, and Reginald reports an error a flag is given for
@@ -217,10 +217,10 @@ type Flag struct {
 	// TODO: Add invert and remove IgnoreInConfig.
 }
 
-// NewConfigValue creates a new ConfigValue and returns it. This function is
+// NewConfigEntry creates a new ConfigValue and returns it. This function is
 // primarily meant to be used outside of the handshake during the later method
 // calls. It only assigns the Key, Value, and Type fields.
-func NewConfigValue(key string, value any) (ConfigValue, error) {
+func NewConfigEntry(key string, value any) (ConfigEntry, error) {
 	var t ConfigType
 
 	switch value.(type) {
@@ -231,10 +231,10 @@ func NewConfigValue(key string, value any) (ConfigValue, error) {
 	case string:
 		t = ConfigString
 	default:
-		return ConfigValue{}, fmt.Errorf("%w: %[2]v (%[2]T) for %s", errInvalidConfig, value, key)
+		return ConfigEntry{}, fmt.Errorf("%w: %[2]v (%[2]T) for %s", errInvalidConfig, value, key)
 	}
 
-	cfg := ConfigValue{ //nolint:exhaustruct // rest are up to the caller
+	cfg := ConfigEntry{ //nolint:exhaustruct // rest are up to the caller
 		Key:   key,
 		Value: value,
 		Type:  t,
@@ -244,7 +244,7 @@ func NewConfigValue(key string, value any) (ConfigValue, error) {
 }
 
 // Int returns value of c as an int.
-func (c *ConfigValue) Int() (int, error) {
+func (c *ConfigEntry) Int() (int, error) {
 	if c.Type != ConfigInt {
 		return 0, fmt.Errorf("%w: %q is not an int", errConfigRead, c.Key)
 	}
@@ -269,7 +269,7 @@ func (c *ConfigValue) Int() (int, error) {
 //
 // As the Flag may inherit its name from ConfigValue, the function also sets
 // the correct name for the Flag.
-func (c *ConfigValue) RealFlag() (*Flag, error) {
+func (c *ConfigEntry) RealFlag() (*Flag, error) {
 	switch v := c.Flag.(type) {
 	case nil:
 		return nil, nil //nolint:nilnil // TODO: See if sentinel error should be used.

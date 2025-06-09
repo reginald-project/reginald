@@ -152,7 +152,7 @@ func New(ctx context.Context, path fspath.Path) (*Plugin, error) {
 			Handshake:     rpp.DefaultHandshakeParams().Handshake,
 			Name:          string(path.Base()),
 			Version:       "0.0.0",
-			PluginConfigs: []rpp.ConfigValue{},
+			PluginConfigs: []rpp.ConfigEntry{},
 			Commands:      []rpp.CommandInfo{},
 			Tasks:         []rpp.TaskInfo{},
 		},
@@ -217,7 +217,7 @@ func (p *Plugin) RunCmd(ctx context.Context, name string) error {
 }
 
 // SetupCmd runs the setup for a command with the given name from this plugin.
-func (p *Plugin) SetupCmd(ctx context.Context, name string, cfg []rpp.ConfigValue) error {
+func (p *Plugin) SetupCmd(ctx context.Context, name string, cfg []rpp.ConfigEntry) error {
 	ok := false
 
 	for _, c := range p.Commands {
@@ -479,7 +479,7 @@ func (p *Plugin) handshake(ctx context.Context) error {
 	return nil
 }
 
-func (p *Plugin) initialize(ctx context.Context, cfg []rpp.ConfigValue) error {
+func (p *Plugin) initialize(ctx context.Context, cfg []rpp.ConfigEntry) error {
 	params := rpp.InitializeParams{
 		Config: cfg,
 		// TODO: Use the actual configs.

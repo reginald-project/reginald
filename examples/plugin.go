@@ -52,8 +52,8 @@ func (*SleepCommand) UsageLine() string {
 }
 
 // Configs returns the config entries of s.
-func (*SleepCommand) Configs() []rpp.ConfigValue {
-	return []rpp.ConfigValue{
+func (*SleepCommand) Configs() []rpp.ConfigEntry {
+	return []rpp.ConfigEntry{
 		{ //nolint:exhaustruct // use the default values
 			Key:   "time",
 			Value: 5, //nolint:mnd // default value of 5s
@@ -67,7 +67,7 @@ func (*SleepCommand) Configs() []rpp.ConfigValue {
 }
 
 // Run executes the command for the plugin.
-func (*SleepCommand) Run(cfg []rpp.ConfigValue) error {
+func (*SleepCommand) Run(cfg []rpp.ConfigEntry) error {
 	var (
 		err error
 		t   int

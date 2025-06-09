@@ -31,8 +31,8 @@ type Command interface {
 
 	// Configs returns the config options for this Command. The config options
 	// should also define the command-line flags of this command.
-	Configs() []rpp.ConfigValue
+	Configs() []rpp.ConfigEntry
 
 	// Run runs the command.
-	Run(cfg []rpp.ConfigValue) error
+	Run(cfg []rpp.ConfigEntry) error
 }

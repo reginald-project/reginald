@@ -68,7 +68,7 @@ type HandshakeResult struct {
 	// PluginConfigs contains the plugin-level config entries. If the name of
 	// the plugin and the name of a command are the same, PluginConfigs takes
 	// precedence over the configs defined by the command.
-	PluginConfigs []ConfigValue `json:"configs,omitempty"`
+	PluginConfigs []ConfigEntry `json:"configs,omitempty"`
 
 	// Commands contains the information on the command types this plugin
 	// offers. If the plugin does not provide any commands, this can be either
@@ -89,7 +89,7 @@ type HandshakeResult struct {
 type InitializeParams struct {
 	// Config contains the values of the plugin-wide configuration with
 	// the values set from the configuration sources.
-	Config []ConfigValue `json:"config,omitempty"`
+	Config []ConfigEntry `json:"config,omitempty"`
 
 	// Logging contains the logging configuration by Reginald. The plugin should
 	// aim to honor these settings in order to avoid sending log messages that
@@ -147,7 +147,7 @@ type SetupCmdParams struct {
 
 	// Config contains the config values of the command with the values set from
 	// the configuration sources.
-	Config []ConfigValue `json:"config,omitempty"`
+	Config []ConfigEntry `json:"config,omitempty"`
 }
 
 // DefaultHandshakeParams returns the default parameters used by the client in

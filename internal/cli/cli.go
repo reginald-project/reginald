@@ -388,21 +388,21 @@ func (c *CLI) addPluginCommands() error { //nolint:gocognit // no problem
 				Aliases:   []string{}, // TODO: Add alias support or at least think about it.
 				UsageLine: info.UsageLine,
 				Setup: func(ctx context.Context, cmd *Command, _ []string) error {
-					var values []rpp.ConfigValue
+					var entries []rpp.ConfigEntry
 
 					if c, ok := cmd.cli.Cfg.Plugins[cmd.Name].(map[string]any); ok {
 						for k, v := range c {
-							cfgVal, err := rpp.NewConfigValue(k, v)
+							cfgVal, err := rpp.NewConfigEntry(k, v)
 							if err != nil {
 								return fmt.Errorf("%w", err)
 							}
 
-							values = append(values, cfgVal)
+							entries = append(entries, cfgVal)
 						}
 					}
 
 					// TODO: Pass in the args.
-					if err := plugin.SetupCmd(ctx, cmd.Name, values); err != nil {
+					if err := plugin.SetupCmd(ctx, cmd.Name, entries); err != nil {
 						return fmt.Errorf(
 							"failed to run setup for command %q from plugin %q: %w",
 							cmd.Name,
