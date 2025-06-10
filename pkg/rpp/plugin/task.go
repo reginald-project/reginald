@@ -29,4 +29,9 @@ type Task interface {
 	// Only the actual task options are checked as the ID, type, and
 	// dependencies are validated by Reginald.
 	Validate(cfg []rpp.KeyValue) error
+
+	// Run runs this task. In the function call, dir will be the base directory
+	// of the Reginald run and cfg contains the configuration options for this
+	// task.
+	Run(dir string, cfg []rpp.KeyValue) error
 }

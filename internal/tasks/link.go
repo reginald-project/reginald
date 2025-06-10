@@ -19,26 +19,34 @@ import (
 	"fmt"
 
 	"github.com/anttikivi/reginald/internal/config"
+	"github.com/anttikivi/reginald/internal/fspath"
 	"github.com/anttikivi/reginald/internal/taskcfg"
 )
 
 // NewLink returns a new instance of the link task.
 func NewLink() *Task {
 	return &Task{
-		Type:     "link",
 		Validate: validateLink,
+		Run:      runLink,
+		Type:     "link",
 	}
 }
 
 func validateLink(_ context.Context, _ *Task, opts taskcfg.Options) error {
 	for k, v := range opts {
 		switch k {
-		case "force":
-			continue
+		case "create", "create-dirs", "force":
+			if !opts.IsBool(k) {
+				return fmt.Errorf("%w: %q is not a bool (%T)", config.ErrInvalidConfig, k, v)
+			}
 		default:
 			return fmt.Errorf("%w: %q (value %v)", config.ErrInvalidConfig, k, v)
 		}
 	}
 
+	return nil
+}
+
+func runLink(_ context.Context, _ *Task, _ fspath.Path, _ taskcfg.Options) error {
 	return nil
 }

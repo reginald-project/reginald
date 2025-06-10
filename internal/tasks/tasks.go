@@ -24,6 +24,7 @@ import (
 	"strconv"
 
 	"github.com/anttikivi/reginald/internal/config"
+	"github.com/anttikivi/reginald/internal/fspath"
 	"github.com/anttikivi/reginald/internal/logging"
 	"github.com/anttikivi/reginald/internal/plugins"
 	"github.com/anttikivi/reginald/internal/taskcfg"
@@ -33,6 +34,7 @@ import (
 // Errors returned by the general taks functions.
 var (
 	ErrDuplicate   = errors.New("duplicate task")
+	errNilRun      = errors.New("func Run is nil")
 	errNilValidate = errors.New("func Validate is nil")
 )
 
@@ -43,6 +45,9 @@ type TaskTypes map[string]*Task
 type Task struct {
 	// Validate validates the given cfg for this task type.
 	Validate func(ctx context.Context, t *Task, opts taskcfg.Options) error
+
+	// Run runs the task.
+	Run func(ctx context.Context, t *Task, dir fspath.Path, opts taskcfg.Options) error
 
 	// Type is the name of the task type.
 	Type string
@@ -73,6 +78,13 @@ func Tasks(ps []*plugins.Plugin) (TaskTypes, error) {
 
 					return nil
 				},
+				Run: func(ctx context.Context, t *Task, dir fspath.Path, opts taskcfg.Options) error {
+					if err := p.RunTask(ctx, t.Type, dir, opts); err != nil {
+						return fmt.Errorf("%w", err)
+					}
+
+					return nil
+				},
 				Type: info.Type,
 			}
 
@@ -81,17 +93,6 @@ func Tasks(ps []*plugins.Plugin) (TaskTypes, error) {
 	}
 
 	return tasks, nil
-}
-
-// LogValue implements [slog.LogValuer] for TaskTypes.
-func (t TaskTypes) LogValue() slog.Value {
-	attrs := make([]slog.Attr, 0, len(t))
-
-	for k, v := range t {
-		attrs = append(attrs, slog.Any(k, *v))
-	}
-
-	return slog.GroupValue(attrs...)
 }
 
 // Configure propagates the default values for task configs, assigns missing
@@ -173,6 +174,50 @@ func Configure(
 	logging.DebugContext(ctx, "task config parsed", "cfg", result)
 
 	return result, nil
+}
+
+// Run runs the tasks defined by cfg. The configuration does not guarantee
+// the execution order, but Run resolves the defined dependencies and executes
+// according to them.
+func Run(ctx context.Context, cfg *config.Config, types TaskTypes) error {
+	for _, tc := range cfg.Tasks {
+		task, ok := types[tc.Type]
+		if !ok {
+			return fmt.Errorf("%w: task type %q not found", config.ErrInvalidConfig, tc.Type)
+		}
+
+		logging.TraceContext(
+			ctx,
+			"running task",
+			"id",
+			tc.ID,
+			"type",
+			task.Type,
+			"options",
+			tc.Options,
+		)
+
+		if task.Run == nil {
+			return fmt.Errorf("cannot run task %q (type %q): %w", tc.ID, task.Type, errNilRun)
+		}
+
+		if err := task.Run(ctx, task, cfg.Directory, tc.Options); err != nil {
+			return fmt.Errorf("failed to run task %q (type %q): %w", tc.ID, task.Type, err)
+		}
+	}
+
+	return nil
+}
+
+// LogValue implements [slog.LogValuer] for TaskTypes.
+func (t TaskTypes) LogValue() slog.Value {
+	attrs := make([]slog.Attr, 0, len(t))
+
+	for k, v := range t {
+		attrs = append(attrs, slog.Any(k, *v))
+	}
+
+	return slog.GroupValue(attrs...)
 }
 
 // addDefaults adds the default config values to the given task Config. It

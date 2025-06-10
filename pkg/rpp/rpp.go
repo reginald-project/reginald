@@ -283,6 +283,20 @@ func (k *KeyValue) Int() (int, error) {
 	}
 }
 
+// String returns value of k as a string.
+func (k *KeyValue) String() (string, error) {
+	if k.Type != StringValue {
+		return "", fmt.Errorf("%w: %q is not a string", errKVRead, k.Key)
+	}
+
+	switch v := k.Value.(type) {
+	case string:
+		return v, nil
+	default:
+		return "", fmt.Errorf("%w: invalid type %T", errKVRead, v)
+	}
+}
+
 // RealFlag resolves the real type for ConfigValue.Flag and returns a pointer to
 // the Flag if it is set. If the flag is not set, it returns nil. As the flag
 // might be decoded into a map when it is passed using JSON-RCP, RealFlag

@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/anttikivi/reginald/pkg/rpp"
@@ -53,6 +54,30 @@ func (*EchoTask) Validate(cfg []rpp.KeyValue) error {
 		if c.Type != rpp.StringValue {
 			return fmt.Errorf("%w: invalid value for %q: %q", errInvalidConfig, c.Key, c.Type)
 		}
+	}
+
+	return nil
+}
+
+// Run runs this task. In the function call, dir will be the base directory of
+// the Reginald run and cfg contains the configuration options for this task.
+func (*EchoTask) Run(_ string, cfg []rpp.KeyValue) error {
+	i := slices.IndexFunc(cfg, func(kv rpp.KeyValue) bool {
+		return kv.Key == "msg"
+	})
+	msg := cfg[i]
+
+	if msg.Type != rpp.StringValue {
+		return fmt.Errorf("%w: invalid value for %q: %q", errInvalidConfig, msg.Key, msg.Type)
+	}
+
+	s, err := msg.String()
+	if err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	if _, err = fmt.Fprintln(os.Stderr, s); err != nil {
+		return fmt.Errorf("%w", err)
 	}
 
 	return nil

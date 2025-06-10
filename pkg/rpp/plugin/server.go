@@ -244,6 +244,8 @@ func (p *Plugin) initialize(msg *rpp.Message) error {
 
 // runMethod runs the requested method and responds to it. It returns an error
 // when an unrecoverable error is encountered.
+//
+//nolint:cyclop // need to switch through the methods
 func (p *Plugin) runMethod(msg *rpp.Message) error {
 	switch msg.Method {
 	case rpp.MethodExit:
@@ -272,6 +274,10 @@ func (p *Plugin) runMethod(msg *rpp.Message) error {
 		}
 	case rpp.MethodRunCommand:
 		if err := p.runCmd(msg); err != nil {
+			return fmt.Errorf("%w", err)
+		}
+	case rpp.MethodRunTask:
+		if err := p.runTask(msg); err != nil {
 			return fmt.Errorf("%w", err)
 		}
 	case rpp.MethodShutdown:
@@ -413,6 +419,72 @@ func (p *Plugin) runCmd(msg *rpp.Message) error {
 			Code:    -32000,
 			Message: "Command failed",
 			Data:    err,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send error response: %w", err)
+		}
+
+		return nil
+	}
+
+	if err := p.respond(msg.ID, struct{}{}); err != nil {
+		return fmt.Errorf("response in %s failed: %w", p.name, err)
+	}
+
+	return nil
+}
+
+// runTask runs the "runTask" method.
+func (p *Plugin) runTask(msg *rpp.Message) error {
+	if msg.ID == nil {
+		err := p.respondError(msg.ID, &rpp.Error{
+			Code:    rpp.InvalidRequest,
+			Message: fmt.Sprintf("method %q was called using a notification", msg.Method),
+			Data:    nil,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send error response: %w", err)
+		}
+
+		return nil
+	}
+
+	var params rpp.RunTaskParams
+
+	if err := json.Unmarshal(msg.Params, &params); err != nil {
+		err = p.respondError(msg.ID, &rpp.Error{
+			Code:    rpp.InvalidParams,
+			Message: "failed to decode params",
+			Data:    err,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send error response: %w", err)
+		}
+
+		return nil
+	}
+
+	i := slices.IndexFunc(p.tasks, func(t Task) bool {
+		return t.Type() == params.Type
+	})
+	if i < 0 {
+		err := p.respondError(msg.ID, &rpp.Error{
+			Code:    rpp.InvalidParams,
+			Message: fmt.Sprintf("invalid task type: %q", params.Type),
+			Data:    nil,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send error response: %w", err)
+		}
+
+		return nil
+	}
+
+	if err := p.tasks[i].Run(params.Dir, params.Config); err != nil {
+		err = p.respondError(msg.ID, &rpp.Error{
+			Code:    rpp.InternalError,
+			Message: err.Error(),
+			Data:    nil,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to send error response: %w", err)

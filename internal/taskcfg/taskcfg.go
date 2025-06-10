@@ -33,3 +33,17 @@ type Config struct {
 	// ID is the unique ID for this task. It must be unique.
 	ID string `mapstructure:"id,omitempty"`
 }
+
+// IsBool reports whether o has an entry with the given key that is a bool.
+func (o Options) IsBool(key string) bool {
+	v, ok := o[key]
+	if !ok {
+		return false
+	}
+
+	if _, ok := v.(bool); !ok {
+		return false
+	}
+
+	return true
+}

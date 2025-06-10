@@ -218,6 +218,65 @@ func (p *Plugin) RunCmd(ctx context.Context, name string) error {
 	return nil
 }
 
+// RunTask runs a task with the given type tt from this plugin.
+func (p *Plugin) RunTask(
+	ctx context.Context,
+	tt string,
+	dir fspath.Path,
+	opts taskcfg.Options,
+) error {
+	ok := false
+
+	for _, t := range p.Tasks {
+		if t.Type == tt {
+			ok = true
+
+			break
+		}
+	}
+
+	if !ok {
+		return fmt.Errorf("%w: task %q in plugin %q", errTaskNotFound, tt, p.Name)
+	}
+
+	params := rpp.RunTaskParams{
+		Type:   tt,
+		Dir:    string(dir),
+		Config: make([]rpp.KeyValue, 0, len(opts)),
+	}
+
+	for k, v := range opts {
+		kv, err := rpp.NewKeyValue(k, v)
+		if err != nil {
+			return fmt.Errorf("failed to construct params for running task %q: %w", tt, err)
+		}
+
+		params.Config = append(params.Config, kv)
+	}
+
+	method := rpp.MethodRunTask
+
+	res, err := p.call(ctx, method, params)
+	if err != nil {
+		return fmt.Errorf("method call %q to plugin %s failed: %w", method, p.Name, err)
+	}
+
+	// TODO: Add some sensible return type, maybe.
+	var result any
+	if err = json.Unmarshal(res.Result, &result); err != nil {
+		return fmt.Errorf(
+			"failed to unmarshal result for the %q method call to %s: %w",
+			method,
+			p.Name,
+			err,
+		)
+	}
+
+	logging.DebugContext(ctx, "running task succeeded", "plugin", p.Name, "result", result)
+
+	return nil
+}
+
 // SetupCmd runs the setup for a command with the given name from this plugin.
 func (p *Plugin) SetupCmd(ctx context.Context, name string, cfg []rpp.ConfigEntry) error {
 	ok := false

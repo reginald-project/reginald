@@ -136,6 +136,19 @@ type RunCmdParams struct {
 	Name string `json:"name"`
 }
 
+// RunTaskParams are the parameters passed when the client runs a task from
+// a plugin.
+type RunTaskParams struct {
+	// Type is the name of task type that is run.
+	Type string `json:"type"`
+
+	// Dir is the base directory of the program run.
+	Dir string `json:"dir"`
+
+	// Config contains the configuration options set for this task.
+	Config []KeyValue `json:"config,omitempty"`
+}
+
 // SetupCmdParams are the parameters passed when the client runs a command setup
 // from a plugin.
 type SetupCmdParams struct {

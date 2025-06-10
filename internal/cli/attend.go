@@ -45,7 +45,7 @@ func setupAttend(ctx context.Context, cmd *Command, args []string) error {
 		return fmt.Errorf("%w: %q", ErrUnknownArg, args[0])
 	}
 
-	taskTypes, err := tasks.Tasks(cmd.cli.Plugins)
+	taskTypes, err := cmd.cli.TaskTypes()
 	if err != nil {
 		return fmt.Errorf("%w", err)
 	}
@@ -64,8 +64,23 @@ func setupAttend(ctx context.Context, cmd *Command, args []string) error {
 	return nil
 }
 
-func runAttend(ctx context.Context, _ *Command) error {
+func runAttend(ctx context.Context, cmd *Command) error {
 	logging.InfoContext(ctx, "running attend")
+
+	taskTypes, err := cmd.cli.TaskTypes()
+	if err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	logging.DebugContext(ctx, "loaded task types", "tasks", taskTypes)
+
+	cfg := cmd.cli.Cfg
+
+	if err := tasks.Run(ctx, cfg, taskTypes); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	logging.DebugContext(ctx, "attend ran")
 
 	return nil
 }

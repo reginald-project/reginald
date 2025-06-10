@@ -78,8 +78,8 @@ type CLI struct {
 	// commands is the list of all subcommands combined.
 	commands []*Command
 
-	// TODO: tasks is a list of tasks instances according to the config.
-	tasks []*tasks.Task //nolint:unused // TODO: Will be used soon.
+	// taskTypes is a map of the available task types.
+	taskTypes tasks.TaskTypes
 
 	// flagSet is the flag set that contains all of the flags that are supported
 	// by the current subcommand that is run. The flags are combined from
@@ -108,7 +108,7 @@ func New() *CLI {
 		builtinCommands:        []*Command{},
 		pluginCommands:         []*Command{},
 		commands:               []*Command{},
-		tasks:                  []*tasks.Task{},
+		taskTypes:              nil,
 		flagSet:                nil,
 		flags:                  flags.NewFlagSet(Name, pflag.ContinueOnError),
 		mutuallyExclusiveFlags: [][]string{},
@@ -336,6 +336,20 @@ func (c *CLI) LoadPlugins(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// TaskTypes returns the available task types, loading them if necessary.
+func (c *CLI) TaskTypes() (tasks.TaskTypes, error) {
+	if c.taskTypes == nil {
+		tts, err := tasks.Tasks(c.Plugins)
+		if err != nil {
+			return nil, fmt.Errorf("%w", err)
+		}
+
+		c.taskTypes = tts
+	}
+
+	return c.taskTypes, nil
 }
 
 // add adds the given command to the list of commands of c and marks c as the
