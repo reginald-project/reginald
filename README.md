@@ -43,7 +43,7 @@ As the project is in an early stage, there is no prebuilt binaries or releases
 available. You can still build and run Reginald on your machine if you have Go
 and preferably `make` installed.
 
-After cloning the repository, switch to it and run:
+After cloning the repository, change to it and run:
 
     make build
 
