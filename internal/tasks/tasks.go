@@ -21,14 +21,17 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 
 	"github.com/anttikivi/reginald/internal/config"
 	"github.com/anttikivi/reginald/internal/fspath"
 	"github.com/anttikivi/reginald/internal/logging"
+	"github.com/anttikivi/reginald/internal/panichandler"
 	"github.com/anttikivi/reginald/internal/plugins"
 	"github.com/anttikivi/reginald/internal/taskcfg"
 	"github.com/anttikivi/reginald/pkg/rpp"
+	"golang.org/x/sync/errgroup"
 )
 
 // Errors returned by the general taks functions.
@@ -125,9 +128,10 @@ func Configure(
 		counts[task.Type]++
 
 		c := taskcfg.Config{
-			Options: tc.Options,
-			ID:      id,
-			Type:    task.Type,
+			ID:           id,
+			Type:         task.Type,
+			Options:      tc.Options,
+			Dependencies: tc.Dependencies,
 		}
 
 		if def, ok := defaults[task.Type]; ok {
@@ -180,29 +184,73 @@ func Configure(
 // the execution order, but Run resolves the defined dependencies and executes
 // according to them.
 func Run(ctx context.Context, cfg *config.Config, types TaskTypes) error {
-	for _, tc := range cfg.Tasks {
-		task, ok := types[tc.Type]
-		if !ok {
-			return fmt.Errorf("%w: task type %q not found", config.ErrInvalidConfig, tc.Type)
+	g, err := taskcfg.NewGraph(cfg.Tasks)
+	if err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	runs, err := g.Sorted()
+	if err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	for _, tasks := range runs {
+		eg, gctx := errgroup.WithContext(ctx)
+
+		for _, node := range tasks {
+			handlePanic := panichandler.WithStackTrace()
+
+			eg.Go(func() error {
+				defer handlePanic()
+
+				task, ok := types[node.Type]
+				if !ok {
+					return fmt.Errorf(
+						"%w: task type %q not found",
+						config.ErrInvalidConfig,
+						task.Type,
+					)
+				}
+
+				i := slices.IndexFunc(cfg.Tasks, func(c taskcfg.Config) bool {
+					return c.ID == node.ID
+				})
+				if i < 0 {
+					panic(fmt.Sprintf("task graph with unknown task ID %q", node.ID))
+				}
+
+				c := cfg.Tasks[i]
+
+				logging.TraceContext(
+					ctx,
+					"running task",
+					"id",
+					node.ID,
+					"type",
+					task.Type,
+					"options",
+					c.Options,
+				)
+
+				if task.Run == nil {
+					return fmt.Errorf(
+						"cannot run task %q (type %q): %w",
+						c.ID,
+						task.Type,
+						errNilRun,
+					)
+				}
+
+				if err := task.Run(gctx, task, cfg.Directory, c.Options); err != nil {
+					return fmt.Errorf("failed to run task %q (type %q): %w", c.ID, task.Type, err)
+				}
+
+				return nil
+			})
 		}
 
-		logging.TraceContext(
-			ctx,
-			"running task",
-			"id",
-			tc.ID,
-			"type",
-			task.Type,
-			"options",
-			tc.Options,
-		)
-
-		if task.Run == nil {
-			return fmt.Errorf("cannot run task %q (type %q): %w", tc.ID, task.Type, errNilRun)
-		}
-
-		if err := task.Run(ctx, task, cfg.Directory, tc.Options); err != nil {
-			return fmt.Errorf("failed to run task %q (type %q): %w", tc.ID, task.Type, err)
+		if err := eg.Wait(); err != nil {
+			return fmt.Errorf("%w", err)
 		}
 	}
 

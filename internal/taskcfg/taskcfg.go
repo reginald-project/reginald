@@ -23,15 +23,19 @@ type Options map[string]any
 
 // A Config is the configuration of a task.
 type Config struct {
-	// Options contains the rest of the config options for the task.
-	Options Options `mapstructure:",remain"` //nolint:tagliatelle // linter doesn't know about "remain"
-
 	// Type is the type of this task. It defines which task implementation is
 	// called when this task is executed.
 	Type string `mapstructure:"type"`
 
-	// ID is the unique ID for this task. It must be unique.
+	// ID is the unique ID for this task. It must be unique. The ID must also be
+	// different from the provided task types.
 	ID string `mapstructure:"id,omitempty"`
+
+	// Options contains the rest of the config options for the task.
+	Options Options `mapstructure:",remain"` //nolint:tagliatelle // linter doesn't know about "remain"
+
+	// Dependencies are the task IDs or types that this task depends on.
+	Dependencies []string `mapstructure:"dependencies"`
 }
 
 // IsBool reports whether o has an entry with the given key that is a bool.
