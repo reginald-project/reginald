@@ -24,12 +24,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/anttikivi/reginald/internal/cli"
-	"github.com/anttikivi/reginald/internal/iostreams"
-	"github.com/anttikivi/reginald/internal/logging"
-	"github.com/anttikivi/reginald/internal/panichandler"
-	"github.com/anttikivi/reginald/internal/plugins"
-	"github.com/anttikivi/reginald/pkg/version"
+	"github.com/reginald-project/reginald/internal/cli"
+	"github.com/reginald-project/reginald/internal/iostreams"
+	"github.com/reginald-project/reginald/internal/logging"
+	"github.com/reginald-project/reginald/internal/panichandler"
+	"github.com/reginald-project/reginald/internal/plugins"
+	"github.com/reginald-project/reginald/pkg/version"
 )
 
 func main() {

@@ -33,9 +33,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anttikivi/reginald/internal/fspath"
-	"github.com/anttikivi/reginald/internal/iostreams"
-	"github.com/anttikivi/reginald/pkg/logs"
+	"github.com/reginald-project/reginald/internal/fspath"
+	"github.com/reginald-project/reginald/internal/iostreams"
+	"github.com/reginald-project/reginald/pkg/logs"
 )
 
 // Default values for the logger.

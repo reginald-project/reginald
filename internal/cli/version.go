@@ -19,7 +19,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/anttikivi/reginald/pkg/version"
+	"github.com/reginald-project/reginald/pkg/version"
 )
 
 // printVersion prints the version information of the standard output.

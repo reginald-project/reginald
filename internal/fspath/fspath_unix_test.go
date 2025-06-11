@@ -21,7 +21,7 @@ import (
 	"os/user"
 	"testing"
 
-	"github.com/anttikivi/reginald/internal/fspath"
+	"github.com/reginald-project/reginald/internal/fspath"
 )
 
 func TestAbs(t *testing.T) {

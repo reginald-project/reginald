@@ -34,7 +34,7 @@ COPYRIGHT_HOLDER = Antti Kivi
 LICENSE = apache
 ADDLICENSE_PATTERNS = *.go examples internal pkg scripts
 
-GO_MODULE = github.com/anttikivi/reginald
+GO_MODULE = github.com/reginald-project/reginald
 
 RM = rm -f
 

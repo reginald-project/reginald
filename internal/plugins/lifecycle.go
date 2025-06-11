@@ -19,11 +19,11 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/anttikivi/reginald/internal/fspath"
-	"github.com/anttikivi/reginald/internal/iostreams"
-	"github.com/anttikivi/reginald/internal/logging"
-	"github.com/anttikivi/reginald/internal/panichandler"
-	"github.com/anttikivi/reginald/pkg/rpp"
+	"github.com/reginald-project/reginald/internal/fspath"
+	"github.com/reginald-project/reginald/internal/iostreams"
+	"github.com/reginald-project/reginald/internal/logging"
+	"github.com/reginald-project/reginald/internal/panichandler"
+	"github.com/reginald-project/reginald/pkg/rpp"
 	"golang.org/x/sync/errgroup"
 )
 

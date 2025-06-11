@@ -22,8 +22,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/anttikivi/reginald/internal/fspath"
-	"github.com/anttikivi/reginald/pkg/rpp"
+	"github.com/reginald-project/reginald/internal/fspath"
+	"github.com/reginald-project/reginald/pkg/rpp"
 	"github.com/spf13/pflag"
 )
 

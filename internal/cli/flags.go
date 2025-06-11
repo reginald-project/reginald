@@ -17,7 +17,7 @@ package cli
 import (
 	"strings"
 
-	"github.com/anttikivi/reginald/internal/flags"
+	"github.com/reginald-project/reginald/internal/flags"
 )
 
 // collectFlags removes all of the known flags from the arguments list and

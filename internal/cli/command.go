@@ -18,8 +18,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/anttikivi/reginald/internal/flags"
-	"github.com/anttikivi/reginald/internal/plugins"
+	"github.com/reginald-project/reginald/internal/flags"
+	"github.com/reginald-project/reginald/internal/plugins"
 	"github.com/spf13/pflag"
 )
 

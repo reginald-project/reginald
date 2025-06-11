@@ -24,12 +24,12 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/anttikivi/reginald/internal/flags"
-	"github.com/anttikivi/reginald/internal/fspath"
-	"github.com/anttikivi/reginald/internal/iostreams"
-	"github.com/anttikivi/reginald/internal/logging"
-	"github.com/anttikivi/reginald/internal/taskcfg"
-	"github.com/anttikivi/reginald/pkg/logs"
+	"github.com/reginald-project/reginald/internal/flags"
+	"github.com/reginald-project/reginald/internal/fspath"
+	"github.com/reginald-project/reginald/internal/iostreams"
+	"github.com/reginald-project/reginald/internal/logging"
+	"github.com/reginald-project/reginald/internal/taskcfg"
+	"github.com/reginald-project/reginald/pkg/logs"
 )
 
 // EnvPrefix is the prefix added to the names of the config values when reading

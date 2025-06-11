@@ -18,8 +18,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/anttikivi/reginald/internal/logging"
-	"github.com/anttikivi/reginald/internal/tasks"
+	"github.com/reginald-project/reginald/internal/logging"
+	"github.com/reginald-project/reginald/internal/tasks"
 )
 
 // NewAttend returns a new apply command.

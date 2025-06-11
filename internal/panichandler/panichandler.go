@@ -26,9 +26,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/anttikivi/reginald/internal/iostreams"
-	"github.com/anttikivi/reginald/internal/logging"
-	"github.com/anttikivi/reginald/pkg/version"
+	"github.com/reginald-project/reginald/internal/iostreams"
+	"github.com/reginald-project/reginald/internal/logging"
+	"github.com/reginald-project/reginald/pkg/version"
 	"golang.org/x/term"
 )
 
@@ -42,7 +42,7 @@ Reginald has encountered an unexpected error. This is most likely a bug in the p
 	footer = `
 Please open an issue at:
 
-	https://github.com/anttikivi/reginald/issues
+	https://github.com/reginald-project/reginald/issues
 
 Thank you for helping Reginald!
 `

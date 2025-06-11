@@ -14,7 +14,7 @@
 
 package plugin
 
-import "github.com/anttikivi/reginald/pkg/rpp"
+import "github.com/reginald-project/reginald/pkg/rpp"
 
 // Task is a task that Reginald can run. The task implementation is resolved by
 // the applying commands from either Reginald itself or plugins.

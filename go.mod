@@ -1,4 +1,4 @@
-module github.com/anttikivi/reginald
+module github.com/reginald-project/reginald
 
 go 1.24.3
 

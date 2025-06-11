@@ -29,7 +29,7 @@ linters:
           list-mode: strict
           allow:
             - $gostd
-            - github.com/anttikivi/reginald
+            - github.com/reginald-project/reginald
             - github.com/anttikivi/semver
             - github.com/go-viper/mapstructure/v2
             - github.com/pelletier/go-toml/v2
@@ -53,7 +53,7 @@ linters:
       package-scope-only: false
     exhaustruct:
       exclude:
-        - '^github\.com/anttikivi/reginald/pkg/rpp\.Message$'
+        - '^github\.com/reginald-project/reginald/pkg/rpp\.Message$'
     funcorder:
       constructor: true
       struct-method: true

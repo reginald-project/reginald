@@ -14,7 +14,7 @@
 
 package rpp
 
-import "github.com/anttikivi/reginald/pkg/logs"
+import "github.com/reginald-project/reginald/pkg/logs"
 
 // Standard method names used by the RPP.
 const (

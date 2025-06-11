@@ -18,9 +18,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/anttikivi/reginald/internal/config"
-	"github.com/anttikivi/reginald/internal/fspath"
-	"github.com/anttikivi/reginald/internal/taskcfg"
+	"github.com/reginald-project/reginald/internal/config"
+	"github.com/reginald-project/reginald/internal/fspath"
+	"github.com/reginald-project/reginald/internal/taskcfg"
 )
 
 // NewLink returns a new instance of the link task.

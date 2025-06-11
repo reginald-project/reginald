@@ -23,8 +23,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/anttikivi/reginald/pkg/rpp"
-	"github.com/anttikivi/reginald/pkg/rpp/plugin"
+	"github.com/reginald-project/reginald/pkg/rpp"
+	"github.com/reginald-project/reginald/pkg/rpp/plugin"
 )
 
 var errInvalidConfig = errors.New("invalid config")

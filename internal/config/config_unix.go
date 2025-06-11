@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/anttikivi/reginald/internal/fspath"
+	"github.com/reginald-project/reginald/internal/fspath"
 )
 
 func defaultPlatformLogFile() (fspath.Path, error) {

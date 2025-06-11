@@ -1,8 +1,8 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/anttikivi/reginald/blob/main/.github/reginald-gray-suit.svg?raw=true">
-    <source media="(prefers-color-scheme: light)" srcset="https://github.com/anttikivi/reginald/blob/main/.github/reginald-black-suit.svg?raw=true">
-    <img alt="Reginald the gopher valet" src="https://github.com/anttikivi/reginald/blob/main/.github/reginald-black-suit.svg?raw=true" width="200" style="max-width: 100%;">
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/reginald-project/reginald/blob/main/.github/reginald-gray-suit.svg?raw=true">
+    <source media="(prefers-color-scheme: light)" srcset="https://github.com/reginald-project/reginald/blob/main/.github/reginald-black-suit.svg?raw=true">
+    <img alt="Reginald the gopher valet" src="https://github.com/reginald-project/reginald/blob/main/.github/reginald-black-suit.svg?raw=true" width="200" style="max-width: 100%;">
   </picture>
 </p>
 
@@ -12,7 +12,7 @@
 
 👔 the personal workstation valet
 
-[![CI](https://github.com/anttikivi/reginald/actions/workflows/ci.yml/badge.svg)](https://github.com/anttikivi/reginald/actions/workflows/ci.yml)
+[![CI](https://github.com/reginald-project/reginald/actions/workflows/ci.yml/badge.svg)](https://github.com/reginald-project/reginald/actions/workflows/ci.yml)
 
 </div>
 

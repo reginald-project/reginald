@@ -20,7 +20,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/anttikivi/reginald/internal/fspath"
+	"github.com/reginald-project/reginald/internal/fspath"
 )
 
 // Default values for the BufferedFileWriter.

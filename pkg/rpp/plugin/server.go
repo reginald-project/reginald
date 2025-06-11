@@ -23,7 +23,7 @@ import (
 	"os"
 	"slices"
 
-	"github.com/anttikivi/reginald/pkg/rpp"
+	"github.com/reginald-project/reginald/pkg/rpp"
 )
 
 // A Plugin is a plugin server that contains the information for running the

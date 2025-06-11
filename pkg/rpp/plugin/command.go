@@ -14,7 +14,7 @@
 
 package plugin
 
-import "github.com/anttikivi/reginald/pkg/rpp"
+import "github.com/reginald-project/reginald/pkg/rpp"
 
 // A Command is an interface that the commands defined by plugins that use the
 // provided plugin server should implement. The plugin server uses the values

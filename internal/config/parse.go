@@ -26,12 +26,12 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/anttikivi/reginald/internal/flags"
-	"github.com/anttikivi/reginald/internal/fspath"
-	"github.com/anttikivi/reginald/internal/iostreams"
-	"github.com/anttikivi/reginald/internal/logging"
-	"github.com/anttikivi/reginald/internal/plugins"
-	"github.com/anttikivi/reginald/pkg/rpp"
+	"github.com/reginald-project/reginald/internal/flags"
+	"github.com/reginald-project/reginald/internal/fspath"
+	"github.com/reginald-project/reginald/internal/iostreams"
+	"github.com/reginald-project/reginald/internal/logging"
+	"github.com/reginald-project/reginald/internal/plugins"
+	"github.com/reginald-project/reginald/pkg/rpp"
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/pelletier/go-toml/v2"
 )

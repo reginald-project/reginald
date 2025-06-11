@@ -115,7 +115,7 @@ this time provide an actual JSON Schema file.
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/anttikivi/reginald/blob/main/docs/protocol.md",
+  "$id": "https://github.com/reginald-project/reginald/blob/main/docs/protocol.md",
   "title": "Reginald Plugin Protocol",
   "type": "object"
 }

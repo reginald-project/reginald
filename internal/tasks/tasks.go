@@ -24,13 +24,13 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/anttikivi/reginald/internal/config"
-	"github.com/anttikivi/reginald/internal/fspath"
-	"github.com/anttikivi/reginald/internal/logging"
-	"github.com/anttikivi/reginald/internal/panichandler"
-	"github.com/anttikivi/reginald/internal/plugins"
-	"github.com/anttikivi/reginald/internal/taskcfg"
-	"github.com/anttikivi/reginald/pkg/rpp"
+	"github.com/reginald-project/reginald/internal/config"
+	"github.com/reginald-project/reginald/internal/fspath"
+	"github.com/reginald-project/reginald/internal/logging"
+	"github.com/reginald-project/reginald/internal/panichandler"
+	"github.com/reginald-project/reginald/internal/plugins"
+	"github.com/reginald-project/reginald/internal/taskcfg"
+	"github.com/reginald-project/reginald/pkg/rpp"
 	"golang.org/x/sync/errgroup"
 )
 

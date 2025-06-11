@@ -24,13 +24,13 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/anttikivi/reginald/internal/config"
-	"github.com/anttikivi/reginald/internal/flags"
-	"github.com/anttikivi/reginald/internal/fspath"
-	"github.com/anttikivi/reginald/internal/logging"
-	"github.com/anttikivi/reginald/internal/plugins"
-	"github.com/anttikivi/reginald/internal/tasks"
-	"github.com/anttikivi/reginald/pkg/rpp"
+	"github.com/reginald-project/reginald/internal/config"
+	"github.com/reginald-project/reginald/internal/flags"
+	"github.com/reginald-project/reginald/internal/fspath"
+	"github.com/reginald-project/reginald/internal/logging"
+	"github.com/reginald-project/reginald/internal/plugins"
+	"github.com/reginald-project/reginald/internal/tasks"
+	"github.com/reginald-project/reginald/pkg/rpp"
 	"github.com/spf13/pflag"
 )
 
