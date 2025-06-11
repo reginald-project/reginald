@@ -29,6 +29,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/anttikivi/semver"
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/iostreams"
 	"github.com/reginald-project/reginald/internal/logging"
@@ -36,7 +37,6 @@ import (
 	"github.com/reginald-project/reginald/internal/taskcfg"
 	"github.com/reginald-project/reginald/pkg/logs"
 	"github.com/reginald-project/reginald/pkg/rpp"
-	"github.com/anttikivi/semver"
 )
 
 // Default values associated with the plugin client.
