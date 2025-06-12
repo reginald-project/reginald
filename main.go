@@ -29,7 +29,7 @@ import (
 	"github.com/reginald-project/reginald/internal/logging"
 	"github.com/reginald-project/reginald/internal/panichandler"
 	"github.com/reginald-project/reginald/internal/plugins"
-	"github.com/reginald-project/reginald/pkg/version"
+	"github.com/reginald-project/reginald/internal/version"
 )
 
 func main() {
@@ -85,15 +85,14 @@ func run() int {
 
 func runCLI(ctx context.Context) error {
 	c := cli.New()
-	if ok, err := c.Initialize(ctx); err != nil {
+	cfg, err := cli.CreateConfig(ctx, c)
+	if err != nil {
 		return fmt.Errorf("%w", err)
-	} else if !ok {
-		return nil
 	}
 
-	iostreams.Streams = iostreams.New(c.Cfg.Quiet, c.Cfg.Verbose, c.Cfg.Color)
+	iostreams.Streams = iostreams.New(cfg.Quiet, cfg.Verbose, cfg.Color)
 
-	if err := logging.Init(c.Cfg.Logging); err != nil {
+	if err := logging.Init(cfg.Logging); err != nil {
 		return fmt.Errorf("failed to initialize logging: %w", err)
 	}
 

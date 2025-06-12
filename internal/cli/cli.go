@@ -59,33 +59,8 @@ type CLI struct {
 	// UsageLine is the one-line synopsis of the program.
 	UsageLine string
 
-	// Cfg is the instance of [config.Config] that is used for this run.
-	Cfg *config.Config
-
-	// Plugins is a list of all of the currently loaded Plugins.
-	Plugins []*plugins.Plugin
-
-	// cmd is the subcommand that is run.
-	cmd *Command
-
-	// builtinCommands contains the subcommands of the CLI that are not from
-	// plugins.
-	builtinCommands []*Command // list of subcommands
-
-	// pluginCommands contains the subcommands that are defined by plugins.
-	pluginCommands []*Command
-
 	// commands is the list of all subcommands combined.
 	commands []*Command
-
-	// taskTypes is a map of the available task types.
-	taskTypes tasks.TaskTypes
-
-	// flagSet is the flag set that contains all of the flags that are supported
-	// by the current subcommand that is run. The flags are combined from
-	// the global flags from this CLI, the global flags of the parent commands
-	// of the subcommand, and the flags of the subcommand itself.
-	flagSet *flags.FlagSet
 
 	// flags is the flag set that registers the global command-line flags of
 	// this CLI. It should be noted that all of the flags registered to the CLI
@@ -102,14 +77,7 @@ type CLI struct {
 func New() *CLI {
 	cli := &CLI{
 		UsageLine:              Name + " [--version] [-h | --help] <command> [<args>]",
-		Cfg:                    nil,
-		Plugins:                []*plugins.Plugin{},
-		cmd:                    nil,
-		builtinCommands:        []*Command{},
-		pluginCommands:         []*Command{},
 		commands:               []*Command{},
-		taskTypes:              nil,
-		flagSet:                nil,
 		flags:                  flags.NewFlagSet(Name, pflag.ContinueOnError),
 		mutuallyExclusiveFlags: [][]string{},
 	}
@@ -251,44 +219,6 @@ func (c *CLI) Execute(ctx context.Context) error {
 	return nil
 }
 
-// Initialize initializes the CLI by checking if the "--help" or "--version"
-// flags are set without any other arguments and by doing the first round of
-// configuration parsing. As the program should not continue its execution if
-// the "--help" or "--version" flags are invoked here, Initialize return false
-// if the execution should not continue. Otherwise, the first return value is
-// true.
-func (c *CLI) Initialize(ctx context.Context) (bool, error) {
-	// Create a temporary flag set for the initialization.
-	flagSet := flags.NewFlagSet(c.flags.Name(), pflag.ContinueOnError)
-
-	flagSet.AddFlagSet(c.flags)
-
-	// Ignore errors for now as we want to get all of the flags from plugins
-	// first.
-	err := flagSet.Parse(os.Args[1:])
-	if err != nil {
-		logging.DebugContext(ctx, "initial flag parsing yielded an error", "err", err.Error())
-	}
-
-	var ok bool
-
-	ok, err = c.shortCircuit(flagSet)
-	if err != nil {
-		return false, fmt.Errorf("%w", err)
-	}
-
-	if !ok {
-		return false, nil
-	}
-
-	c.Cfg, err = config.Parse(ctx, flagSet)
-	if err != nil {
-		return false, fmt.Errorf("failed to parse the config: %w", err)
-	}
-
-	return true, nil
-}
-
 // LoadPlugins finds and executes all of the plugins in the plugins directory
 // found in the configuration in c. It sets plugins in c to a slice of pointers
 // to the found and executed plugins.
@@ -350,6 +280,29 @@ func (c *CLI) TaskTypes() (tasks.TaskTypes, error) {
 	}
 
 	return c.taskTypes, nil
+}
+
+// CreateConfig creates the initial config instance by locating the config file
+// and parsing it with the basic set of flags provided by the CLI.
+func CreateConfig(ctx context.Context, c *CLI) (*config.Config, error) {
+	// Create a temporary flag set for the initialization.
+	flagSet := flags.NewFlagSet(c.flags.Name(), pflag.ContinueOnError)
+
+	flagSet.AddFlagSet(c.flags)
+
+	// Ignore errors for now as we want to get all of the flags from plugins
+	// first.
+	err := flagSet.Parse(os.Args[1:])
+	if err != nil {
+		logging.DebugContext(ctx, "initial flag parsing yielded an error", "err", err.Error())
+	}
+
+	cfg, err := config.Parse(ctx, flagSet)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse the config: %w", err)
+	}
+
+	return cfg, nil
 }
 
 // add adds the given command to the list of commands of c and marks c as the

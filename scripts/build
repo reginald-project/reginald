@@ -65,7 +65,7 @@ if [ -z "${output}" ]; then
   output="reginald${exe}"
 fi
 
-VERSION_PACKAGE="github.com/reginald-project/reginald/pkg/version"
+VERSION_PACKAGE="github.com/reginald-project/reginald/internal/version"
 
 set -- \
   -o "${output}" \

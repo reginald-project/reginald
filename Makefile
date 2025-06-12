@@ -74,10 +74,12 @@ fmt: FORCE tidy
 build: FORCE go
 	@./scripts/build "$(GO)" "$(VERSION)" "$(PRERELEASE)" "$(BUILD_METADATA)" "" "$(GOFLAGS)"
 
-plugins: FORCE example-plugin
+plugins: FORCE reginald-go
 
-example-plugin: FORCE go
-	"$(GO)" build -o reginald-example ./examples
+reginald-go: FORCE go
+	mkdir -p ./bin/go
+	cp ./plugins/go/manifest.json ./bin/go/manifest.json
+	"$(GO)" build -o ./bin/go/reginald-go ./plugins/go
 
 clean: FORCE
 	@exe=""; \
@@ -93,7 +95,7 @@ clean: FORCE
 	fi; \
 	\
 	$(RM) "$${output}"
-	@$(RM) reginald-example
+	@$(RM) -r bin
 
 # TOOL HELPERS
 
