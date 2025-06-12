@@ -31,10 +31,10 @@ import (
 
 	"github.com/anttikivi/semver"
 	"github.com/reginald-project/reginald/internal/fspath"
-	"github.com/reginald-project/reginald/internal/iostreams"
 	"github.com/reginald-project/reginald/internal/logging"
 	"github.com/reginald-project/reginald/internal/panichandler"
 	"github.com/reginald-project/reginald/internal/taskcfg"
+	"github.com/reginald-project/reginald/internal/terminal"
 	"github.com/reginald-project/reginald/pkg/logs"
 	"github.com/reginald-project/reginald/pkg/rpp"
 )
@@ -412,7 +412,7 @@ func (p *Plugin) countProtocolError(ctx context.Context, reason string) {
 			"count",
 			n,
 		)
-		iostreams.Errorf("Too many protocol errors by %s, killing the process...", p.Name)
+		terminal.Errorf("Too many protocol errors by %s, killing the process...", p.Name)
 		p.kill(ctx)
 	}
 }
@@ -767,7 +767,7 @@ func (p *Plugin) readStderr(ctx context.Context, panicHandler func()) {
 	for p.stderr.Scan() {
 		line := p.stderr.Text()
 
-		iostreams.PrintErrf("[%s:err] %s\n", p.Name, line)
+		terminal.PrintErrf("[%s:err] %s\n", p.Name, line)
 		logging.WarnContext(ctx, "plugin printed to stderr", "plugin", p.Name, "output", line)
 	}
 

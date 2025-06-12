@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package iostreams defines the IO stream utilities for the Reginald terminal
-// user interface. Most importantly, it defines the global instance that should
-// be used for output in the program.
-package iostreams
+// Package terminal defines the terminal and IO utilities for the Reginald
+// terminal user interface. Most importantly, it defines the global instance
+// that should be used for output in the program.
+package terminal
 
 import (
 	"bufio"
@@ -48,9 +48,9 @@ const (
 	red
 )
 
-// Streams is the global IO streams instance for the program. It must be
+// streams is the global IO streams instance for the program. It must be
 // initialized before use.
-var Streams *IOStreams //nolint:gochecknoglobals // global IO instance
+var streams *IO //nolint:gochecknoglobals // global IO instance
 
 // errInvalidOutput is appended to the stream errors when a message has
 // an invalid output value.
@@ -59,13 +59,13 @@ var errInvalidOutput = errors.New("invalid message output")
 // Output is the property of a message that tells its Output destination.
 type Output int
 
-// IOStreams is the type of the global input and output object. By default, it
+// IO is the type of the global input and output object. By default, it
 // locks with the global standard input and output streams' mutual exclusion
 // lock before writing. If the reading or writing operations using this type
 // return an error, it will be stored within the struct.
-type IOStreams struct {
-	out           chan message
-	flush         chan chan struct{}
+type IO struct {
+	outCh         chan message
+	flushCh       chan chan struct{}
 	wg            sync.WaitGroup
 	errs          []error
 	errsMu        sync.Mutex
@@ -74,10 +74,10 @@ type IOStreams struct {
 	colorsEnabled bool
 }
 
-// A StreamWriter is an [io.Writer] created from an instance of [IOStreams] that
+// A StreamWriter is an [io.Writer] created from an instance of [IO] that
 // can be used to write to the same output channel.
 type StreamWriter struct {
-	s      *IOStreams
+	s      *IO
 	output Output
 }
 
@@ -89,8 +89,8 @@ type message struct {
 	output Output
 }
 
-// New returns a new IOStreams for the given settings.
-func New(quiet, verbose bool, colors ColorMode) *IOStreams {
+// NewIO returns a new IO for the given settings.
+func NewIO(quiet, verbose bool, colors ColorMode) *IO {
 	var colorsEnabled bool
 
 	switch colors {
@@ -104,9 +104,9 @@ func New(quiet, verbose bool, colors ColorMode) *IOStreams {
 		panic(fmt.Sprintf("invalid IOStreams color mode: %v", colors))
 	}
 
-	s := &IOStreams{
-		out:           make(chan message),
-		flush:         make(chan chan struct{}),
+	s := &IO{
+		outCh:         make(chan message),
+		flushCh:       make(chan chan struct{}),
 		wg:            sync.WaitGroup{},
 		errs:          nil,
 		errsMu:        sync.Mutex{},
@@ -122,7 +122,7 @@ func New(quiet, verbose bool, colors ColorMode) *IOStreams {
 }
 
 // NewWriter creates a new StreamWriter. It panics on errors.
-func NewWriter(s *IOStreams, output Output) *StreamWriter {
+func NewWriter(s *IO, output Output) *StreamWriter {
 	if s == nil {
 		panic("attempt to create StreamWriter with nil IOStreams")
 	}
@@ -133,15 +133,15 @@ func NewWriter(s *IOStreams, output Output) *StreamWriter {
 	}
 }
 
-func (s *IOStreams) Close() {
+func (s *IO) Close() {
 	s.Flush()
-	close(s.out)
+	close(s.outCh)
 	s.wg.Wait()
 }
 
 // Err returns the errors that s has encountered. [errors.Join] is called on the
 // errors before returning them.
-func (s *IOStreams) Err() error {
+func (s *IO) Err() error {
 	s.errsMu.Lock()
 	defer s.errsMu.Unlock()
 
@@ -149,17 +149,17 @@ func (s *IOStreams) Err() error {
 }
 
 // Flush flushes the underlying buffer.
-func (s *IOStreams) Flush() {
+func (s *IO) Flush() {
 	ack := make(chan struct{})
-	s.flush <- ack
+	s.flushCh <- ack
 	<-ack
 }
 
 // Errorf formats according to a format specifier and writes to standard error
 // output of s. If colors are enabled, the message is printed in red. It stores
 // possible errors within s.
-func (s *IOStreams) Errorf(format string, a ...any) {
-	s.out <- message{
+func (s *IO) Errorf(format string, a ...any) {
+	s.outCh <- message{
 		msg:    s.colorf(red, format, a...),
 		output: Stderr,
 	}
@@ -168,12 +168,12 @@ func (s *IOStreams) Errorf(format string, a ...any) {
 // Print formats using the default formats for its operands and writes to
 // standard output buffer of s. Spaces are added between operands when neither
 // is a string. It stores possible errors within s.
-func (s *IOStreams) Print(a ...any) {
+func (s *IO) Print(a ...any) {
 	if s.quiet {
 		return
 	}
 
-	s.out <- message{
+	s.outCh <- message{
 		msg:    fmt.Sprint(a...),
 		output: Buffered,
 	}
@@ -181,8 +181,8 @@ func (s *IOStreams) Print(a ...any) {
 
 // PrintErrf formats according to a format specifier and writes to standard
 // error output of s. It stores possible errors within s.
-func (s *IOStreams) PrintErrf(format string, a ...any) {
-	s.out <- message{
+func (s *IO) PrintErrf(format string, a ...any) {
+	s.outCh <- message{
 		msg:    fmt.Sprintf(format, a...),
 		output: Stderr,
 	}
@@ -190,12 +190,12 @@ func (s *IOStreams) PrintErrf(format string, a ...any) {
 
 // Printf formats according to a format specifier and writes to standard output
 // buffer of s. It stores possible errors within s.
-func (s *IOStreams) Printf(format string, a ...any) {
+func (s *IO) Printf(format string, a ...any) {
 	if s.quiet {
 		return
 	}
 
-	s.out <- message{
+	s.outCh <- message{
 		msg:    fmt.Sprintf(format, a...),
 		output: Buffered,
 	}
@@ -204,12 +204,12 @@ func (s *IOStreams) Printf(format string, a ...any) {
 // Println formats using the default formats for its operands and writes to
 // standard output buffer of s. Spaces are always added between operands and
 // a newline is appended. It stores possible errors within s.
-func (s *IOStreams) Println(a ...any) {
+func (s *IO) Println(a ...any) {
 	if s.quiet {
 		return
 	}
 
-	s.out <- message{
+	s.outCh <- message{
 		msg:    fmt.Sprintln(a...),
 		output: Buffered,
 	}
@@ -218,7 +218,7 @@ func (s *IOStreams) Println(a ...any) {
 // Write writes the contents of p into the output channel. It returns the number
 // of bytes written.
 func (w *StreamWriter) Write(p []byte) (int, error) {
-	w.s.out <- message{
+	w.s.outCh <- message{
 		msg:    string(p),
 		output: w.output,
 	}
@@ -226,34 +226,44 @@ func (w *StreamWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// Streams returns the default global terminal IO instance.
+func Streams() *IO {
+	return streams
+}
+
 // Errorf formats according to a format specifier and writes to standard error
 // output of [Streams]. If colors are enabled, the message is printed in red. It
 // stores possible errors within [Streams].
 func Errorf(format string, a ...any) {
-	if Streams == nil {
+	if streams == nil {
 		panic("tried to call nil Streams")
 	}
 
-	Streams.Errorf(format, a...)
+	streams.Errorf(format, a...)
 }
 
 // PrintErrf formats according to a format specifier and writes to standard
 // error output of [Streams]. It stores possible errors within [Streams].
 func PrintErrf(format string, a ...any) {
-	if Streams == nil {
+	if streams == nil {
 		panic("tried to call nil Streams")
 	}
 
-	Streams.PrintErrf(format, a...)
+	streams.PrintErrf(format, a...)
 }
 
-func (s *IOStreams) appendErr(err error) {
+// SetStreams set the default global IO instace to the given [IO].
+func SetStreams(io *IO) {
+	streams = io
+}
+
+func (s *IO) appendErr(err error) {
 	s.errsMu.Lock()
 	defer s.errsMu.Unlock()
 	s.errs = append(s.errs, err)
 }
 
-func (s *IOStreams) colorf(c code, format string, a ...any) string {
+func (s *IO) colorf(c code, format string, a ...any) string {
 	msg := fmt.Sprintf(format, a...)
 
 	if !s.colorsEnabled {
@@ -263,7 +273,7 @@ func (s *IOStreams) colorf(c code, format string, a ...any) string {
 	return fmt.Sprintf("%s[%dm%s%s[%dm", escape, c, msg, escape, reset)
 }
 
-func (s *IOStreams) output() {
+func (s *IO) output() {
 	defer s.wg.Done()
 
 	buf := bufio.NewWriter(os.Stdout)
@@ -276,7 +286,7 @@ func (s *IOStreams) output() {
 
 	for {
 		select {
-		case msg, ok := <-s.out:
+		case msg, ok := <-s.outCh:
 			if !ok {
 				if err := buf.Flush(); err != nil {
 					s.appendErr(err)
@@ -304,7 +314,7 @@ func (s *IOStreams) output() {
 			if err != nil {
 				s.appendErr(err)
 			}
-		case ack := <-s.flush:
+		case ack := <-s.flushCh:
 			flush()
 			close(ack)
 		}

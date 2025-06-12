@@ -34,7 +34,7 @@ import (
 	"time"
 
 	"github.com/reginald-project/reginald/internal/fspath"
-	"github.com/reginald-project/reginald/internal/iostreams"
+	"github.com/reginald-project/reginald/internal/terminal"
 	"github.com/reginald-project/reginald/pkg/logs"
 )
 
@@ -68,7 +68,7 @@ type Config struct {
 
 // InitBootstrap initializes the bootstrap logger and sets it as the default
 // logger in [log/slog].
-func InitBootstrap() error {
+func InitBootstrap(ios *terminal.IO) error {
 	// TODO: Document this: logs are printed when `REGINALD_DEBUG` is set to `1`
 	// or `true`, the logs are buffered when no value is given, and the logs are
 	// explicitly discarded when `REGINALD_DEBUG` is `0` or `false`.
@@ -107,18 +107,7 @@ func InitBootstrap() error {
 		return nil
 	}
 
-	slog.SetDefault(
-		slog.New(
-			slog.NewTextHandler(
-				iostreams.NewLockedWriter(os.Stderr),
-				&slog.HandlerOptions{
-					AddSource:   true,
-					Level:       logs.LevelTrace,
-					ReplaceAttr: replaceAttrFunc(""),
-				},
-			),
-		),
-	)
+	slog.SetDefault(slog.New(slog.NewTextHandler(terminal.NewWriter(ios, terminal.Stderr), &slog.HandlerOptions{AddSource: true, Level: logs.LevelTrace, ReplaceAttr: replaceAttrFunc("")})))
 
 	return nil
 }
@@ -136,9 +125,9 @@ func Init(cfg Config) error {
 
 	switch strings.ToLower(cfg.Output) {
 	case "stderr":
-		w = iostreams.NewWriter(iostreams.Streams, iostreams.Stderr)
+		w = terminal.NewWriter(terminal.Streams(), terminal.Stderr)
 	case "stdout":
-		w = iostreams.NewWriter(iostreams.Streams, iostreams.Stdout)
+		w = terminal.NewWriter(terminal.Streams(), terminal.Stdout)
 	default:
 		path := fspath.Path(cfg.Output)
 

@@ -25,10 +25,10 @@ import (
 	"syscall"
 
 	"github.com/reginald-project/reginald/internal/cli"
-	"github.com/reginald-project/reginald/internal/iostreams"
 	"github.com/reginald-project/reginald/internal/logging"
 	"github.com/reginald-project/reginald/internal/panichandler"
 	"github.com/reginald-project/reginald/internal/plugins"
+	"github.com/reginald-project/reginald/internal/terminal"
 	"github.com/reginald-project/reginald/internal/version"
 )
 
@@ -58,7 +58,10 @@ func run() int {
 		cancel()
 	}()
 
-	if err := logging.InitBootstrap(); err != nil {
+	ios := terminal.NewIO(false, false, terminal.ColorNever)
+	defer ios.Close()
+
+	if err := logging.InitBootstrap(ios); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 
 		return 1
@@ -90,8 +93,8 @@ func runCLI(ctx context.Context) error {
 		return fmt.Errorf("%w", err)
 	}
 
-	iostreams.Streams = iostreams.New(cfg.Quiet, cfg.Verbose, cfg.Color)
-	defer iostreams.Streams.Close()
+	terminal.SetStreams(terminal.NewIO(cfg.Quiet, cfg.Verbose, cfg.Color))
+	defer terminal.Streams().Close()
 
 	if err := logging.Init(cfg.Logging); err != nil {
 		return fmt.Errorf("failed to initialize logging: %w", err)

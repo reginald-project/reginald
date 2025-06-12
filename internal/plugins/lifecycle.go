@@ -20,9 +20,9 @@ import (
 	"sync"
 
 	"github.com/reginald-project/reginald/internal/fspath"
-	"github.com/reginald-project/reginald/internal/iostreams"
 	"github.com/reginald-project/reginald/internal/logging"
 	"github.com/reginald-project/reginald/internal/panichandler"
+	"github.com/reginald-project/reginald/internal/terminal"
 	"github.com/reginald-project/reginald/pkg/rpp"
 	"golang.org/x/sync/errgroup"
 )
@@ -96,8 +96,8 @@ func Load(ctx context.Context, files []fspath.Path) ([]*Plugin, error) {
 
 			if err := <-p.doneCh; err != nil {
 				logging.ErrorContext(ctx, "plugin quit unexpectedly", "plugin", p.Name, "err", err)
-				iostreams.Errorf("Plugin %q quit unexpectedly", p.Name)
-				iostreams.PrintErrf("Error: %v\n", err)
+				terminal.Errorf("Plugin %q quit unexpectedly", p.Name)
+				terminal.PrintErrf("Error: %v\n", err)
 			}
 		}()
 	}
@@ -170,8 +170,8 @@ func loadAll(ctx context.Context, files []fspath.Path, ignoreErrors bool) ([]*Pl
 			if err := p.start(tctx); err != nil {
 				if ignoreErrors {
 					logging.ErrorContext(tctx, "failed to start plugin", "path", f, "err", err)
-					iostreams.Errorf("Failed to start plugin %q\n", f)
-					iostreams.PrintErrf("Error: %v\n", err)
+					terminal.Errorf("Failed to start plugin %q\n", f)
+					terminal.PrintErrf("Error: %v\n", err)
 
 					return nil
 				}
@@ -182,8 +182,8 @@ func loadAll(ctx context.Context, files []fspath.Path, ignoreErrors bool) ([]*Pl
 			if err := p.handshake(tctx); err != nil {
 				if ignoreErrors {
 					logging.ErrorContext(tctx, "handshake failed", "path", f, "err", err)
-					iostreams.Errorf("Handshake with %q failed\n", f)
-					iostreams.PrintErrf("Error: %v\n", err)
+					terminal.Errorf("Handshake with %q failed\n", f)
+					terminal.PrintErrf("Error: %v\n", err)
 
 					return nil
 				}

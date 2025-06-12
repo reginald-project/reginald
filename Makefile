@@ -32,7 +32,7 @@ ALLOWED_LICENSES = Apache-2.0,BSD-2-Clause,BSD-3-Clause,MIT
 
 COPYRIGHT_HOLDER = Antti Kivi
 LICENSE = apache
-ADDLICENSE_PATTERNS = *.go examples internal pkg scripts
+ADDLICENSE_PATTERNS = *.go internal plugins scripts
 
 GO_MODULE = github.com/reginald-project/reginald
 

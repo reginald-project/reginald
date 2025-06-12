@@ -26,9 +26,9 @@ import (
 
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/fspath"
-	"github.com/reginald-project/reginald/internal/iostreams"
 	"github.com/reginald-project/reginald/internal/logging"
 	"github.com/reginald-project/reginald/internal/taskcfg"
+	"github.com/reginald-project/reginald/internal/terminal"
 	"github.com/reginald-project/reginald/pkg/logs"
 )
 
@@ -72,7 +72,7 @@ type Config struct {
 	Logging logging.Config `flag:"log" mapstructure:"logging"`
 
 	// Color tells whether colors should be enabled in the user output.
-	Color iostreams.ColorMode `mapstructure:"color"`
+	Color terminal.ColorMode `mapstructure:"color"`
 
 	// Quiet tells the program to suppress all other output than errors.
 	Quiet bool `mapstructure:"quiet"`
@@ -100,7 +100,7 @@ func DefaultConfig() *Config {
 	}
 
 	return &Config{
-		Color:     iostreams.ColorAuto,
+		Color:     terminal.ColorAuto,
 		Defaults:  taskcfg.Defaults{},
 		Directory: dir,
 		Logging: logging.Config{

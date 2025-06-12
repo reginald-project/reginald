@@ -30,9 +30,9 @@ import (
 	"github.com/pelletier/go-toml/v2"
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/fspath"
-	"github.com/reginald-project/reginald/internal/iostreams"
 	"github.com/reginald-project/reginald/internal/logging"
 	"github.com/reginald-project/reginald/internal/plugins"
+	"github.com/reginald-project/reginald/internal/terminal"
 	"github.com/reginald-project/reginald/pkg/rpp"
 )
 
@@ -622,7 +622,7 @@ func (p *ValueParser) setBool() error {
 // the command-line flag to the currently parsed value.
 func (p *ValueParser) setColorMode() error {
 	// TODO: Unsafe conversion.
-	x := iostreams.ColorMode(p.Value.Int())
+	x := terminal.ColorMode(p.Value.Int())
 
 	if !p.canUnmarshal() {
 		panic(fmt.Sprintf("casting type of field %q to TextUnmarshaler", p.Field.Name))
@@ -635,7 +635,7 @@ func (p *ValueParser) setColorMode() error {
 		}
 
 		// TODO: Unsafe conversion.
-		x = iostreams.ColorMode(v.Int())
+		x = terminal.ColorMode(v.Int())
 	}
 
 	if p.FlagSet.Changed(p.FlagName) {
@@ -650,7 +650,7 @@ func (p *ValueParser) setColorMode() error {
 		}
 
 		// TODO: Unsafe conversion.
-		x = iostreams.ColorMode(v.Int())
+		x = terminal.ColorMode(v.Int())
 	}
 
 	p.Value.SetInt(int64(x))
