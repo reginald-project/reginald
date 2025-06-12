@@ -136,9 +136,9 @@ func Init(cfg Config) error {
 
 	switch strings.ToLower(cfg.Output) {
 	case "stderr":
-		w = iostreams.NewLockedWriter(os.Stderr)
+		w = iostreams.NewWriter(iostreams.Streams, iostreams.Stderr)
 	case "stdout":
-		w = iostreams.NewLockedWriter(os.Stdout)
+		w = iostreams.NewWriter(iostreams.Streams, iostreams.Stdout)
 	default:
 		path := fspath.Path(cfg.Output)
 

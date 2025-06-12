@@ -91,6 +91,7 @@ func runCLI(ctx context.Context) error {
 	}
 
 	iostreams.Streams = iostreams.New(cfg.Quiet, cfg.Verbose, cfg.Color)
+	defer iostreams.Streams.Close()
 
 	if err := logging.Init(cfg.Logging); err != nil {
 		return fmt.Errorf("failed to initialize logging: %w", err)

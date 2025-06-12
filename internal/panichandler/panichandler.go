@@ -26,9 +26,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/reginald-project/reginald/internal/iostreams"
 	"github.com/reginald-project/reginald/internal/logging"
-	"github.com/reginald-project/reginald/pkg/version"
+	"github.com/reginald-project/reginald/internal/version"
 	"golang.org/x/term"
 )
 
@@ -124,14 +123,14 @@ func panicHandler(r any, t []byte) {
 
 	buf.WriteString("\n" + footer)
 
-	iostreams.StdioMu.Lock()
+	// iostreams.StdioMu.Lock()
 
 	if _, err := os.Stderr.Write(buf.Bytes()); err != nil {
 		// This is absolutely stupid but, if we get here, all is lost anyway.
 		buf.WriteString(fmt.Sprintf("FAILED TO WRITE BYTES TO STDERR: %v\n", err))
 	}
 
-	iostreams.StdioMu.Unlock()
+	// iostreams.StdioMu.Unlock()
 	//revive:disable-next-line:deep-exit Panic handler has to exit with error.
 	os.Exit(1)
 }
