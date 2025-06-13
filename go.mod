@@ -1,6 +1,6 @@
 module github.com/reginald-project/reginald
 
-go 1.24.3
+go 1.24.4
 
 require (
 	github.com/anttikivi/semver v1.0.0
@@ -11,4 +11,7 @@ require (
 	golang.org/x/term v0.32.0
 )
 
-require golang.org/x/sys v0.33.0 // indirect
+require (
+	github.com/reginald-project/reginald-sdk-go v0.0.0-20250611184120-07c297bd0da1 // indirect
+	golang.org/x/sys v0.33.0 // indirect
+)

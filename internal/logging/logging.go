@@ -33,9 +33,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/reginald-project/reginald-sdk-go/logs"
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/terminal"
-	"github.com/reginald-project/reginald/pkg/logs"
 )
 
 // Default values for the logger.

@@ -23,7 +23,6 @@ import (
 	"fmt"
 
 	"github.com/reginald-project/reginald/internal/fspath"
-	"github.com/reginald-project/reginald/pkg/rpp"
 	"github.com/spf13/pflag"
 )
 
@@ -41,6 +40,11 @@ type FlagSet struct {
 	*pflag.FlagSet
 
 	flags map[string]*Flag
+
+	// mutuallyExclusiveFlags is the list of flag names that are marked as
+	// mutually exclusive. Each element of the slice is a slice that contains
+	// the full names of the mutually exclusive flags in that group.
+	mutuallyExclusiveFlags [][]string
 }
 
 // A Flag is a wrapper of [pflag.Flag] that extends the flag type by including
@@ -55,7 +59,8 @@ type Flag struct {
 // handling property, and SortFlags set to true.
 func NewFlagSet(name string, errorHandling pflag.ErrorHandling) *FlagSet {
 	f := &FlagSet{ //nolint:exhaustruct // flags is initialized when needed
-		FlagSet: pflag.NewFlagSet(name, errorHandling),
+		FlagSet:                pflag.NewFlagSet(name, errorHandling),
+		mutuallyExclusiveFlags: [][]string{},
 	}
 
 	return f
@@ -92,66 +97,25 @@ func (f *FlagSet) AddFlagSet(newSet *FlagSet) {
 	}
 }
 
-// AddPluginFlag adds a flag to the flag set according to the given config value
-// specification from a plugin.
-func (f *FlagSet) AddPluginFlag(entry *rpp.ConfigEntry) error {
-	var flag rpp.Flag
-
-	rf, err := entry.RealFlag()
-	if err != nil {
-		return fmt.Errorf("%w", err)
+// MarkMutuallyExclusive marks two or more flags as mutually exclusive so that
+// the program returns an error if the user tries to set them at the same time.
+// This function panics on errors.
+func (f *FlagSet) MarkMutuallyExclusive(a ...string) {
+	if len(a) < 2 { //nolint:mnd // obvious
+		panic("only one flag cannot be marked as mutually exclusive")
 	}
 
-	if rf == nil {
-		return nil
-	}
-
-	flag = *rf
-
-	if f := f.Lookup(flag.Name); f != nil {
-		return fmt.Errorf("%w: %s", errDuplicateFlag, f.Name)
-	}
-
-	// TODO: Add inverted flags.
-	switch entry.Type {
-	case rpp.BoolValue:
-		defVal, ok := entry.Value.(bool)
-		if !ok {
-			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, entry.Value)
+	for _, s := range a {
+		if f := f.Lookup(s); f == nil {
+			panic(fmt.Sprintf("failed to find flag %q while marking it as mutually exclusive", s))
 		}
-
-		f.BoolP(flag.Name, flag.Shorthand, defVal, flag.Usage, "")
-	case rpp.IntValue:
-		switch v := entry.Value.(type) {
-		case int:
-			f.IntP(flag.Name, flag.Shorthand, v, flag.Usage, "")
-		case float64:
-			// TODO: This is probably the most unsafe way to do this, but it'll
-			// be fixed later.
-			u := int(v)
-
-			f.IntP(flag.Name, flag.Shorthand, u, flag.Usage, "")
-		default:
-			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, entry.Value)
-		}
-	case rpp.StringValue:
-		defVal, ok := entry.Value.(string)
-		if !ok {
-			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, entry.Value)
-		}
-
-		f.StringP(flag.Name, flag.Shorthand, defVal, flag.Usage, "")
-	default:
-		return fmt.Errorf(
-			"%w: flag %q: %v (%T)",
-			errInvalidFlagType,
-			flag.Name,
-			entry.Type,
-			entry.Value,
-		)
 	}
 
-	return nil
+	if f.mutuallyExclusiveFlags == nil {
+		f.mutuallyExclusiveFlags = [][]string{}
+	}
+
+	f.mutuallyExclusiveFlags = append(f.mutuallyExclusiveFlags, a)
 }
 
 // WrapperLookup returns the Flag structure of the named flag, returning nil if
@@ -235,6 +199,38 @@ func (f *FlagSet) PathP(name, shorthand string, value fspath.Path, usage, doc st
 	path := fspath.Path(*p)
 
 	return &path
+}
+
+// PathSlice defines a paths flag with specified name, default value, and usage
+// string. The flag is given as a string that has comma-separated paths, and
+// the flag can be specified multiple times. The return value is the address of
+// a path variable that stores the value of the flag.
+func (f *FlagSet) PathSlice(name string, value []fspath.Path, usage, doc string) *[]string {
+	return f.PathSliceP(name, "", value, usage, doc)
+}
+
+// PathP is like Path, but accepts a shorthand letter that can be used after
+// a single dash.
+func (f *FlagSet) PathSliceP(name, shorthand string, value []fspath.Path, usage, doc string) *[]string {
+	s := make([]string, 0, len(value))
+
+	for _, p := range value {
+		s = append(s, string(p))
+	}
+
+	p := f.StringSliceP(name, shorthand, s, usage)
+
+	flag := f.Lookup(name)
+	if flag == nil {
+		panic(fmt.Sprintf("received nil flag %q from wrapped flag set", name))
+	}
+
+	f.AddFlag(&Flag{
+		Flag: flag,
+		Doc:  doc,
+	})
+
+	return p
 }
 
 // String defines a string flag with specified name, default value, and usage

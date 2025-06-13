@@ -18,18 +18,12 @@
 package main
 
 import (
-	"context"
+	"errors"
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/reginald-project/reginald/internal/cli"
-	"github.com/reginald-project/reginald/internal/logging"
 	"github.com/reginald-project/reginald/internal/panichandler"
-	"github.com/reginald-project/reginald/internal/plugins"
-	"github.com/reginald-project/reginald/internal/terminal"
-	"github.com/reginald-project/reginald/internal/version"
 )
 
 func main() {
@@ -42,85 +36,17 @@ func main() {
 func run() int {
 	defer panichandler.Handle()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Set up canceling the context on certain signals so the plugins are
-	// killed.
-	sigc := make(chan os.Signal, 1)
-
-	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
-
-	handlePanic := panichandler.WithStackTrace()
-	go func() {
-		defer handlePanic()
-		<-sigc
-		cancel()
-	}()
-
-	ios := terminal.NewIO(false, false, terminal.ColorNever)
-	defer ios.Close()
-
-	if err := logging.InitBootstrap(ios); err != nil {
+	err := cli.Run()
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 
-		return 1
-	}
-
-	logging.DebugContext(ctx, "bootstrap logger initialized")
-	logging.InfoContext(
-		ctx,
-		"bootstrapping Reginald",
-		"version",
-		version.Version(),
-		"commit",
-		version.Revision(),
-	)
-
-	if err := runCLI(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		var exitErr *cli.ExitError
+		if errors.As(err, &exitErr) {
+			return exitErr.Code
+		}
 
 		return 1
 	}
 
 	return 0
-}
-
-func runCLI(ctx context.Context) error {
-	c := cli.New()
-	cfg, err := cli.CreateConfig(ctx, c)
-	if err != nil {
-		return fmt.Errorf("%w", err)
-	}
-
-	terminal.SetStreams(terminal.NewIO(cfg.Quiet, cfg.Verbose, cfg.Color))
-	defer terminal.Streams().Close()
-
-	if err := logging.Init(cfg.Logging); err != nil {
-		return fmt.Errorf("failed to initialize logging: %w", err)
-	}
-
-	logging.DebugContext(ctx, "logging initialized")
-	logging.InfoContext(ctx, "executing Reginald", "version", version.Version())
-
-	if err := c.LoadPlugins(ctx); err != nil {
-		return fmt.Errorf("failed to resolve plugins: %w", err)
-	}
-
-	// We want to aim for a clean plugin shutdown in all cases, so the shut down
-	// should be run in all cases where the plugins have been initialized.
-	defer func() {
-		timeoutCtx, cancel := context.WithTimeout(ctx, plugins.DefaultShutdownTimeout)
-		defer cancel()
-
-		if err := plugins.ShutdownAll(timeoutCtx, c.Plugins); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: failed to shut down plugins: %v\n", err)
-		}
-	}()
-
-	if err := c.Execute(ctx); err != nil {
-		return fmt.Errorf("%w", err)
-	}
-
-	return nil
 }

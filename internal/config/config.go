@@ -24,12 +24,12 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/reginald-project/reginald-sdk-go/logs"
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/logging"
 	"github.com/reginald-project/reginald/internal/taskcfg"
 	"github.com/reginald-project/reginald/internal/terminal"
-	"github.com/reginald-project/reginald/pkg/logs"
 )
 
 // EnvPrefix is the prefix added to the names of the config values when reading
@@ -54,8 +54,8 @@ type Config struct {
 	// directory of the program.
 	Directory fspath.Path `mapstructure:"directory"`
 
-	// PluginDir is the directory where Reginald looks for the plugins.
-	PluginDir fspath.Path `mapstructure:"plugin-dir"`
+	// PluginPaths is the directory where Reginald looks for the plugins.
+	PluginPaths []fspath.Path `mapstructure:"plugin-dir"`
 
 	// Defaults contains the default options set for tasks.
 	Defaults taskcfg.Defaults `mapstructure:"defaults"`
@@ -84,9 +84,9 @@ type Config struct {
 // DefaultConfig returns the default values for configuration. The function
 // panics on errors.
 func DefaultConfig() *Config {
-	dir, err := DefaultDir()
+	wd, err := os.Getwd()
 	if err != nil {
-		panic(fmt.Sprintf("failed to get default directory: %v", err))
+		panic(fmt.Sprintf("failed to get current directory: %v", err))
 	}
 
 	logOutput, err := DefaultLogOutput()
@@ -94,7 +94,7 @@ func DefaultConfig() *Config {
 		panic(fmt.Sprintf("failed to get the default log output: %v", err))
 	}
 
-	pluginDir, err := DefaultPluginsDir()
+	pluginPaths, err := DefaultPluginPaths()
 	if err != nil {
 		panic(fmt.Sprintf("failed to get default plugin directory: %v", err))
 	}
@@ -102,18 +102,18 @@ func DefaultConfig() *Config {
 	return &Config{
 		Color:     terminal.ColorAuto,
 		Defaults:  taskcfg.Defaults{},
-		Directory: dir,
+		Directory: fspath.Path(wd),
 		Logging: logging.Config{
 			Enabled: true,
 			Format:  "json",
 			Level:   logs.LevelInfo,
 			Output:  logOutput.String(),
 		},
-		PluginDir: pluginDir,
-		Quiet:     false,
-		Tasks:     []taskcfg.Config{},
-		Verbose:   false,
-		Plugins:   map[string]any{},
+		PluginPaths: pluginPaths,
+		Quiet:       false,
+		Tasks:       []taskcfg.Config{},
+		Verbose:     false,
+		Plugins:     map[string]any{},
 	}
 }
 
@@ -142,14 +142,18 @@ func DefaultLogOutput() (fspath.Path, error) {
 	return path, nil
 }
 
-// DefaultPluginsDir returns the default plugins directory to use.
-func DefaultPluginsDir() (fspath.Path, error) {
-	path, err := defaultPlatformPluginsDir()
+// DefaultPluginPaths returns the default plugins directory to use.
+func DefaultPluginPaths() ([]fspath.Path, error) {
+	paths, err := defaultPlatformPluginPaths()
 	if err != nil {
-		return "", fmt.Errorf("%w", err)
+		return nil, fmt.Errorf("%w", err)
 	}
 
-	return path.Clean(), nil
+	for i, p := range paths {
+		paths[i] = p.Clean()
+	}
+
+	return paths, nil
 }
 
 // FlagName returns the command-line flag name for the given Config field s.

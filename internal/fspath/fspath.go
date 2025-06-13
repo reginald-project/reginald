@@ -80,6 +80,13 @@ func (p Path) Base() Path {
 	return Path(filepath.Base(string(p)))
 }
 
+// Clean returns the shortest path name equivalent to path by eliminating
+// redundant separators and resolving `.` and `..` elements. It wraps
+// [filepath.Clean].
+func (p Path) Clean() Path {
+	return Path(filepath.Clean(string(p)))
+}
+
 // Dir returns all but the last element of path, typically the path's directory.
 // After dropping the final element, Dir calls [filepath.Clean] on the path and
 // trailing slashes are removed. If the path is empty, Dir returns ".". If
@@ -88,13 +95,6 @@ func (p Path) Base() Path {
 // directory.
 func (p Path) Dir() Path {
 	return Path(filepath.Dir(string(p)))
-}
-
-// Clean returns the shortest path name equivalent to path by eliminating
-// redundant separators and resolving `.` and `..` elements. It wraps
-// [filepath.Clean].
-func (p Path) Clean() Path {
-	return Path(filepath.Clean(string(p)))
 }
 
 // ExpandEnv replaces ${var} or $var and even %var% on Windows in the string
