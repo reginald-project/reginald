@@ -21,8 +21,11 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"reflect"
+	"strings"
 	"syscall"
 
+	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald/internal/config"
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/logging"
@@ -109,7 +112,7 @@ func Run() error {
 	logging.DebugContext(ctx, "logging initialized")
 	logging.InfoContext(ctx, "executing Reginald", "version", version.Version())
 
-	_, err = initPlugins(ctx, cfg)
+	plugins, err := initPlugins(ctx, cfg)
 	if err != nil {
 		return &ExitError{
 			Code: 1,
@@ -117,7 +120,190 @@ func Run() error {
 		}
 	}
 
+	err = parseArgs(ctx, cfg, plugins)
+	if err != nil {
+		return &ExitError{
+			Code: 1,
+			err:  fmt.Errorf("failed to parse the command-line arguments: %w", err),
+		}
+	}
+
 	return nil
+}
+
+// addFlags adds the flags from the given command to the flag set.
+func addFlags(flagSet *flags.FlagSet, cmd *api.Command) error {
+	for _, cfg := range cmd.Config {
+		if err := flagSet.AddPluginFlag(cfg); err != nil {
+			return fmt.Errorf("%w", err)
+		}
+	}
+
+	return nil
+}
+
+// collectFlags removes all of the known flags from the arguments list and
+// appends them to flags. It returns the non-flag arguments as the first return
+// value and the appended flags as the second return value. It does not check
+// for any errors; all of the arguments that might look like flags but are not
+// found in the flag set are treated as regular command-line arguments. If the
+// user has run the program correctly, this function should return the next
+// subcommand as the first element of the argument slice.
+func collectFlags(flagSet *flags.FlagSet, args, collected []string) ([]string, []string) {
+	if len(args) == 0 {
+		return args, collected
+	}
+
+	rest := []string{}
+
+	// TODO: This is probably way more inefficient than it needs to be, but it
+	// gets the work done for now.
+Loop:
+	for len(args) > 0 {
+		s := args[0]
+		args = args[1:]
+
+		switch {
+		case s == "--":
+			// Stop parsing at "--".
+			break Loop
+		case strings.HasPrefix(s, "-") && strings.Contains(s, "="):
+			// All of the cases with "=": "--flag=value", "-f=value", and
+			// "-abf=value".
+			if hasFlag(flagSet, s) {
+				collected = append(collected, s)
+			} else {
+				rest = append(rest, s)
+			}
+		case strings.HasPrefix(s, "--") && !hasNoOptDefVal(s[2:], flagSet):
+			// The '--flag arg' case.
+			fallthrough //nolint:gocritic // this is much clearer with an empty fallthrough
+		case strings.HasPrefix(s, "-") && !strings.HasPrefix(s, "--") && !shortHasNoOptDefVal(s[len(s)-1:], flagSet):
+			// The '-f arg' and '-abcf arg' cases. Only the last flag in can
+			// have a argument, so other ones aren't checked for the default
+			// value.
+			if hasFlag(flagSet, s) {
+				if len(args) == 0 {
+					collected = append(collected, s)
+				} else {
+					collected = append(collected, s, args[0])
+					args = args[1:]
+				}
+			} else {
+				rest = append(rest, s)
+			}
+		case strings.HasPrefix(s, "-") && len(s) >= 2:
+			// Rest of the flags.
+			if hasFlag(flagSet, s) {
+				collected = append(collected, s)
+			} else {
+				rest = append(rest, s)
+			}
+		default:
+			rest = append(rest, s)
+		}
+	}
+
+	rest = append(rest, args...)
+
+	return rest, collected
+}
+
+// findSubcommand finds the subcommand to run from the command tree starting at
+// root command. It returns the names of the commands in order as the first
+// value. The resulting slice of names can be used to get the subcommand from
+// the plugin store. The slice does not include the root command. The rest of
+// the command-line arguments remaining after the parsing are returned as
+// the second return value. If no subcommand is found (i.e. the root command
+// should be run), this function returns nil as the first return value.
+//
+// The function adds the flags from the subcommand to the flag set. The flag set
+// is modified in-place.
+func findSubcommands(ctx context.Context, flagSet *flags.FlagSet, plugins *plugin.Store, args []string) ([]string, []string) {
+	if len(args) <= 1 {
+		return nil, args
+	}
+
+	var cmd *api.Command
+
+	remain := []string{}
+	names := []string{}
+
+	for len(args) >= 1 {
+		if len(args) > 1 {
+			args, remain = collectFlags(flagSet, args[1:], remain)
+		}
+
+		if len(args) >= 1 {
+			names = append(names, args[0])
+			next := plugins.Command(names...)
+
+			if next == nil {
+				break
+			}
+
+			cmd = next
+			if err := addFlags(flagSet, cmd); err != nil {
+				// TODO: This should be handled better.
+				logging.ErrorContext(ctx, "failed to add flags from commands", "err", err)
+				terminal.Errorf("Failed to add flags from commands: %v", err)
+
+				return nil, nil
+			}
+		}
+	}
+
+	if len(args) > 0 && cmd != nil && args[0] == cmd.Name {
+		args = args[1:]
+	}
+
+	return names, remain
+}
+
+// hasFlag checks whether the given flag s is in fs. The whole flag string must
+// be included. The function checks by looking up the shorthands if the string
+// starts with only one hyphen. If s contains a combination of shorthands, the
+// function will check for all of them.
+func hasFlag(fs *flags.FlagSet, s string) bool {
+	if strings.HasPrefix(s, "--") {
+		if strings.Contains(s, "=") {
+			return fs.Lookup(s[2:strings.Index(s, "=")]) != nil
+		}
+
+		return fs.Lookup(s[2:]) != nil
+	}
+
+	if strings.HasPrefix(s, "-") {
+		if len(s) == 2 { //nolint:mnd // obvious
+			return fs.ShorthandLookup(s[1:]) != nil
+		}
+
+		if strings.Index(s, "=") == 2 { //nolint:mnd // obvious
+			return fs.ShorthandLookup(s[1:2]) != nil
+		}
+
+		for i := 1; i < len(s) && s[i] != '='; i++ {
+			f := fs.ShorthandLookup(s[i : i+1])
+
+			if f == nil {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	return false
+}
+
+// hasNoOptDefVal checks if the given flag has a NoOptDefVal set.
+func hasNoOptDefVal(name string, fs *flags.FlagSet) bool {
+	f := fs.Lookup(name)
+	if f == nil {
+		return false
+	}
+
+	return f.NoOptDefVal != ""
 }
 
 // initConfig creates the initial config instance by locating the config file
@@ -219,4 +405,68 @@ func newFlagSet() *flags.FlagSet {
 	}
 
 	return flagSet
+}
+
+// parseArgs parses the command-line arguments and modifies the config according
+// to them. The function creates a new flag set for the root command, finds
+// the subcommand for the command-line arguments, and sets the flags from
+// the subcommand to the flag set.
+func parseArgs(ctx context.Context, cfg *config.Config, plugins *plugin.Store) error {
+	// There is no need to remove the first element of the arguments slice as
+	// findSubcommand takes care of that.
+	args := os.Args
+
+	// Make sure that `CommandLine` is not used.
+	pflag.CommandLine.VisitAll(func(f *pflag.Flag) {
+		panic(fmt.Sprintf("flag %q is set in the CommandLine flag set", f.Name))
+	})
+	logging.DebugContext(ctx, "parsing command-line arguments", "args", args)
+
+	flagSet := newFlagSet()
+	cmds, remain := findSubcommands(ctx, flagSet, plugins, args)
+
+	logging.DebugContext(ctx, "command-line arguments parsed", "cmd", cmds, "args", remain)
+
+	if err := flagSet.Parse(remain); err != nil {
+		return fmt.Errorf("failed to parse the command-line arguments: %w", err)
+	}
+
+	if err := flagSet.CheckMutuallyExclusive(); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	if err := config.Validate(cfg, plugins); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	valueParser := &config.ValueParser{
+		Cfg:      cfg,
+		FlagSet:  flagSet,
+		Plugins:  plugins,
+		Value:    reflect.ValueOf(cfg).Elem(),
+		Field:    reflect.StructField{}, //nolint:exhaustruct // zero value wanted
+		Plugin:   nil,
+		FullName: "",
+		EnvName:  config.EnvPrefix,
+		EnvValue: "",
+		FlagName: "",
+	}
+	if err := valueParser.ApplyOverrides(ctx); err != nil {
+		return fmt.Errorf("failed to apply config values: %w", err)
+	}
+
+	logging.DebugContext(ctx, "full config parsed", "cfg", cfg)
+
+	return nil
+}
+
+// shortHasNoOptDefVal checks if the flag for the given shorthand has a
+// NoOptDefVal set.
+func shortHasNoOptDefVal(name string, fs *flags.FlagSet) bool {
+	f := fs.ShorthandLookup(name[:1])
+	if f == nil {
+		return false
+	}
+
+	return f.NoOptDefVal != ""
 }

@@ -28,12 +28,12 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/pelletier/go-toml/v2"
+	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/logging"
-	"github.com/reginald-project/reginald/internal/plugins"
+	"github.com/reginald-project/reginald/internal/plugin"
 	"github.com/reginald-project/reginald/internal/terminal"
-	"github.com/reginald-project/reginald/pkg/rpp"
 )
 
 // Errors returned from the configuration parser.
@@ -75,10 +75,10 @@ type ValueParser struct {
 
 	// Plugin is the plugin currently being parsed if the parser has moved to
 	// parsing plugin configs. Otherwise, it should be nil.
-	Plugin *plugins.Plugin
+	Plugin plugin.Plugin
 
-	// Plugins are the loaded Plugins.
-	Plugins []*plugins.Plugin
+	// Plugins is the plugin store for the current plugins.
+	Plugins *plugin.Store
 
 	// Value is the Value of the currently parsed field.
 	Value reflect.Value
@@ -107,8 +107,8 @@ type pluginParser struct {
 	// m is the config map that is currently being modified.
 	m map[string]any
 
-	// c is the [rpp.ConfigEntry] that is currently being checked.
-	c rpp.ConfigEntry
+	// c is the [api.ConfigEntry] that is currently being checked.
+	c api.ConfigEntry
 }
 
 // LogValue implements [slog.LogValuer] for [valueParser]. It returns a group
@@ -124,15 +124,19 @@ func (p *ValueParser) LogValue() slog.Value {
 		attrs = append(attrs, slog.String("flagSet", "set"))
 	}
 
-	pluginNames := make([]string, 0, len(p.Plugins))
+	if p.Plugins == nil {
+		attrs = append(attrs, slog.String("Plugins", "<nil>"))
+	} else {
+		pluginNames := make([]string, 0, len(p.Plugins.Plugins))
 
-	for _, plugin := range p.Plugins {
-		pluginNames = append(pluginNames, plugin.Name)
+		for _, plugin := range p.Plugins.Plugins {
+			pluginNames = append(pluginNames, plugin.Manifest().Name)
+		}
+
+		attrs = append(attrs, slog.Any("Plugins", pluginNames))
 	}
-
 	attrs = append(
 		attrs,
-		slog.Any("Plugins", pluginNames),
 		slog.Group(
 			"Value",
 			slog.String("type", p.Value.Type().Name()),
@@ -148,7 +152,7 @@ func (p *ValueParser) LogValue() slog.Value {
 	if p.Plugin == nil {
 		attrs = append(attrs, slog.String("Plugin", "<nil>"))
 	} else {
-		attrs = append(attrs, slog.String("Plugin", p.Plugin.Name))
+		attrs = append(attrs, slog.String("Plugin", p.Plugin.Manifest().Name))
 	}
 
 	attrs = append(
@@ -273,19 +277,21 @@ func normalizeKeys(cfg map[string]any) {
 
 // Validate checks if all of the config values that were left after unmarshaling
 // the config are valid plugin or plugin command names.
-func Validate(cfg *Config, p []*plugins.Plugin) error {
+func Validate(cfg *Config, plugins *plugin.Store) error {
 	for k := range cfg.Plugins {
 		ok := false
 	PluginLoop:
-		for _, plugin := range p {
-			if plugin.Name == k {
+		for _, plugin := range plugins.Plugins {
+			manifest := plugin.Manifest()
+
+			if manifest.Domain == k && manifest.Config != nil {
 				ok = true
 
 				break PluginLoop
 			}
 
-			for _, c := range plugin.Commands {
-				if c.Name == k {
+			for _, c := range manifest.Commands {
+				if c.Name == k && c.Config != nil {
 					ok = true
 
 					break PluginLoop
@@ -308,35 +314,36 @@ func (p *ValueParser) ApplyOverrides(ctx context.Context) error {
 		return fmt.Errorf("%w", err)
 	}
 
-	if len(p.Plugins) == 0 {
+	if p.Plugins != nil && p.Plugins.Len() == 0 {
 		return nil
 	}
 
-	for _, plugin := range p.Plugins {
+	for _, plugin := range p.Plugins.Plugins {
 		p.Plugin = plugin
+		manifest := p.Plugin.Manifest()
 		pluginMap := make(map[string]any)
-		rawVal := p.Cfg.Plugins[plugin.Name]
+		rawVal := p.Cfg.Plugins[manifest.Domain]
 
 		m, ok := rawVal.(map[string]any)
 		if ok {
 			pluginMap = m
 		} else if rawVal != nil {
-			return fmt.Errorf("%w: config for plugin %q is not a map", ErrInvalidConfig, plugin.Name)
+			return fmt.Errorf("%w: config for plugin %q is not a map", ErrInvalidConfig, manifest.Name)
 		}
 
 		// Use the name of the plugin as the prefix for the environment
 		// variable.
-		p.EnvName = p.Plugin.Name
+		p.EnvName = manifest.Name
 
-		if err := p.applyPluginOverrides(ctx, pluginMap, plugin.PluginConfigs); err != nil {
+		if err := p.applyPluginOverrides(ctx, pluginMap, manifest.Config); err != nil {
 			return fmt.Errorf("failed to apply configs for plugins: %w", err)
 		}
 
-		p.Cfg.Plugins[plugin.Name] = pluginMap
+		p.Cfg.Plugins[manifest.Domain] = pluginMap
 
-		for _, cmd := range plugin.Commands {
+		for _, cmd := range manifest.Commands {
 			// Plugin configs take precedence.
-			if cmd.Name == plugin.Name && len(plugin.PluginConfigs) > 0 {
+			if cmd.Name == manifest.Domain && len(manifest.Config) > 0 {
 				continue
 			}
 
@@ -356,7 +363,7 @@ func (p *ValueParser) ApplyOverrides(ctx context.Context) error {
 			// variable.
 			p.EnvName = cmd.Name
 
-			if err := p.applyPluginOverrides(ctx, cmdMap, cmd.Configs); err != nil {
+			if err := p.applyPluginOverrides(ctx, cmdMap, cmd.Config); err != nil {
 				return fmt.Errorf("failed to apply configs for plugin commands: %w", err)
 			}
 
@@ -409,7 +416,7 @@ func (p *ValueParser) applyStructOverrides(ctx context.Context) error {
 		if parser.Value.Kind() == reflect.Struct {
 			// Apply the overrides recursively but set the plugins to nil as
 			// only the top-level config has the map for config values.
-			err = parser.ApplyOverrides(ctx)
+			err = parser.applyStructOverrides(ctx)
 			if err != nil {
 				return fmt.Errorf("%w", err)
 			}
@@ -463,11 +470,7 @@ func (p *ValueParser) applyStructOverrides(ctx context.Context) error {
 // applyPluginOverrides applies the overrides of the config values from
 // environment variables and command-line flags to plugin configs in cfg in p.
 // It modifies the pointed cfg.
-func (p *ValueParser) applyPluginOverrides(
-	ctx context.Context,
-	cfgMap map[string]any,
-	configs []rpp.ConfigEntry,
-) error {
+func (p *ValueParser) applyPluginOverrides(ctx context.Context, cfgMap map[string]any, configs []api.ConfigEntry) error {
 	logging.TraceContext(ctx, "applying plugin overrides", "cfgs", configs)
 
 	for _, cfgVal := range configs {
@@ -480,59 +483,53 @@ func (p *ValueParser) applyPluginOverrides(
 			flagName: "",
 		}
 
-		if cfgVal.EnvName == "" {
+		if cfgVal.EnvOverride == "" {
 			prefix := toEnv(p.EnvName, EnvPrefix)
 			parser.envName = toEnv(cfgVal.Key, prefix)
 		} else {
-			parser.envName = EnvPrefix + "_" + cfgVal.EnvName
+			parser.envName = EnvPrefix + "_" + cfgVal.EnvOverride
 		}
 
 		parser.envValue = os.Getenv(parser.envName)
 
-		var f rpp.Flag
-
-		if fp, err := cfgVal.RealFlag(); err != nil {
-			return fmt.Errorf("%w", err)
-		} else if fp != nil {
-			f = *fp
-		}
+		f := cfgVal.Flag
 
 		parser.flagName = f.Name
 
 		logging.TraceContext(ctx, "checking plugin config", "parser", parser)
 
 		switch cfgVal.Type {
-		case rpp.BoolValue:
+		case api.BoolValue:
 			x, err := parser.bool()
 			if err != nil {
 				return fmt.Errorf(
 					"failed to set value for %q by %q: %w",
 					cfgVal.Key,
-					p.Plugin.Name,
+					p.Plugin.Manifest().Name,
 					err,
 				)
 			}
 
 			cfgMap[cfgVal.Key] = x
-		case rpp.IntValue:
+		case api.IntValue:
 			x, err := parser.int()
 			if err != nil {
 				return fmt.Errorf(
 					"failed to set value for %q by %q: %w",
 					cfgVal.Key,
-					p.Plugin.Name,
+					p.Plugin.Manifest().Name,
 					err,
 				)
 			}
 
 			cfgMap[cfgVal.Key] = x
-		case rpp.StringValue:
+		case api.StringValue:
 			x, err := parser.string()
 			if err != nil {
 				return fmt.Errorf(
 					"failed to set value for %q by %q: %w",
 					cfgVal.Key,
-					p.Plugin.Name,
+					p.Plugin.Manifest().Name,
 					err,
 				)
 			}
@@ -543,7 +540,7 @@ func (p *ValueParser) applyPluginOverrides(
 				"%w: ConfigEntry %q in plugin %q has invalid type: %s",
 				ErrInvalidConfig,
 				cfgVal.Key,
-				p.Plugin.Name,
+				p.Plugin.Manifest().Name,
 				cfgVal.Type,
 			)
 		}

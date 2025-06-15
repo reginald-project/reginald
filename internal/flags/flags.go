@@ -22,15 +22,17 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/spf13/pflag"
 )
 
 // Errors returned from flag operations.
 var (
-	errDefaultValueType = errors.New("failed to cast the plugin flag value to correct type")
-	errDuplicateFlag    = errors.New("trying to add a flag that already exists")
-	errInvalidFlagType  = errors.New("plugin has a flag with an invalid type")
+	errDefaultValueType  = errors.New("failed to cast the plugin flag value to correct type")
+	errDuplicateFlag     = errors.New("trying to add a flag that already exists")
+	errInvalidFlagType   = errors.New("plugin has a flag with an invalid type")
+	errMutuallyExclusive = errors.New("two mutually exclusive flags set at the same time")
 )
 
 // A FlagSet is a wrapper of [pflag.FlagSet] that includes the [Flag] objects
@@ -41,10 +43,10 @@ type FlagSet struct {
 
 	flags map[string]*Flag
 
-	// mutuallyExclusiveFlags is the list of flag names that are marked as
+	// mutuallyExclusive is the list of flag names that are marked as
 	// mutually exclusive. Each element of the slice is a slice that contains
 	// the full names of the mutually exclusive flags in that group.
-	mutuallyExclusiveFlags [][]string
+	mutuallyExclusive [][]string
 }
 
 // A Flag is a wrapper of [pflag.Flag] that extends the flag type by including
@@ -59,8 +61,8 @@ type Flag struct {
 // handling property, and SortFlags set to true.
 func NewFlagSet(name string, errorHandling pflag.ErrorHandling) *FlagSet {
 	f := &FlagSet{ //nolint:exhaustruct // flags is initialized when needed
-		FlagSet:                pflag.NewFlagSet(name, errorHandling),
-		mutuallyExclusiveFlags: [][]string{},
+		FlagSet:           pflag.NewFlagSet(name, errorHandling),
+		mutuallyExclusive: [][]string{},
 	}
 
 	return f
@@ -95,6 +97,100 @@ func (f *FlagSet) AddFlagSet(newSet *FlagSet) {
 			f.AddFlag(v)
 		}
 	}
+
+	f.mutuallyExclusive = append(f.mutuallyExclusive, newSet.mutuallyExclusive...)
+}
+
+// AddPluginFlag adds a flag to the flag set according to the given ConfigEntry
+// specification from a plugin.
+func (f *FlagSet) AddPluginFlag(cfg api.ConfigEntry) error {
+	if cfg.Flag == nil {
+		return nil
+	}
+
+	flag := *cfg.Flag
+
+	if f := f.Lookup(flag.Name); f != nil {
+		return fmt.Errorf("%w: %s", errDuplicateFlag, f.Name)
+	}
+
+	// TODO: Add inverted flags.
+	switch cfg.Type {
+	case api.BoolValue:
+		defVal, ok := cfg.Value.(bool)
+		if !ok {
+			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cfg.Value)
+		}
+
+		f.BoolP(flag.Name, flag.Shorthand, defVal, flag.Description, "")
+	case api.IntValue:
+		switch v := cfg.Value.(type) {
+		case int:
+			f.IntP(flag.Name, flag.Shorthand, v, flag.Description, "")
+		case float64:
+			// TODO: This is probably the most unsafe way to do this, but it'll
+			// be fixed later.
+			u := int(v)
+
+			f.IntP(flag.Name, flag.Shorthand, u, flag.Description, "")
+		default:
+			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cfg.Value)
+		}
+	case api.StringValue:
+		defVal, ok := cfg.Value.(string)
+		if !ok {
+			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cfg.Value)
+		}
+
+		f.StringP(flag.Name, flag.Shorthand, defVal, flag.Description, "")
+	default:
+		return fmt.Errorf(
+			"%w: flag %q: %v (%T)",
+			errInvalidFlagType,
+			flag.Name,
+			cfg.Type,
+			cfg.Value,
+		)
+	}
+
+	return nil
+}
+
+// CheckMutuallyExclusive checks if two flags marked as mutually exclusive are
+// set at the same time by the user. The function returns an error if two
+// mutually exclusive flags are set. The function panics if it is called before
+// parsing the flags or if any of the flags marked as mutually exclusive is not
+// present in the flag set.
+func (f *FlagSet) CheckMutuallyExclusive() error {
+	if !f.Parsed() {
+		panic("calling CheckMutuallyExclusive before parsing the flags")
+	}
+
+	for _, a := range f.mutuallyExclusive {
+		var set string
+
+		for _, s := range a {
+			f := f.Lookup(s)
+			if f == nil {
+				panic("nil flag in the set of mutually exclusive flags: " + s)
+			}
+
+			if f.Changed {
+				if set != "" {
+					return fmt.Errorf(
+						"%w: --%s and --%s (or their shorthands)",
+						errMutuallyExclusive,
+						set,
+						s,
+					)
+				}
+
+				set = s
+			}
+		}
+	}
+
+	return nil
 }
 
 // MarkMutuallyExclusive marks two or more flags as mutually exclusive so that
@@ -111,11 +207,11 @@ func (f *FlagSet) MarkMutuallyExclusive(a ...string) {
 		}
 	}
 
-	if f.mutuallyExclusiveFlags == nil {
-		f.mutuallyExclusiveFlags = [][]string{}
+	if f.mutuallyExclusive == nil {
+		f.mutuallyExclusive = [][]string{}
 	}
 
-	f.mutuallyExclusiveFlags = append(f.mutuallyExclusiveFlags, a)
+	f.mutuallyExclusive = append(f.mutuallyExclusive, a)
 }
 
 // WrapperLookup returns the Flag structure of the named flag, returning nil if
