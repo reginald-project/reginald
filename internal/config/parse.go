@@ -250,14 +250,8 @@ func normalizeKeys(cfg map[string]any) {
 		key := ""
 
 		for i, r := range k {
-			if r == '-' {
-				key += "_"
-
-				continue
-			}
-
-			if i > 0 && unicode.IsUpper(r) && !strings.HasPrefix(key, "_") {
-				key += "_"
+			if i > 0 && unicode.IsUpper(r) {
+				key += "-"
 			}
 
 			key += strings.ToLower(string(r))
@@ -560,6 +554,12 @@ func toEnv(name, prefix string) string {
 	result := ""
 
 	for i, r := range name {
+		if r == '-' {
+			result += "_"
+
+			continue
+		}
+
 		if i > 0 && unicode.IsUpper(r) {
 			result += "_"
 		}
