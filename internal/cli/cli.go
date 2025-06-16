@@ -99,17 +99,13 @@ func Run() error {
 		}
 	}
 
-	terminal.SetStreams(terminal.NewIO(cfg.Quiet, cfg.Verbose, cfg.Color))
-	defer terminal.Streams().Close()
-
-	if err := logging.Init(cfg.Logging); err != nil {
+	if err = initOut(ctx, cfg); err != nil {
 		return &ExitError{
 			Code: 1,
-			err:  fmt.Errorf("failed to initialize logging: %w", err),
+			err:  err,
 		}
 	}
-
-	logging.DebugContext(ctx, "logging initialized")
+	defer terminal.Streams().Close()
 	logging.InfoContext(ctx, "executing Reginald", "version", version.Version())
 
 	plugins, err := initPlugins(ctx, cfg)
@@ -344,6 +340,21 @@ func initConfig(ctx context.Context) (*config.Config, error) {
 	return cfg, nil
 }
 
+// initOut initializes the output streams and the logging for the program.
+func initOut(ctx context.Context, cfg *config.Config) error {
+	terminal.SetStreams(terminal.NewIO(cfg.Quiet, cfg.Verbose, cfg.Color))
+
+	if err := logging.Init(cfg.Logging); err != nil {
+		return fmt.Errorf("failed to initialize logging: %w", err)
+	}
+
+	logging.DebugContext(ctx, "logging initialized")
+
+	return nil
+}
+
+// initPlugins looks up the plugin manifests and creates a new plugin store
+// instance from them.
 func initPlugins(ctx context.Context, cfg *config.Config) (*plugin.Store, error) {
 	manifests, err := plugin.Search(ctx, cfg.Directory, cfg.PluginPaths)
 	if err != nil {
