@@ -307,7 +307,11 @@ func (f *FlagSet) PathSlice(name string, value []fspath.Path, usage, doc string)
 
 // PathP is like Path, but accepts a shorthand letter that can be used after
 // a single dash.
-func (f *FlagSet) PathSliceP(name, shorthand string, value []fspath.Path, usage, doc string) *[]string {
+func (f *FlagSet) PathSliceP(
+	name, shorthand string,
+	value []fspath.Path,
+	usage, doc string,
+) *[]string {
 	s := make([]string, 0, len(value))
 
 	for _, p := range value {

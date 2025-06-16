@@ -219,7 +219,12 @@ Loop:
 //
 // The function adds the flags from the subcommand to the flag set. The flag set
 // is modified in-place.
-func findSubcommands(ctx context.Context, flagSet *flags.FlagSet, plugins *plugin.Store, args []string) ([]string, []string) {
+func findSubcommands(
+	ctx context.Context,
+	flagSet *flags.FlagSet,
+	plugins *plugin.Store,
+	args []string,
+) ([]string, []string) {
 	if len(args) <= 1 {
 		return nil, args
 	}

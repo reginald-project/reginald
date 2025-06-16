@@ -469,7 +469,11 @@ func (p *ValueParser) applyStructOverrides(ctx context.Context) error {
 // applyPluginOverrides applies the overrides of the config values from
 // environment variables and command-line flags to plugin configs in cfg in p.
 // It modifies the pointed cfg.
-func (p *ValueParser) applyPluginOverrides(ctx context.Context, cfgMap map[string]any, configs []api.ConfigEntry) error {
+func (p *ValueParser) applyPluginOverrides(
+	ctx context.Context,
+	cfgMap map[string]any,
+	configs []api.ConfigEntry,
+) error {
 	logging.TraceContext(ctx, "applying plugin overrides", "cfgs", configs)
 
 	for _, cfgVal := range configs {
@@ -743,7 +747,12 @@ func (p *ValueParser) setPathSlice() error {
 
 	x, ok = p.Value.Interface().([]fspath.Path)
 	if !ok {
-		return fmt.Errorf("%w: given value for %q is not a slice of paths: %[3]v (%[3]T)", errInvalidCast, p.Field.Name, p.Value)
+		return fmt.Errorf(
+			"%w: given value for %q is not a slice of paths: %[3]v (%[3]T)",
+			errInvalidCast,
+			p.Field.Name,
+			p.Value,
+		)
 	}
 
 	// TODO: There might be a more robust way to parse the paths, but this is

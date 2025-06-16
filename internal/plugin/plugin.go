@@ -174,12 +174,26 @@ func Search(ctx context.Context, wd fspath.Path, paths []fspath.Path) ([]api.Man
 				g2.Go(func() error {
 					defer handlePanic()
 
-					logging.TraceContext(ctx2, "checking dir entry", "path", path, "name", entry.Name())
+					logging.TraceContext(
+						ctx2,
+						"checking dir entry",
+						"path",
+						path,
+						"name",
+						entry.Name(),
+					)
 
 					manifest, err := load(ctx2, path, entry)
 					if err != nil {
 						if errors.Is(err, errNoManifestFile) {
-							logging.TraceContext(ctx2, "no manifest file found", "path", path, "name", entry.Name())
+							logging.TraceContext(
+								ctx2,
+								"no manifest file found",
+								"path",
+								path,
+								"name",
+								entry.Name(),
+							)
 
 							return nil
 						}
@@ -195,7 +209,14 @@ func Search(ctx context.Context, wd fspath.Path, paths []fspath.Path) ([]api.Man
 						return fmt.Errorf("%w", err)
 					}
 
-					logging.TraceContext(ctx2, "appending manifest", "manifest", manifest, "path", path)
+					logging.TraceContext(
+						ctx2,
+						"appending manifest",
+						"manifest",
+						manifest,
+						"path",
+						path,
+					)
 
 					manifests = append(manifests, manifest)
 
@@ -279,7 +300,11 @@ func (s *Store) findCmd(parent *api.Command, name string) *api.Command {
 // one.
 func check(manifest api.Manifest, path fspath.Path) (api.Manifest, error) {
 	if manifest.Name == "" {
-		return api.Manifest{}, fmt.Errorf("%w: manifest at %q did not specify a name", errInvalidManifest, path)
+		return api.Manifest{}, fmt.Errorf(
+			"%w: manifest at %q did not specify a name",
+			errInvalidManifest,
+			path,
+		)
 	}
 
 	if manifest.Domain == "" {
@@ -287,7 +312,11 @@ func check(manifest api.Manifest, path fspath.Path) (api.Manifest, error) {
 	}
 
 	if manifest.Executable == "" {
-		return api.Manifest{}, fmt.Errorf("%w: manifest at %q did not specify executable", errInvalidManifest, path)
+		return api.Manifest{}, fmt.Errorf(
+			"%w: manifest at %q did not specify executable",
+			errInvalidManifest,
+			path,
+		)
 	}
 
 	execPath, err := fspath.NewAbs(string(path.Dir()), manifest.Executable)
@@ -327,7 +356,11 @@ func checkDuplicates(ctx context.Context, manifest api.Manifest, manifests []api
 		if m.Executable == manifest.Executable {
 			logging.TraceContext(ctx, "conflicting manifests", "new", manifest, "old", m)
 
-			return fmt.Errorf("%w: duplicate plugin executable path %q", errInvalidManifest, m.Executable)
+			return fmt.Errorf(
+				"%w: duplicate plugin executable path %q",
+				errInvalidManifest,
+				m.Executable,
+			)
 		}
 	}
 

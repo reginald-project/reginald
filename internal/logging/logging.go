@@ -107,7 +107,18 @@ func InitBootstrap(ios *terminal.IO) error {
 		return nil
 	}
 
-	slog.SetDefault(slog.New(slog.NewTextHandler(terminal.NewWriter(ios, terminal.Stderr), &slog.HandlerOptions{AddSource: true, Level: logs.LevelTrace, ReplaceAttr: replaceAttrFunc("")})))
+	slog.SetDefault(
+		slog.New(
+			slog.NewTextHandler(
+				terminal.NewWriter(ios, terminal.Stderr),
+				&slog.HandlerOptions{
+					AddSource:   true,
+					Level:       logs.LevelTrace,
+					ReplaceAttr: replaceAttrFunc(""),
+				},
+			),
+		),
+	)
 
 	return nil
 }
