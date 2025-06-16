@@ -21,12 +21,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"slices"
 	"strings"
 	"sync"
 
 	"github.com/reginald-project/reginald-sdk-go/api"
+	"github.com/reginald-project/reginald-sdk-go/logs"
 	"github.com/reginald-project/reginald/internal/builtin"
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/logging"
@@ -37,6 +39,7 @@ import (
 // Errors returned by the plugin functions.
 var (
 	errInvalidManifest = errors.New("invalid plugin manifest")
+	errNoManifestFile  = errors.New("no manifest file found")
 )
 
 // A Plugin is a plugin that Reginald recognizes.
@@ -171,19 +174,28 @@ func Search(ctx context.Context, wd fspath.Path, paths []fspath.Path) ([]api.Man
 				g2.Go(func() error {
 					defer handlePanic()
 
-					logging.TraceContext(ctx2, "checking dir entry", "path", path, "name", entry.Name)
+					logging.TraceContext(ctx2, "checking dir entry", "path", path, "name", entry.Name())
 
 					manifest, err := load(ctx2, path, entry)
 					if err != nil {
+						if errors.Is(err, errNoManifestFile) {
+							logging.TraceContext(ctx2, "no manifest file found", "path", path, "name", entry.Name())
+
+							return nil
+						}
+
 						return fmt.Errorf("%w", err)
 					}
 
+					logging.TraceContext(ctx2, "loaded manifest", "manifest", manifest)
 					mu.Lock()
 					defer mu.Unlock()
 
-					if err = checkDuplicates(manifest, manifests); err != nil {
+					if err = checkDuplicates(ctx2, manifest, manifests); err != nil {
 						return fmt.Errorf("%w", err)
 					}
+
+					logging.TraceContext(ctx2, "appending manifest", "manifest", manifest, "path", path)
 
 					manifests = append(manifests, manifest)
 
@@ -201,6 +213,20 @@ func Search(ctx context.Context, wd fspath.Path, paths []fspath.Path) ([]api.Man
 
 	if err := eg.Wait(); err != nil {
 		return nil, fmt.Errorf("%w", err)
+	}
+
+	// Maybe not necessary, but it's nice to create the log values only if
+	// they're used.
+	if slog.Default().Enabled(ctx, slog.Level(logs.LevelDebug)) {
+		names := make([]string, 0, len(manifests))
+		domains := make([]string, 0, len(manifests))
+
+		for _, m := range manifests {
+			names = append(names, m.Name)
+			domains = append(domains, m.Domain)
+		}
+
+		logging.DebugContext(ctx, "loaded plugin manifests", "names", names, "domains", domains)
 	}
 
 	return manifests, nil
@@ -284,18 +310,24 @@ func check(manifest api.Manifest, path fspath.Path) (api.Manifest, error) {
 // that are already defined. A manifest may not have the same name, domain, or
 // executable as some other manifest. As the function reads the manifests slice,
 // the lock protecting the slice should be locked before calling this function.
-func checkDuplicates(manifest api.Manifest, manifests []api.Manifest) error {
+func checkDuplicates(ctx context.Context, manifest api.Manifest, manifests []api.Manifest) error {
 	for _, m := range manifests {
 		if m.Name == manifest.Name {
+			logging.TraceContext(ctx, "conflicting manifests", "new", manifest, "old", m)
+
 			return fmt.Errorf("%w: duplicate plugin name %q", errInvalidManifest, m.Name)
 		}
 
 		if m.Domain == manifest.Domain {
+			logging.TraceContext(ctx, "conflicting manifests", "new", manifest, "old", m)
+
 			return fmt.Errorf("%w: duplicate plugin domain %q", errInvalidManifest, m.Domain)
 		}
 
 		if m.Executable == manifest.Executable {
-			return fmt.Errorf("%w: duplicate plugin executable path: %s", errInvalidManifest, m.Executable)
+			logging.TraceContext(ctx, "conflicting manifests", "new", manifest, "old", m)
+
+			return fmt.Errorf("%w: duplicate plugin executable path %q", errInvalidManifest, m.Executable)
 		}
 	}
 
@@ -305,16 +337,16 @@ func checkDuplicates(manifest api.Manifest, manifests []api.Manifest) error {
 // load loads the manifest from the search path for the DirEntry.
 func load(ctx context.Context, path fspath.Path, dirEntry os.DirEntry) (api.Manifest, error) {
 	if !dirEntry.IsDir() {
-		logging.TraceContext(ctx, "entry is not directory", "path", path, "name", dirEntry.Name)
+		logging.TraceContext(ctx, "entry is not directory", "path", path, "name", dirEntry.Name())
 
-		return api.Manifest{}, nil
+		return api.Manifest{}, fmt.Errorf("%w: %s", errNoManifestFile, path)
 	}
 
 	manifestPath := path.Join(dirEntry.Name(), "manifest.json")
 	if ok, err := manifestPath.IsFile(); err != nil {
 		return api.Manifest{}, fmt.Errorf("%w", err)
 	} else if !ok {
-		return api.Manifest{}, nil
+		return api.Manifest{}, fmt.Errorf("%w: %s", errNoManifestFile, manifestPath)
 	}
 
 	data, err := manifestPath.Clean().ReadFile()

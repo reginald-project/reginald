@@ -1,1 +1,6 @@
-{}
+{
+  "name": "reginald-go",
+  "domain": "go",
+  "executable": "reginald-go",
+  "description": "A plugin for running Go commands."
+}
