@@ -314,7 +314,7 @@ func (p *ValueParser) ApplyOverrides(ctx context.Context) error {
 		return fmt.Errorf("%w", err)
 	}
 
-	if p.Plugins != nil && p.Plugins.Len() == 0 {
+	if p.Plugins == nil || p.Plugins.Len() == 0 {
 		return nil
 	}
 
@@ -432,6 +432,11 @@ func (p *ValueParser) applyStructOverrides(ctx context.Context) error {
 				err = parser.setColorMode()
 			} else {
 				err = parser.setInt()
+			}
+		case reflect.Slice:
+			elem := parser.Value.Type().Elem()
+			if elem.Kind() == reflect.String && elem.Name() == "Path" {
+				err = parser.setPathSlice()
 			}
 		case reflect.String:
 			if parser.Value.Type().Name() == "Path" {
@@ -722,6 +727,52 @@ func (p *ValueParser) setPath() error {
 	}
 
 	p.Value.SetString(string(x))
+
+	return nil
+}
+
+// setPathSlice sets a string slice value from the environment variable or
+// the command-line flag to the currently parsed value as a slice of
+// [fspath.Path]. It also cleans the paths and possibly makes them absolute.
+func (p *ValueParser) setPathSlice() error {
+	var (
+		err error
+		ok  bool
+		x   []fspath.Path
+	)
+
+	x, ok = p.Value.Interface().([]fspath.Path)
+	if !ok {
+		return fmt.Errorf("%w: given value for %q is not a slice of paths: %[3]v (%[3]T)", errInvalidCast, p.Field.Name, p.Value)
+	}
+
+	// TODO: There might be a more robust way to parse the paths, but this is
+	// fine for now.
+	if p.EnvValue != "" {
+		s := p.EnvValue
+		parts := strings.Split(s, ",")
+		x = make([]fspath.Path, 0, len(parts))
+
+		for _, part := range parts {
+			x = append(x, fspath.Path(part))
+		}
+	}
+
+	if p.FlagSet.Changed(p.FlagName) {
+		x, err = p.FlagSet.GetPathSlice(p.FlagName)
+		if err != nil {
+			return fmt.Errorf("failed to get value for --%s: %w", p.FlagName, err)
+		}
+	}
+
+	for i, p := range x {
+		x[i], err = p.Abs()
+		if err != nil {
+			return fmt.Errorf("%w", err)
+		}
+	}
+
+	p.Value.Set(reflect.ValueOf(x))
 
 	return nil
 }

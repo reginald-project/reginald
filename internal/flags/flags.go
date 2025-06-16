@@ -386,3 +386,20 @@ func (f *FlagSet) GetPath(name string) (fspath.Path, error) {
 
 	return fspath.Path(val), nil
 }
+
+// GetPath returns the string slice value of a flag with the given name and
+// converts it to [fspath.Path] slice.
+func (f *FlagSet) GetPathSlice(name string) ([]fspath.Path, error) {
+	val, err := f.GetStringSlice(name)
+	if err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+
+	result := make([]fspath.Path, 0, len(val))
+
+	for _, v := range val {
+		result = append(result, fspath.Path(v))
+	}
+
+	return result, nil
+}

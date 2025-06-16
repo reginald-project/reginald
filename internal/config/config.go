@@ -55,7 +55,7 @@ type Config struct {
 	Directory fspath.Path `mapstructure:"directory"`
 
 	// PluginPaths is the directory where Reginald looks for the plugins.
-	PluginPaths []fspath.Path `mapstructure:"plugin-dir"`
+	PluginPaths []fspath.Path `mapstructure:"plugin-paths"`
 
 	// Defaults contains the default options set for tasks.
 	Defaults taskcfg.Defaults `mapstructure:"defaults"`
