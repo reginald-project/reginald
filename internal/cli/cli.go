@@ -248,7 +248,16 @@ func findSubcommands(
 			args = args[1:]
 			next := plugins.Command(names...)
 
-			logging.TraceContext(ctx, "checked cmd names", "names", names, "args", args, "remain", remain)
+			logging.TraceContext(
+				ctx,
+				"checked cmd names",
+				"names",
+				names,
+				"args",
+				args,
+				"remain",
+				remain,
+			)
 
 			if next == nil {
 				break
