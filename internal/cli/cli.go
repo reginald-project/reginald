@@ -235,13 +235,20 @@ func findSubcommands(
 	names := []string{}
 
 	for len(args) >= 1 {
+		logging.TraceContext(ctx, "checking args", "names", names, "args", args, "remain", remain)
+
 		if len(args) > 1 {
 			args, remain = collectFlags(flagSet, args[1:], remain)
+
+			logging.TraceContext(ctx, "collected flags", "args", args, "remain", remain)
 		}
 
 		if len(args) >= 1 {
 			names = append(names, args[0])
+			args = args[1:]
 			next := plugins.Command(names...)
+
+			logging.TraceContext(ctx, "checked cmd names", "names", names, "args", args, "remain", remain)
 
 			if next == nil {
 				break
@@ -256,10 +263,6 @@ func findSubcommands(
 				return nil, nil
 			}
 		}
-	}
-
-	if len(args) > 0 && cmd != nil && args[0] == cmd.Name {
-		args = args[1:]
 	}
 
 	return names, remain

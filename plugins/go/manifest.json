@@ -2,5 +2,12 @@
   "name": "reginald-go",
   "domain": "go",
   "executable": "reginald-go",
-  "description": "A plugin for running Go commands."
+  "description": "A plugin for running Go commands.",
+  "commands": [
+    {
+      "name": "versions",
+      "usage": "version [options]",
+      "description": "TODO"
+    }
+  ]
 }
