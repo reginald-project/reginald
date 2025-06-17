@@ -30,11 +30,13 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
 	"github.com/reginald-project/reginald-sdk-go/logs"
 	"github.com/reginald-project/reginald/internal/fspath"
+	"github.com/reginald-project/reginald/internal/logging/internal"
 	"github.com/reginald-project/reginald/internal/terminal"
 )
 
@@ -177,77 +179,128 @@ func Init(cfg Config) error {
 	return nil
 }
 
-// Trace calls [slog.Logger.Log] with level set to trace on the default logger.
+// Trace calls [log] with level set to trace on the default logger.
 func Trace(msg string, args ...any) {
-	//nolint:sloglint // logging function cannot have constant message
-	slog.Log(context.Background(), logs.LevelTrace.Level(), msg, args...)
+	log(context.Background(), slog.Default(), logs.LevelTrace, msg, args...)
 }
 
-// TraceContext calls [slog.Logger.Log] with level set to trace on the default
-// logger.
+// TraceContext calls [log] with level set to trace on the default logger.
 func TraceContext(ctx context.Context, msg string, args ...any) {
-	//nolint:sloglint // logging function cannot have constant message
-	slog.Log(ctx, logs.LevelTrace.Level(), msg, args...)
+	log(ctx, slog.Default(), logs.LevelTrace, msg, args...)
 }
 
-// Debug calls [slog.Logger.Debug] on the default logger.
+// Debug calls [log] with level set to debug on the default logger.
 func Debug(msg string, args ...any) {
-	//nolint:sloglint // logging function cannot have constant message
-	slog.Log(context.Background(), logs.LevelDebug.Level(), msg, args...)
+	log(context.Background(), slog.Default(), logs.LevelDebug, msg, args...)
 }
 
-// DebugContext calls [slog.Logger.DebugContext] on the default logger.
+// DebugContext calls [log] with level set to debug on the default logger.
 func DebugContext(ctx context.Context, msg string, args ...any) {
-	//nolint:sloglint // logging function cannot have constant message
-	slog.Log(ctx, logs.LevelDebug.Level(), msg, args...)
+	log(ctx, slog.Default(), logs.LevelDebug, msg, args...)
 }
 
-// Info calls [slog.Logger.Info] on the default logger.
+// Info calls [log] with level set to info on the default logger.
 func Info(msg string, args ...any) {
-	//nolint:sloglint // logging function cannot have constant message
-	slog.Log(context.Background(), logs.LevelInfo.Level(), msg, args...)
+	log(context.Background(), slog.Default(), logs.LevelInfo, msg, args...)
 }
 
-// InfoContext calls [slog.Logger.InfoContext] on the default logger.
+// InfoContext calls [log] with level set to info on the default logger.
 func InfoContext(ctx context.Context, msg string, args ...any) {
-	//nolint:sloglint // logging function cannot have constant message
-	slog.Log(ctx, logs.LevelInfo.Level(), msg, args...)
+	log(ctx, slog.Default(), logs.LevelInfo, msg, args...)
 }
 
-// Warn calls [slog.Logger.Warn] on the default logger.
+// Warn calls [log] with level set to warn on the default logger.
 func Warn(msg string, args ...any) {
-	//nolint:sloglint // logging function cannot have constant message
-	slog.Log(context.Background(), logs.LevelWarn.Level(), msg, args...)
+	log(context.Background(), slog.Default(), logs.LevelWarn, msg, args...)
 }
 
-// WarnContext calls [slog.Logger.WarnContext] on the default logger.
+// WarnContext calls [log] with level set to warn on the default logger.
 func WarnContext(ctx context.Context, msg string, args ...any) {
-	//nolint:sloglint // logging function cannot have constant message
-	slog.Log(ctx, logs.LevelWarn.Level(), msg, args...)
+	log(ctx, slog.Default(), logs.LevelWarn, msg, args...)
 }
 
-// Error calls [slog.Logger.Error] on the default logger.
+// Error calls [log] with level set to error on the default logger.
 func Error(msg string, args ...any) {
-	//nolint:sloglint // logging function cannot have constant message
-	slog.Log(context.Background(), logs.LevelError.Level(), msg, args...)
+	log(context.Background(), slog.Default(), logs.LevelError, msg, args...)
 }
 
-// ErrorContext calls [slog.Logger.ErrorContext] on the default logger.
+// ErrorContext calls [log] with level set to error on the default logger.
 func ErrorContext(ctx context.Context, msg string, args ...any) {
-	//nolint:sloglint // logging function cannot have constant message
-	slog.Log(ctx, logs.LevelError.Level(), msg, args...)
+	log(ctx, slog.Default(), logs.LevelError, msg, args...)
 }
 
-// Log calls [slog.Logger.Log] on the default logger.
+// Log calls [log] on the default logger.
 func Log(ctx context.Context, level logs.Level, msg string, args ...any) {
-	//nolint:sloglint // logging function cannot have constant message
-	slog.Log(ctx, level.Level(), msg, args...)
+	log(ctx, slog.Default(), level, msg, args...)
 }
 
-// LogAttrs calls [slog.Logger.LogAttrs] on the default logger.
+// LogAttrs calls [logAttrs] on the default logger.
 func LogAttrs(ctx context.Context, level logs.Level, msg string, attrs ...slog.Attr) {
-	//nolint:sloglint // logging function cannot have constant message
-	slog.LogAttrs(ctx, level.Level(), msg, attrs...)
+	logAttrs(ctx, slog.Default(), level, msg, attrs...)
+}
+
+// log is the low-level logging method for methods that take ...any. It must
+// always be called directly by an exported logging method or function, because
+// it uses a fixed call depth to obtain the pc.
+func log(ctx context.Context, l *slog.Logger, level logs.Level, msg string, args ...any) {
+	if !l.Enabled(ctx, slog.Level(level)) {
+		return
+	}
+
+	var pc uintptr
+
+	if !internal.IgnorePC {
+		var pcs [1]uintptr
+
+		// skip [runtime.Callers, this function, this function's caller]
+		runtime.Callers(3, pcs[:])
+
+		pc = pcs[0]
+	}
+
+	r := slog.NewRecord(time.Now(), slog.Level(level), msg, pc)
+
+	r.Add(args...)
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	_ = l.Handler().Handle(ctx, r)
+}
+
+// logAttrs is like [log], but for methods that take ...Attr.
+func logAttrs(
+	ctx context.Context,
+	l *slog.Logger,
+	level logs.Level,
+	msg string,
+	attrs ...slog.Attr,
+) {
+	if !l.Enabled(ctx, slog.Level(level)) {
+		return
+	}
+
+	var pc uintptr
+
+	if !internal.IgnorePC {
+		var pcs [1]uintptr
+
+		// skip [runtime.Callers, this function, this function's caller]
+		runtime.Callers(3, pcs[:])
+
+		pc = pcs[0]
+	}
+
+	r := slog.NewRecord(time.Now(), slog.Level(level), msg, pc)
+
+	r.AddAttrs(attrs...)
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	_ = l.Handler().Handle(ctx, r)
 }
 
 func replaceAttrFunc(timeFormat string) func([]string, slog.Attr) slog.Attr {

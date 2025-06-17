@@ -74,7 +74,12 @@ func Apply(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 	}
 
 	if opts.idents[0] != EnvPrefix {
-		panic(fmt.Sprintf("Apply must be called with no config identifiers or with the global prefix for the environment variables as the first identifier: %q", EnvPrefix))
+		panic(
+			fmt.Sprintf(
+				"Apply must be called with no config identifiers or with the global prefix for the environment variables as the first identifier: %q",
+				EnvPrefix,
+			),
+		)
 	}
 
 	err := applyStruct(ctx, reflect.ValueOf(cfg).Elem(), opts)
@@ -451,7 +456,16 @@ func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) erro
 		field := cfg.Type().Field(i)
 		val := cfg.Field(i)
 
-		logging.TraceContext(ctx, "checking config field", "key", field.Name, "value", val, "opts", opts)
+		logging.TraceContext(
+			ctx,
+			"checking config field",
+			"key",
+			field.Name,
+			"value",
+			val,
+			"opts",
+			opts,
+		)
 
 		if !val.CanSet() {
 			panic(fmt.Sprintf("cannot set Directory field in %q", cfg.Type().Name()))
@@ -478,7 +492,16 @@ func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) erro
 		field := cfg.Type().Field(i)
 		val := cfg.Field(i)
 
-		logging.TraceContext(ctx, "checking config field", "key", field.Name, "value", val, "opts", opts)
+		logging.TraceContext(
+			ctx,
+			"checking config field",
+			"key",
+			field.Name,
+			"value",
+			val,
+			"opts",
+			opts,
+		)
 
 		if !val.CanSet() {
 			continue
@@ -592,7 +615,11 @@ func unmarshal(value reflect.Value, s string) (reflect.Value, error) {
 
 	unmarshaler, ok := ptr.Interface().(encoding.TextUnmarshaler)
 	if !ok {
-		return reflect.Value{}, fmt.Errorf("%w: type of %q to TextUnmarshaler", errInvalidCast, value)
+		return reflect.Value{}, fmt.Errorf(
+			"%w: type of %q to TextUnmarshaler",
+			errInvalidCast,
+			value,
+		)
 	}
 
 	if err := unmarshaler.UnmarshalText([]byte(s)); err != nil {
