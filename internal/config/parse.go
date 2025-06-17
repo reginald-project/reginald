@@ -54,7 +54,7 @@ var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem(
 // loaded.
 //
 //nolint:gochecknoglobals // used like constant
-var dynamicFields = []string{"Defaults", "Plugins", "Tasks"}
+var dynamicFields = []string{"Defaults", "Directory", "Plugins", "Tasks"}
 
 // ApplyOptions is the type for the options for the Apply function.
 type ApplyOptions struct {
@@ -81,6 +81,14 @@ func Apply(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 	if err != nil {
 		return fmt.Errorf("%w", err)
 	}
+
+	return nil
+}
+
+// ApplyPlugins applies the config values for plugins from environment variables
+// and command-line flags to cfg. It modifies the pointed cfg.
+func ApplyPlugins(ctx context.Context) error {
+	logging.DebugContext(ctx, "applying plugins")
 
 	return nil
 }
@@ -118,10 +126,13 @@ func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
 	logging.TraceContext(ctx, "normalized keys", "cfg", rawCfg)
 
 	cfg := DefaultConfig()
+	dir := cfg.Directory
 	decoderConfig := &mapstructure.DecoderConfig{ //nolint:exhaustruct // use default values
 		DecodeHook: mapstructure.TextUnmarshallerHookFunc(),
 		Result:     cfg,
 	}
+
+	logging.TraceContext(ctx, "created default config", "cfg", cfg)
 
 	d, err := mapstructure.NewDecoder(decoderConfig)
 	if err != nil {
@@ -135,7 +146,7 @@ func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
 	logging.DebugContext(ctx, "read raw config", "cfg", cfg)
 
 	opts := ApplyOptions{
-		Dir:     cfg.Directory, // this is the working dir by default so no extra work is needed
+		Dir:     dir, // this is the working dir by default so no extra work is needed
 		FlagSet: flagSet,
 	}
 	if err := Apply(ctx, cfg, opts); err != nil {
@@ -422,12 +433,52 @@ func applyString(value reflect.Value, opts ApplyOptions) error {
 }
 
 func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) error {
+	if len(opts.idents) == 1 {
+		i := -1
+
+		for j := range cfg.NumField() {
+			if cfg.Type().Field(j).Name == "Directory" {
+				i = j
+
+				break
+			}
+		}
+
+		if i < 0 {
+			panic(fmt.Sprintf("failed to find Directory field in %q", cfg.Type().Name()))
+		}
+
+		field := cfg.Type().Field(i)
+		val := cfg.Field(i)
+
+		logging.TraceContext(ctx, "checking config field", "key", field.Name, "value", val, "opts", opts)
+
+		if !val.CanSet() {
+			panic(fmt.Sprintf("cannot set Directory field in %q", cfg.Type().Name()))
+		}
+
+		var err error
+
+		newOpts := ApplyOptions{
+			idents:  append(opts.idents, field.Name),
+			Dir:     opts.Dir,
+			FlagSet: opts.FlagSet,
+		}
+
+		if err = applyPath(val, newOpts); err != nil {
+			return fmt.Errorf("%w", err)
+		}
+
+		opts.Dir = fspath.Path(val.String())
+
+		logging.TraceContext(ctx, "set config field", "key", field.Name, "value", val)
+	}
+
 	for i := range cfg.NumField() {
 		field := cfg.Type().Field(i)
-
-		logging.TraceContext(ctx, "checking config field", "field", field.Name, "opts", opts)
-
 		val := cfg.Field(i)
+
+		logging.TraceContext(ctx, "checking config field", "key", field.Name, "value", val, "opts", opts)
 
 		if !val.CanSet() {
 			continue

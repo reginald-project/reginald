@@ -489,11 +489,7 @@ func parseArgs(ctx context.Context, cfg *config.Config, plugins *plugin.Store) e
 		return fmt.Errorf("%w", err)
 	}
 
-	opts := config.ApplyOptions{
-		Dir:     cfg.Directory, // first parse should set this to the correct value
-		FlagSet: flagSet,
-	}
-	if err := config.Apply(ctx, cfg, opts); err != nil {
+	if err := config.ApplyPlugins(ctx); err != nil {
 		return fmt.Errorf("failed to apply config values: %w", err)
 	}
 
