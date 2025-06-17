@@ -271,6 +271,8 @@ func normalizeKeys(cfg map[string]any) {
 
 // Validate checks if all of the config values that were left after unmarshaling
 // the config are valid plugin or plugin command names.
+//
+// TODO: This should have a better implementation.
 func Validate(cfg *Config, plugins *plugin.Store) error {
 	for k := range cfg.Plugins {
 		ok := false

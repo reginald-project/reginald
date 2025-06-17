@@ -42,16 +42,19 @@ const (
 	Name        = "reginald" // name of the command that's run
 )
 
-// Global errors returned by the commands.
-var (
-	ErrUnknownArg = errors.New("unknown command-line argument")
-)
-
 // Errors returned by the CLI commands.
 var (
 	errDuplicateCommand  = errors.New("duplicate command")
 	errMutuallyExclusive = errors.New("two mutually exclusive flags set at the same time")
 )
+
+// A runInfo is the parsed information for the program run. It is returned from
+// the bootstrapping function.
+type runInfo struct {
+	args    []string
+	cfg     *config.Config
+	plugins *plugin.Store
+}
 
 // Run runs the CLI application and returns any errors from the run.
 func Run() error {
@@ -71,56 +74,19 @@ func Run() error {
 		cancel()
 	}()
 
-	bootStreams := terminal.NewIO(false, false, terminal.ColorNever)
-	defer bootStreams.Close()
+	_, err := bootstrap(ctx)
+	if err != nil {
+		var exitErr *ExitError
+		if errors.As(err, &exitErr) {
+			return &ExitError{
+				Code: exitErr.Code,
+				err:  err,
+			}
+		}
 
-	if err := logging.InitBootstrap(bootStreams); err != nil {
 		return &ExitError{
 			Code: 1,
 			err:  err,
-		}
-	}
-
-	logging.DebugContext(ctx, "bootstrap logger initialized")
-	logging.InfoContext(
-		ctx,
-		"bootstrapping Reginald",
-		"version",
-		version.Version(),
-		"commit",
-		version.Revision(),
-	)
-
-	cfg, err := initConfig(ctx)
-	if err != nil {
-		return &ExitError{
-			Code: 1,
-			err:  err,
-		}
-	}
-
-	if err = initOut(ctx, cfg); err != nil {
-		return &ExitError{
-			Code: 1,
-			err:  err,
-		}
-	}
-	defer terminal.Streams().Close()
-	logging.InfoContext(ctx, "executing Reginald", "version", version.Version())
-
-	plugins, err := initPlugins(ctx, cfg)
-	if err != nil {
-		return &ExitError{
-			Code: 1,
-			err:  fmt.Errorf("failed to init plugins: %w", err),
-		}
-	}
-
-	err = parseArgs(ctx, cfg, plugins)
-	if err != nil {
-		return &ExitError{
-			Code: 1,
-			err:  fmt.Errorf("failed to parse the command-line arguments: %w", err),
 		}
 	}
 
@@ -136,6 +102,63 @@ func addFlags(flagSet *flags.FlagSet, cmd *api.Command) error {
 	}
 
 	return nil
+}
+
+// bootstrap initializes the program run by creating the logger and output
+// streams, loading the plugin information, and parsing the command-line
+// arguments.
+func bootstrap(ctx context.Context) (*runInfo, error) {
+	streams := terminal.NewIO(false, false, terminal.ColorNever)
+	defer streams.Close()
+
+	if err := logging.InitBootstrap(streams); err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+
+	logging.DebugContext(ctx, "bootstrap logger initialized")
+	logging.InfoContext(
+		ctx,
+		"bootstrapping Reginald",
+		"version",
+		version.Version(),
+		"commit",
+		version.Revision(),
+	)
+
+	cfg, err := initConfig(ctx)
+	if err != nil {
+		return nil, &ExitError{
+			Code: 1,
+			err:  err,
+		}
+	}
+
+	if err = initOut(ctx, cfg); err != nil {
+		return nil, &ExitError{
+			Code: 1,
+			err:  err,
+		}
+	}
+	defer terminal.Streams().Close()
+	logging.InfoContext(ctx, "executing Reginald", "version", version.Version())
+
+	plugins, err := initPlugins(ctx, cfg)
+	if err != nil {
+		return nil, &ExitError{
+			Code: 1,
+			err:  fmt.Errorf("failed to init plugins: %w", err),
+		}
+	}
+
+	err = parseArgs(ctx, cfg, plugins)
+	if err != nil {
+		return nil, &ExitError{
+			Code: 1,
+			err:  fmt.Errorf("failed to parse the command-line arguments: %w", err),
+		}
+	}
+
+	return nil, nil
 }
 
 // collectFlags removes all of the known flags from the arguments list and
