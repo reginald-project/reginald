@@ -21,15 +21,7 @@
 
 GO = go
 
-ADDLICENSE_VERSION = 1.1.1
-GCI_VERSION = 0.13.6
-GO_LICENSES_VERSION = 1.6.0
-GOFUMPT_VERSION = 0.8.0
-GOLANGCI_LINT_VERSION = 2.1.6
-GOLINES_VERSION = 0.12.2
-
 ALLOWED_LICENSES = Apache-2.0,BSD-2-Clause,BSD-3-Clause,MIT
-
 COPYRIGHT_HOLDER = Antti Kivi
 LICENSE = apache
 ADDLICENSE_PATTERNS = *.go internal plugins scripts
@@ -99,32 +91,11 @@ clean: FORCE
 
 # TOOL HELPERS
 
-addlicense: FORCE
-	@./scripts/install_tool "$(GO)" "$@" "$(ADDLICENSE_VERSION)" "$(FORCE_REINSTALL)"
+addlicense gci go-licenses gofumpt golangci-lint golines: FORCE scripts/script
+	@./scripts/script install -go "$(GO)" -t "$@"
 
-gci: FORCE
-	@./scripts/install_tool "$(GO)" "$@" "$(GCI_VERSION)" "$(FORCE_REINSTALL)"
-
-go: FORCE
-	@if ! command -v "$(GO)" >/dev/null 2>&1; then \
-		printf 'Error: the Go executable was not found, tried "%s"\n' "$(GO)" >&2; \
-		exit 1; \
-	else \
-		GOFLAGS= ; \
-		printf 'using Go version %s\n' "$$("$(GO)" version | awk '{print $$3}' | cut -c 3-)"; \
-	fi
-
-go-licenses: FORCE
-	@./scripts/install_tool "$(GO)" "$@" "$(GO_LICENSES_VERSION)" "$(FORCE_REINSTALL)"
-
-gofumpt: FORCE
-	@./scripts/install_tool "$(GO)" "$@" "$(GOFUMPT_VERSION)" "$(FORCE_REINSTALL)"
-
-golangci-lint: FORCE
-	@./scripts/install_tool "$(GO)" "$@" "$(GOLANGCI_LINT_VERSION)" "$(FORCE_REINSTALL)"
-
-golines: FORCE
-	@./scripts/install_tool "$(GO)" "$@" "$(GOLINES_VERSION)" "$(FORCE_REINSTALL)"
+scripts/script: scripts/main.go scripts/build.go scripts/install.go
+	"$(GO)" build -o $@ scripts/main.go scripts/build.go scripts/install.go
 
 # SPECIAL TARGET
 
