@@ -27,7 +27,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reginald-project/reginald/tools/run"
+	"github.com/reginald-project/reginald/tools/toolexec"
 )
 
 const versionPackage = "github.com/reginald-project/reginald/internal/version"
@@ -99,7 +99,7 @@ func main() {
 			args = append(args, strings.Fields(os.Getenv("GOFLAGS"))...)
 			args = append(args, "-ldflags", "-X "+versionPackage+".buildVersion="+version)
 
-			if err := run.Run(args...); err != nil {
+			if err := toolexec.Run(args...); err != nil {
 				return fmt.Errorf("%w", err)
 			}
 
