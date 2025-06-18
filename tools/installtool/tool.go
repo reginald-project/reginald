@@ -28,27 +28,36 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/reginald-project/reginald/tools/run"
 )
 
 func main() {
 	log.SetFlags(0)
 
+	var tool string
+
+	if len(os.Args) < 2 {
+		log.Fatal("No tool given")
+	} else {
+		tool = os.Args[1]
+	}
+
 	flagSet := flag.NewFlagSet("installtool", flag.ExitOnError)
 	exe := flagSet.String("go", "go", "path to the Go executable")
-	tool := flagSet.String("t", "", "name of the tool to install")
 	force := flagSet.Bool("f", false, "reinstall the tool if it is already installed")
 	flagSet.Usage = func() {
 		fmt.Fprintln(flagSet.Output(), "Usage: installtool [flags]")
 		flagSet.PrintDefaults()
 	}
 
-	if err := flagSet.Parse(os.Args[1:]); err != nil {
+	if err := flagSet.Parse(os.Args[2:]); err != nil {
 		log.Fatal(err)
 	}
 
-	if *tool == "" {
-		flagSet.Usage()
-		os.Exit(2)
+	self := filepath.Base(os.Args[0])
+	if self == "installtool" {
+		self = "installtool.go"
 	}
 
 	versions := map[string]string{
@@ -59,20 +68,18 @@ func main() {
 		"golangci-lint": "2.1.6",
 		"golines":       "0.12.2",
 	}
-	version, ok := versions[*tool]
+	version, ok := versions[tool]
 	if !ok {
-		log.Fatalf("Unknown tool: %s", *tool)
+		log.Fatalf("Unknown tool: %s", tool)
 	}
 
-	if !shouldInstall(*tool, version) && !*force {
-		log.Printf("%s is already installed", *tool)
+	if !shouldInstall(tool, version) && !*force {
+		fmt.Printf("%s: `%s` is up to date.\n", self, tool)
 
 		return
 	}
 
-	log.Printf("Installing %s version %s", *tool, version)
-
-	switch *tool {
+	switch tool {
 	case "addlicense":
 		goInstall(*exe, "github.com/google/addlicense", version)
 	case "gci":
@@ -86,10 +93,8 @@ func main() {
 	case "golines":
 		installGolines(*exe, version)
 	default:
-		log.Fatalf("Unknown tool: %s", *tool)
+		log.Fatalf("Unknown tool: %s", tool)
 	}
-
-	log.Printf("Installed %s version %s", *tool, version)
 }
 
 func goEnv(exe, key string) string {
@@ -104,11 +109,8 @@ func goEnv(exe, key string) string {
 }
 
 func goInstall(exe, mod, version string) {
-	cmd := exec.Command(exe, "install", mod+"@v"+version)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
+	err := run.Run(exe, "install", mod+"@v"+version)
+	if err != nil {
 		log.Fatalf("Failed to install %s: %v", mod, err)
 	}
 }
@@ -124,12 +126,8 @@ func installGolangciLint(exe, version string) {
 	}
 	defer resp.Body.Close()
 
-	cmd := exec.Command("sh", "-s", "--", "-b", installDir, "v"+version)
-	cmd.Stdin = resp.Body
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
+	err = run.Run("sh", "-s", "--", "-b", installDir, "v"+version)
+	if err != nil {
 		log.Fatalf("Failed to install golangci-lint: %v", err)
 	}
 }
@@ -174,7 +172,7 @@ func installGolines(exe, version string) {
 		log.Fatalf("Failed to parse golines ref sha")
 	}
 
-	cmd := exec.Command(
+	err = run.Run(
 		exe,
 		"install",
 		"-ldflags",
@@ -186,10 +184,7 @@ func installGolines(exe, version string) {
 		),
 		"github.com/segmentio/golines@v"+version,
 	)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
+	if err != nil {
 		log.Fatalf("Failed to install github.com/segmentio/golines: %v", err)
 	}
 }
@@ -224,12 +219,8 @@ func shouldInstall(tool, version string) bool {
 	}
 
 	if current == version {
-		log.Printf("Found %s version %s", tool, current)
-
 		return false
 	}
-
-	log.Printf("Found %s version %s, want %s", tool, current, version)
 
 	return true
 }

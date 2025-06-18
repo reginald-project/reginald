@@ -92,13 +92,13 @@ clean: FORCE
 # TOOL HELPERS
 
 addlicense gci go-licenses gofumpt golangci-lint golines: FORCE installtool
-	@./installtool -go "$(GO)" -t "$@"
+	@./installtool $@ -go "$(GO)"
 
 buildtask: tools/buildtask/tool.go
-	"$(GO)" build -o $@ -tags tool $<
+	@"$(GO)" build -o $@ -tags tool $<
 
 installtool: tools/installtool/tool.go
-	"$(GO)" build -o $@ -tags tool $<
+	@"$(GO)" build -o $@ -tags tool $<
 
 # SPECIAL TARGET
 
