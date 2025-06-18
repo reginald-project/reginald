@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build tool
+
 package main
 
 import (
@@ -28,38 +30,19 @@ import (
 	"time"
 )
 
-func goEnv(exe, key string) string {
-	cmd := exec.Command(exe, "env", key)
+func main() {
+	log.SetFlags(0)
 
-	out, err := cmd.Output()
-	if err != nil {
-		log.Fatalf("Failed to run go env %s: %v", key, err)
-	}
-
-	return strings.TrimSpace(string(out))
-}
-
-func goInstall(exe, mod, version string) {
-	cmd := exec.Command(exe, "install", mod+"@v"+version)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		log.Fatalf("Failed to install %s: %v", mod, err)
-	}
-}
-
-func install() {
-	flagSet := flag.NewFlagSet("install", flag.ExitOnError)
+	flagSet := flag.NewFlagSet("installtool", flag.ExitOnError)
 	exe := flagSet.String("go", "go", "path to the Go executable")
 	tool := flagSet.String("t", "", "name of the tool to install")
 	force := flagSet.Bool("f", false, "reinstall the tool if it is already installed")
 	flagSet.Usage = func() {
-		fmt.Fprintln(flagSet.Output(), "Usage: ./scripts/script install [flags]")
+		fmt.Fprintln(flagSet.Output(), "Usage: installtool [flags]")
 		flagSet.PrintDefaults()
 	}
 
-	if err := flagSet.Parse(os.Args[2:]); err != nil {
+	if err := flagSet.Parse(os.Args[1:]); err != nil {
 		log.Fatal(err)
 	}
 
@@ -107,6 +90,27 @@ func install() {
 	}
 
 	log.Printf("Installed %s version %s", *tool, version)
+}
+
+func goEnv(exe, key string) string {
+	cmd := exec.Command(exe, "env", key)
+
+	out, err := cmd.Output()
+	if err != nil {
+		log.Fatalf("Failed to run go env %s: %v", key, err)
+	}
+
+	return strings.TrimSpace(string(out))
+}
+
+func goInstall(exe, mod, version string) {
+	cmd := exec.Command(exe, "install", mod+"@v"+version)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		log.Fatalf("Failed to install %s: %v", mod, err)
+	}
 }
 
 func installGolangciLint(exe, version string) {

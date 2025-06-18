@@ -24,51 +24,51 @@ GO = go
 ALLOWED_LICENSES = Apache-2.0,BSD-2-Clause,BSD-3-Clause,MIT
 COPYRIGHT_HOLDER = Antti Kivi
 LICENSE = apache
-ADDLICENSE_PATTERNS = *.go internal plugins scripts
+ADDLICENSE_PATTERNS = *.go internal plugins tools
 
 GO_MODULE = github.com/reginald-project/reginald
 
 RM = rm -f
 
 # Default target.
-all: FORCE build plugins
+all: reginald plugins
 
 # CODE QUALITY & CHECKS
 
-audit: FORCE license-check test lint
+audit: license-check test lint
 	"$(GO)" mod tidy -diff
 	"$(GO)" mod verify
 
-license-check: FORCE go-licenses
+license-check: go-licenses
 	"$(GO)" mod verify
 	"$(GO)" mod download
 	go-licenses check --include_tests $(GO_MODULE)/... --allowed_licenses="$(ALLOWED_LICENSES)"
 
-lint: FORCE addlicense golangci-lint
+lint: addlicense golangci-lint
 	addlicense -check -c "$(COPYRIGHT_HOLDER)" -l "$(LICENSE)" $(ADDLICENSE_PATTERNS)
 	golangci-lint config verify
 	golangci-lint run
 
-test: FORCE go
+test: FORCE
 	"$(GO)" test $(GOFLAGS) ./...
 
 # DEVELOPMENT & BUILDING
 
-tidy: FORCE addlicense gci go gofumpt golines
+tidy: addlicense gci gofumpt golines
 	addlicense -v -c "$(COPYRIGHT_HOLDER)" -l "$(LICENSE)" $(ADDLICENSE_PATTERNS)
 	"$(GO)" mod tidy -v
 	gci write .
 	golines --no-chain-split-dots --no-reformat-tags -w .
 	gofumpt -extra -l -w .
 
-fmt: FORCE tidy
+reginald: FORCE buildtask
+	@./buildtask $@ -go "$(GO)" -v "$(VERSION)" -o "$(OUTPUT)"
 
-build: FORCE go
-	@./scripts/build "$(GO)" "$(VERSION)" "$(PRERELEASE)" "$(BUILD_METADATA)" "" "$(GOFLAGS)"
+build: reginald
 
-plugins: FORCE reginald-go
+plugins: reginald-go
 
-reginald-go: FORCE go
+reginald-go: FORCE
 	mkdir -p ./bin/go
 	cp ./plugins/go/manifest.json ./bin/go/manifest.json
 	"$(GO)" build -o ./bin/go/reginald-go ./plugins/go
@@ -91,11 +91,14 @@ clean: FORCE
 
 # TOOL HELPERS
 
-addlicense gci go-licenses gofumpt golangci-lint golines: FORCE scripts/script
-	@./scripts/script install -go "$(GO)" -t "$@"
+addlicense gci go-licenses gofumpt golangci-lint golines: FORCE installtool
+	@./installtool -go "$(GO)" -t "$@"
 
-scripts/script: scripts/main.go scripts/build.go scripts/install.go
-	"$(GO)" build -o $@ scripts/main.go scripts/build.go scripts/install.go
+buildtask: tools/buildtask/tool.go
+	"$(GO)" build -o $@ -tags tool $<
+
+installtool: tools/installtool/tool.go
+	"$(GO)" build -o $@ -tags tool $<
 
 # SPECIAL TARGET
 
