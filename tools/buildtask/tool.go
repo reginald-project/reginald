@@ -18,7 +18,6 @@ package main
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -43,17 +42,9 @@ func main() {
 		task = os.Args[1]
 	}
 
-	flagSet := flag.NewFlagSet("buildtask", flag.ExitOnError)
-	exe := flagSet.String("go", "go", "path to the Go executable")
-	outputFlag := flagSet.String("o", "", "name of the output executable")
-	versionFlag := flagSet.String("v", "", "version of the output executable")
-	flagSet.Usage = func() {
-		fmt.Fprintln(flagSet.Output(), "Usage: buildtask [flags]")
-		flagSet.PrintDefaults()
-	}
-
-	if err := flagSet.Parse(os.Args[2:]); err != nil {
-		log.Fatal(err)
+	exe := os.Getenv("GO")
+	if exe == "" {
+		exe = "go"
 	}
 
 	self := filepath.Base(os.Args[0])
@@ -63,7 +54,7 @@ func main() {
 
 	tasks := map[string]func() error{
 		"reginald": func() error {
-			output := *outputFlag
+			output := os.Getenv("OUTPUT")
 			if output == "" {
 				output = "reginald"
 			}
@@ -79,11 +70,9 @@ func main() {
 				return nil
 			}
 
-			var version string
+			version := os.Getenv("VERSION")
 
-			if *versionFlag != "" {
-				version = *versionFlag
-			} else {
+			if version == "" {
 				data, err := os.ReadFile("VERSION")
 				if err != nil {
 					return fmt.Errorf("%w", err)
@@ -94,10 +83,10 @@ func main() {
 				// TODO: Add build metadata if needed.
 			}
 
-			args := []string{*exe, "build", "-trimpath"}
-			args = append(args, "-o", output)
+			args := []string{exe, "build", "-trimpath"}
 			args = append(args, strings.Fields(os.Getenv("GOFLAGS"))...)
 			args = append(args, "-ldflags", "-X "+versionPackage+".buildVersion="+version)
+			args = append(args, "-o", output)
 
 			if err := toolexec.Run(args...); err != nil {
 				return fmt.Errorf("%w", err)

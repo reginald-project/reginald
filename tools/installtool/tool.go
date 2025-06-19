@@ -44,7 +44,6 @@ func main() {
 	}
 
 	flagSet := flag.NewFlagSet("installtool", flag.ExitOnError)
-	exe := flagSet.String("go", "go", "path to the Go executable")
 	force := flagSet.Bool("f", false, "reinstall the tool if it is already installed")
 	flagSet.Usage = func() {
 		fmt.Fprintln(flagSet.Output(), "Usage: installtool [flags]")
@@ -53,6 +52,11 @@ func main() {
 
 	if err := flagSet.Parse(os.Args[2:]); err != nil {
 		log.Fatal(err)
+	}
+
+	exe := os.Getenv("GO")
+	if exe == "" {
+		exe = "go"
 	}
 
 	self := filepath.Base(os.Args[0])
@@ -81,17 +85,17 @@ func main() {
 
 	switch tool {
 	case "addlicense":
-		goInstall(*exe, "github.com/google/addlicense", version)
+		goInstall(exe, "github.com/google/addlicense", version)
 	case "gci":
-		goInstall(*exe, "github.com/daixiang0/gci", version)
+		goInstall(exe, "github.com/daixiang0/gci", version)
 	case "go-licenses":
-		goInstall(*exe, "github.com/google/go-licenses", version)
+		goInstall(exe, "github.com/google/go-licenses", version)
 	case "gofumpt":
-		goInstall(*exe, "mvdan.cc/gofumpt", version)
+		goInstall(exe, "mvdan.cc/gofumpt", version)
 	case "golangci-lint":
-		installGolangciLint(*exe, version)
+		installGolangciLint(exe, version)
 	case "golines":
-		installGolines(*exe, version)
+		installGolines(exe, version)
 	default:
 		log.Fatalf("Unknown tool: %s", tool)
 	}

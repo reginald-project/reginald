@@ -20,6 +20,12 @@
 .SUFFIXES:
 
 GO = go
+GOFLAGS =
+
+VERSION =
+OUTPUT =
+
+TOOLFLAGS =
 
 ALLOWED_LICENSES = Apache-2.0,BSD-2-Clause,BSD-3-Clause,MIT
 COPYRIGHT_HOLDER = Antti Kivi
@@ -62,7 +68,7 @@ tidy: addlicense gci gofumpt golines
 	gofumpt -extra -l -w .
 
 reginald: FORCE buildtask
-	@./buildtask $@ -go "$(GO)" -v "$(VERSION)" -o "$(OUTPUT)"
+	@./buildtask $@
 
 build: reginald
 
@@ -92,13 +98,13 @@ clean: FORCE
 # TOOL HELPERS
 
 addlicense gci go-licenses gofumpt golangci-lint golines: FORCE installtool
-	@./installtool $@ -go "$(GO)"
+	@./installtool $@ $(TOOLFLAGS)
 
 buildtask: tools/buildtask/tool.go
-	@"$(GO)" build -o $@ -tags tool $<
+	"$(GO)" build -o $@ -tags tool $<
 
 installtool: tools/installtool/tool.go
-	@"$(GO)" build -o $@ -tags tool $<
+	"$(GO)" build -o $@ -tags tool $<
 
 # SPECIAL TARGET
 
