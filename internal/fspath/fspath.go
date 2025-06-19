@@ -206,7 +206,7 @@ func (p Path) OpenFile(flag int, perm os.FileMode) (*os.File, error) {
 func (p Path) ReadDir() ([]os.DirEntry, error) {
 	list, err := os.ReadDir(string(p))
 	if err != nil {
-		return nil, fmt.Errorf("failed to read directory %q: %w", p, err)
+		return nil, fmt.Errorf("%w", err)
 	}
 
 	return list, nil
@@ -220,7 +220,7 @@ func (p Path) ReadDir() ([]os.DirEntry, error) {
 func (p Path) ReadFile() ([]byte, error) {
 	data, err := os.ReadFile(string(p))
 	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
+		return nil, fmt.Errorf("%w", err)
 	}
 
 	return data, nil

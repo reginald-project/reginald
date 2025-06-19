@@ -153,7 +153,7 @@ func Search(ctx context.Context, wd fspath.Path, paths []fspath.Path) ([]api.Man
 				}
 
 				if err != nil {
-					return fmt.Errorf("failed to form plugin search path: %w", err)
+					return fmt.Errorf("%w", err)
 				}
 			}
 
@@ -161,9 +161,9 @@ func Search(ctx context.Context, wd fspath.Path, paths []fspath.Path) ([]api.Man
 
 			var dir []os.DirEntry
 
-			dir, err = path.ReadDir()
+			dir, err = path.Clean().ReadDir()
 			if err != nil {
-				return fmt.Errorf("%w", err)
+				return fmt.Errorf("failed to read directory %q: %w", path, err)
 			}
 
 			g2, ctx2 := errgroup.WithContext(gctx)

@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"golang.org/x/term"
@@ -46,6 +47,12 @@ const (
 const (
 	black code = iota + 30
 	red
+	green
+	yellow
+	blue
+	magenta
+	cyan
+	white
 )
 
 // streams is the global IO streams instance for the program. It must be
@@ -215,6 +222,18 @@ func (s *IO) Println(a ...any) {
 	}
 }
 
+// Warnln formats using the default formats for its operands and writes to standard error output of s. Spaces are always added between operands and a newline is appended. If colors are enabled, the message is printed in yellow. It stores possible errors within s.
+func (s *IO) Warnln(a ...any) {
+	if s.quiet {
+		return
+	}
+
+	s.outCh <- message{
+		msg:    s.colorln(yellow, a...),
+		output: Stderr,
+	}
+}
+
 // Write writes the contents of p into the output channel. It returns the number
 // of bytes written.
 func (w *StreamWriter) Write(p []byte) (int, error) {
@@ -236,7 +255,7 @@ func Streams() *IO {
 // stores possible errors within [Streams].
 func Errorf(format string, a ...any) {
 	if streams == nil {
-		panic("tried to call nil Streams")
+		panic("tried to call nil IO")
 	}
 
 	streams.Errorf(format, a...)
@@ -246,7 +265,7 @@ func Errorf(format string, a ...any) {
 // error output of [Streams]. It stores possible errors within [Streams].
 func PrintErrf(format string, a ...any) {
 	if streams == nil {
-		panic("tried to call nil Streams")
+		panic("tried to call nil IO")
 	}
 
 	streams.PrintErrf(format, a...)
@@ -255,6 +274,15 @@ func PrintErrf(format string, a ...any) {
 // SetStreams set the default global IO instace to the given [IO].
 func SetStreams(io *IO) {
 	streams = io
+}
+
+// Warnln formats using the default formats for its operands and writes to standard error output of the default IO streams. Spaces are always added between operands and a newline is appended. If colors are enabled, the message is printed in yellow. It stores possible errors within the default IO streams.
+func Warnln(a ...any) {
+	if streams == nil {
+		panic("tried to call nil IO")
+	}
+
+	streams.Warnln(a...)
 }
 
 func (s *IO) appendErr(err error) {
@@ -271,6 +299,17 @@ func (s *IO) colorf(c code, format string, a ...any) string {
 	}
 
 	return fmt.Sprintf("%s[%dm%s%s[%dm", escape, c, msg, escape, reset)
+}
+
+func (s *IO) colorln(c code, a ...any) string {
+	if !s.colorsEnabled {
+		return fmt.Sprintln(a...)
+	}
+
+	msg := fmt.Sprintln(a...)
+	msg = strings.TrimSuffix(msg, "\n")
+
+	return fmt.Sprintf("%s[%dm%s%s[%dm\n", escape, c, msg, escape, reset)
 }
 
 func (s *IO) output() {

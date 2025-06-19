@@ -141,11 +141,15 @@ func bootstrap(ctx context.Context) (*runInfo, error) {
 	defer terminal.Streams().Close()
 	logging.InfoContext(ctx, "executing Reginald", "version", version.Version())
 
+	if !cfg.HasFile() {
+		terminal.Warnln("No config file was found")
+	}
+
 	plugins, err := initPlugins(ctx, cfg)
 	if err != nil {
 		return nil, &ExitError{
 			Code: 1,
-			err:  fmt.Errorf("failed to init plugins: %w", err),
+			err:  fmt.Errorf("%w", err),
 		}
 	}
 
@@ -356,7 +360,7 @@ func initConfig(ctx context.Context) (*config.Config, error) {
 
 	cfg, err := config.Parse(ctx, flagSet)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse the config: %w", err)
+		return nil, fmt.Errorf("%w", err)
 	}
 
 	return cfg, nil

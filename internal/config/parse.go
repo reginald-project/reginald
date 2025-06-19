@@ -40,6 +40,7 @@ var (
 	ErrInvalidConfig      = errors.New("invalid config")
 	errConfigFileNotFound = errors.New("config file not found")
 	errInvalidCast        = errors.New("cannot convert type")
+	errDefaultConfig      = errors.New("using default config")
 )
 
 // textUnmarshalerType is a helper variable for checking if types of fields in
@@ -108,47 +109,14 @@ func ApplyPlugins(ctx context.Context) error {
 // paths for the file or according the flags. The relevant flags are
 // `--directory` and `--config`.
 func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
-	configFile, err := resolveFile(flagSet)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve config file: %w", err)
-	}
-
-	logging.TraceContext(ctx, "reading config file", "path", configFile)
-
-	data, err := configFile.Clean().ReadFile()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
-	}
-
-	rawCfg := make(map[string]any)
-
-	if err = toml.Unmarshal(data, &rawCfg); err != nil {
-		return nil, fmt.Errorf("failed to decode the config file: %w", err)
-	}
-
-	logging.TraceContext(ctx, "unmarshaled config file", "cfg", rawCfg)
-	normalizeKeys(rawCfg)
-	logging.TraceContext(ctx, "normalized keys", "cfg", rawCfg)
-
 	cfg := DefaultConfig()
 	dir := cfg.Directory
-	decoderConfig := &mapstructure.DecoderConfig{ //nolint:exhaustruct // use default values
-		DecodeHook: mapstructure.TextUnmarshallerHookFunc(),
-		Result:     cfg,
+
+	if err := parseFile(ctx, flagSet, cfg); err != nil {
+		return nil, fmt.Errorf("%w", err)
 	}
 
-	logging.TraceContext(ctx, "created default config", "cfg", cfg)
-
-	d, err := mapstructure.NewDecoder(decoderConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create mapstructure decoder: %w", err)
-	}
-
-	if err := d.Decode(rawCfg); err != nil {
-		return nil, fmt.Errorf("failed to read environment variables for config: %w", err)
-	}
-
-	logging.DebugContext(ctx, "read raw config", "cfg", cfg)
+	logging.DebugContext(ctx, "read config file", "cfg", cfg)
 
 	opts := ApplyOptions{
 		Dir:     dir, // this is the working dir by default so no extra work is needed
@@ -504,10 +472,14 @@ func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) erro
 		)
 
 		if !val.CanSet() {
+			logging.TraceContext(ctx, "skipping config field", "key", field.Name, "value", val)
+
 			continue
 		}
 
 		if slices.Contains(dynamicFields, field.Name) {
+			logging.TraceContext(ctx, "skipping config field", "key", field.Name, "value", val)
+
 			continue
 		}
 
@@ -605,6 +577,56 @@ func normalizeKeys(cfg map[string]any) {
 			normalizeKeys(m)
 		}
 	}
+}
+
+// parseFile finds and parses the config file and sets the values to cfg. It
+// modifies the pointed cfg in place.
+func parseFile(ctx context.Context, flagSet *flags.FlagSet, cfg *Config) error {
+	configFile, err := resolveFile(flagSet)
+	if err != nil && !errors.Is(err, errDefaultConfig) {
+		return fmt.Errorf("%w", err)
+	}
+
+	cfg.sourceFile = configFile
+
+	if configFile == "" {
+		return nil
+	}
+
+	logging.TraceContext(ctx, "reading config file", "path", configFile)
+
+	data, err := configFile.Clean().ReadFile()
+	if err != nil {
+		return fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	rawCfg := make(map[string]any)
+
+	if err = toml.Unmarshal(data, &rawCfg); err != nil {
+		return fmt.Errorf("failed to decode the config file: %w", err)
+	}
+
+	logging.TraceContext(ctx, "unmarshaled config file", "cfg", rawCfg)
+	normalizeKeys(rawCfg)
+	logging.TraceContext(ctx, "normalized keys", "cfg", rawCfg)
+
+	decoderConfig := &mapstructure.DecoderConfig{ //nolint:exhaustruct // use default values
+		DecodeHook: mapstructure.TextUnmarshallerHookFunc(),
+		Result:     cfg,
+	}
+
+	logging.TraceContext(ctx, "created default config", "cfg", cfg)
+
+	d, err := mapstructure.NewDecoder(decoderConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create mapstructure decoder: %w", err)
+	}
+
+	if err := d.Decode(rawCfg); err != nil {
+		return fmt.Errorf("failed to read environment variables for config: %w", err)
+	}
+
+	return nil
 }
 
 // unmarshal converts s to the type of value by calling value's type's

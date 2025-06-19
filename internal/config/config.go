@@ -47,6 +47,9 @@ const (
 // After the parsing, Config should not be written to and, thus, the lock should
 // no longer be used.
 type Config struct {
+	// sourceFile is path to the config file that was found and parsed.
+	sourceFile fspath.Path
+
 	// Directory is the "dotfiles" directory option. If it is set, Reginald
 	// looks for all of the relative filenames from this directory. Most
 	// absolute paths are still resolved relative to actual current working
@@ -137,6 +140,16 @@ func DefaultConfig() *Config {
 		Verbose:     false,
 		Plugins:     map[string]any{},
 	}
+}
+
+// File returns path to the config file that was used to parse the config.
+func (c *Config) File() fspath.Path {
+	return c.sourceFile
+}
+
+// HasFile reports whether the config was parsed from a file.
+func (c *Config) HasFile() bool {
+	return c.sourceFile != ""
 }
 
 // IsBool reports whether o has an entry with the given key that is a bool.
@@ -348,7 +361,7 @@ func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
 		fileValue string
 	)
 
-	if env := os.Getenv(EnvPrefix + "_CONFIG_FILE"); env != "" {
+	if env := os.Getenv(strings.ToUpper(EnvPrefix + "_CONFIG_FILE")); env != "" {
 		fileValue = env
 	}
 
@@ -378,6 +391,10 @@ func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
 
 	var wd fspath.Path
 
+	if env := os.Getenv(strings.ToUpper(EnvPrefix + "_DIRECTORY")); env != "" {
+		wd = fspath.Path(env)
+	}
+
 	flagName := FlagName("Directory")
 	if flagSet.Changed(flagName) {
 		wd, err = flagSet.GetPath(flagName)
@@ -388,7 +405,9 @@ func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
 				err,
 			)
 		}
-	} else {
+	}
+
+	if wd == "" {
 		cwd, err := os.Getwd()
 		if err != nil {
 			return "", fmt.Errorf("%w", err)
@@ -439,5 +458,5 @@ func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
 		}
 	}
 
-	return "", fmt.Errorf("%w", errConfigFileNotFound)
+	return "", fmt.Errorf("%w", errDefaultConfig)
 }
