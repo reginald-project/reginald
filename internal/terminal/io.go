@@ -19,6 +19,7 @@ package terminal
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -87,6 +88,7 @@ type IO struct {
 	errsMu        sync.Mutex
 	quiet         bool
 	verbose       bool //nolint:unused // TODO: Will be used soon.
+	interactive   bool
 	colorsEnabled bool
 }
 
@@ -114,7 +116,7 @@ type promptRequest struct {
 }
 
 // NewIO returns a new IO for the given settings.
-func NewIO(quiet, verbose bool, colors ColorMode) *IO {
+func NewIO(ctx context.Context, quiet, verbose, interactive bool, colors ColorMode) *IO {
 	var colorsEnabled bool
 
 	switch colors {
@@ -140,11 +142,12 @@ func NewIO(quiet, verbose bool, colors ColorMode) *IO {
 		errsMu:        sync.Mutex{},
 		quiet:         quiet,
 		verbose:       verbose,
+		interactive:   interactive,
 		colorsEnabled: colorsEnabled,
 	}
 
 	s.wg.Add(1)
-	go s.output()
+	go s.output(ctx)
 
 	return s
 }
@@ -187,14 +190,34 @@ func (s *IO) Ask(prompt string) (string, error) {
 // closes the input and output channels.
 func (s *IO) Close() {
 	s.Flush()
-	close(s.promptCh)
 	close(s.outCh)
 	s.wg.Wait()
 }
 
 // Confirm asks the user for a boolean input. It returns the input that the user
-// entered as a boolean and any errors that occurred during the process.
-func (s *IO) Confirm(prompt string, defaultChoice bool) (bool, error) {
+// entered as a boolean. If the function ecounters an error, it returns false.
+// Errors are stored within s. If the program is not interactive, the default
+// value is returned.
+func (s *IO) Confirm(prompt string, defaultChoice bool) bool {
+	confirmed, err := s.ConfirmE(prompt, defaultChoice)
+	if err != nil {
+		s.errs = append(s.errs, err)
+
+		return false
+	}
+
+	return confirmed
+}
+
+// ConfirmE asks the user for a boolean input. It returns the input that
+// the user entered as a boolean and any errors that occurred during
+// the process. If the program is not interactive, the default value is
+// returned.
+func (s *IO) ConfirmE(prompt string, defaultChoice bool) (bool, error) {
+	if !s.interactive {
+		return defaultChoice, nil
+	}
+
 	if s.quiet {
 		return false, ErrQuietPrompt
 	}
@@ -341,13 +364,27 @@ func Ask(prompt string) (string, error) {
 }
 
 // Confirm asks the user for a boolean input. It returns the input that the user
-// entered as a boolean and any errors that occurred during the process.
-func Confirm(prompt string, defaultChoice bool) (bool, error) {
+// entered as a boolean. If the function ecounters an error, it returns false.
+// Errors are stored within the default IO streams. If the program is not
+// value is returned.
+func Confirm(prompt string, defaultChoice bool) bool {
 	if streams == nil {
 		panic("tried to call nil IO")
 	}
 
 	return Streams().Confirm(prompt, defaultChoice)
+}
+
+// ConfirmE asks the user for a boolean input. It returns the input that
+// the user entered as a boolean and any errors that occurred during
+// the process. If the program is not interactive, the default value is
+// returned.
+func ConfirmE(prompt string, defaultChoice bool) (bool, error) {
+	if streams == nil {
+		panic("tried to call nil IO")
+	}
+
+	return Streams().ConfirmE(prompt, defaultChoice)
 }
 
 // Errorf formats according to a format specifier and writes to standard error
@@ -423,7 +460,7 @@ func (s *IO) colorln(c code, a ...any) string {
 //
 // TODO: Rename the function to something more descriptive as it's not just
 // outputting messages anymore.
-func (s *IO) output() {
+func (s *IO) output(ctx context.Context) {
 	defer s.wg.Done()
 
 	buf := bufio.NewWriter(s.out)
@@ -437,6 +474,10 @@ func (s *IO) output() {
 
 	for {
 		select {
+		case <-ctx.Done():
+			flush()
+
+			return
 		case msg, ok := <-s.outCh:
 			if !ok {
 				if err := buf.Flush(); err != nil {
@@ -465,15 +506,25 @@ func (s *IO) output() {
 			if err != nil {
 				s.appendErr(err)
 			}
-		case p := <-s.promptCh:
+		case p, ok := <-s.promptCh:
+			if !ok {
+				if err := buf.Flush(); err != nil {
+					s.appendErr(err)
+				}
+
+				continue
+			}
+
 			flush()
 
-			if _, err := fmt.Fprint(s.out, p.prompt); err != nil {
+			if _, err := buf.WriteString(p.prompt); err != nil {
 				s.appendErr(err)
 				close(p.response)
 
 				continue
 			}
+
+			flush()
 
 			if scanner.Scan() {
 				p.response <- scanner.Text()

@@ -24,8 +24,24 @@ type ExitError struct {
 	err  error
 }
 
+// Success is an error that is returned by the CLI when the program is
+// successfully executed but voluntarily exits early. It used, for example, if
+// the user opts into exiting in interactive mode.
+type Success struct{}
+
+// Error returns the value of s as a string. This function implements the error
+// interface for Success.
+func (s *Success) Error() string {
+	return "success"
+}
+
 // Error returns the value of e as a string. This function implements the error
 // interface for ExitError.
 func (e *ExitError) Error() string {
 	return e.err.Error()
+}
+
+// Unwrap returns the wrapped error.
+func (e *ExitError) Unwrap() error {
+	return e.err
 }

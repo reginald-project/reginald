@@ -107,7 +107,7 @@ func addFlags(flagSet *flags.FlagSet, cmd *api.Command) error {
 // streams, loading the plugin information, and parsing the command-line
 // arguments.
 func bootstrap(ctx context.Context) (*runInfo, error) {
-	streams := terminal.NewIO(false, false, terminal.ColorNever)
+	streams := terminal.NewIO(ctx, false, false, false, terminal.ColorNever)
 	defer streams.Close()
 
 	if err := logging.InitBootstrap(streams); err != nil {
@@ -142,7 +142,13 @@ func bootstrap(ctx context.Context) (*runInfo, error) {
 	logging.InfoContext(ctx, "executing Reginald", "version", version.Version())
 
 	if !cfg.HasFile() {
-		terminal.Warnln("No config file was found")
+		if !terminal.Confirm("No config file was found. Continue?", true) {
+			return nil, &Success{}
+		}
+
+		if !cfg.Interactive {
+			terminal.Warnln("No config file was found")
+		}
 	}
 
 	plugins, err := initPlugins(ctx, cfg)
@@ -368,7 +374,7 @@ func initConfig(ctx context.Context) (*config.Config, error) {
 
 // initOut initializes the output streams and the logging for the program.
 func initOut(ctx context.Context, cfg *config.Config) error {
-	terminal.SetStreams(terminal.NewIO(cfg.Quiet, cfg.Verbose, cfg.Color))
+	terminal.SetStreams(terminal.NewIO(ctx, cfg.Quiet, cfg.Verbose, cfg.Interactive, cfg.Color))
 
 	if err := logging.Init(cfg.Logging); err != nil {
 		return fmt.Errorf("failed to initialize logging: %w", err)
@@ -442,7 +448,13 @@ func newFlagSet() *flags.FlagSet {
 	)
 	flagSet.MarkMutuallyExclusive(quietName, verboseName)
 
-	flagSet.BoolP(config.FlagName("Interactive"), "i", defaults.Interactive, "run in interactive mode", "")
+	flagSet.BoolP(
+		config.FlagName("Interactive"),
+		"i",
+		defaults.Interactive,
+		"run in interactive mode",
+		"",
+	)
 
 	colorMode := defaults.Color
 

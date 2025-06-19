@@ -220,6 +220,15 @@ func Search(ctx context.Context, wd fspath.Path, paths []fspath.Path) ([]api.Man
 
 					manifests = append(manifests, manifest)
 
+					logging.TraceContext(
+						ctx2,
+						"manifest loaded",
+						"manifest",
+						manifest,
+						"manifests",
+						manifests,
+					)
+
 					return nil
 				})
 			}

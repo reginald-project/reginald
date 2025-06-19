@@ -38,6 +38,11 @@ func run() int {
 
 	err := cli.Run()
 	if err != nil {
+		var success *cli.Success
+		if errors.As(err, &success) {
+			return 0
+		}
+
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 
 		var exitErr *cli.ExitError
