@@ -81,6 +81,9 @@ type Config struct {
 
 	// Verbose tells the program to print more verbose output.
 	Verbose bool `mapstructure:"verbose"`
+
+	// Interactive tells the program to run in interactive mode.
+	Interactive bool `mapstructure:"interactive"`
 }
 
 // A Task is the configuration of a task instance.
@@ -125,9 +128,10 @@ func DefaultConfig() *Config {
 	}
 
 	return &Config{
-		Color:     terminal.ColorAuto,
-		Defaults:  TaskDefaults{},
-		Directory: fspath.Path(wd),
+		Color:       terminal.ColorAuto,
+		Defaults:    TaskDefaults{},
+		Directory:   fspath.Path(wd),
+		Interactive: false,
 		Logging: logging.Config{
 			Enabled: true,
 			Format:  "json",
