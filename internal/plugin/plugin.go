@@ -271,7 +271,7 @@ func load(ctx context.Context, path fspath.Path, dirEntry os.DirEntry) (*api.Man
 	d.DisallowUnknownFields()
 
 	var manifest *api.Manifest
-	if err = d.Decode(manifest); err != nil {
+	if err = d.Decode(&manifest); err != nil {
 		return nil, fmt.Errorf("%w", err)
 	}
 
