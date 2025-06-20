@@ -168,19 +168,7 @@ func Search(ctx context.Context, wd fspath.Path, paths []fspath.Path) (api.Manif
 		return nil, fmt.Errorf("%w", err)
 	}
 
-	// Maybe not necessary, but it's nice to create the log values only if
-	// they're used.
-	if slog.Default().Enabled(ctx, slog.Level(logs.LevelDebug)) {
-		names := make([]string, 0, len(manifests))
-		domains := make([]string, 0, len(manifests))
-
-		for _, m := range manifests {
-			names = append(names, m.Name)
-			domains = append(domains, m.Domain)
-		}
-
-		logging.Debug(ctx, "loaded plugin manifests", "names", names, "domains", domains)
-	}
+	logLoadedManifest(ctx, manifests)
 
 	return manifests, nil
 }
@@ -292,6 +280,22 @@ func load(ctx context.Context, path fspath.Path, dirEntry os.DirEntry) (*api.Man
 	}
 
 	return manifest, nil
+}
+
+func logLoadedManifest(ctx context.Context, manifests api.Manifests) {
+	// Maybe not necessary, but it's nice to create the log values only if
+	// they're used.
+	if slog.Default().Enabled(ctx, slog.Level(logs.LevelDebug)) {
+		names := make([]string, len(manifests))
+		domains := make([]string, len(manifests))
+
+		for i, m := range manifests {
+			names[i] = m.Name
+			domains[i] = m.Domain
+		}
+
+		logging.Debug(ctx, "loaded plugin manifests", "names", names, "domains", domains)
+	}
 }
 
 // revise validates the given Manifest and normalizes its values, for example
