@@ -51,17 +51,11 @@ type Plugin interface {
 // A Store stores the plugins, provides information on them, and has functions
 // for using the plugins within the program.
 type Store struct {
-	// cmdCache is a cache of the commands for the plugins. The commands are
-	// stored as they are accessed for the first time. The key in the map is
-	// the parent commands and the command name, starting from the plugin domain
-	// and separated by colons. It should match the list "names" that is passed
-	// to Command, but the elements are joined with colons. Whenever a command
-	// is accessed by its alias, the command is stored in the cache using that
-	// alias in the place it was used when accessing through Command.
-	cmdCache map[string]*api.Command
-
 	// Plugins is the list of plugins.
 	Plugins []Plugin
+
+	// Commands is the list of commands that are defined in the plugins.
+	Commands []*Command
 }
 
 type searchOptions struct {
@@ -84,57 +78,71 @@ type pathEntryOptions struct {
 // manifests.
 func NewStore(manifests []*api.Manifest) *Store {
 	plugins := make([]Plugin, 0, len(manifests))
+	commands := make([]*Command, 0)
 
 	// TODO: These need to be properly handled.
 	for _, m := range manifests {
+		var plugin Plugin
+
 		// Built-in plugins don't require any complex setups.
 		if m.Domain == "builtin" {
-			plugins = append(plugins, newBuiltin(m))
-
-			continue
+			plugin = newBuiltin(m)
+		} else {
+			plugin = newExternal(m)
 		}
 
-		plugins = append(plugins, newExternal(m))
+		pluginCmds := newCommands(plugin)
+		if pluginCmds != nil {
+			commands = append(commands, pluginCmds...)
+		}
+
+		plugins = append(plugins, plugin)
 	}
 
 	store := &Store{
 		Plugins:  plugins,
-		cmdCache: map[string]*api.Command{},
+		Commands: commands,
 	}
 
 	return store
 }
 
-// Command returns the command for the given names. It looks for the commands by
-// the names in the order the names would be given on the command-line. This
-// means that the first part of names should be the first parent command which
-// is usually the plugin domain. If no command is found, Command return nil.
-func (s *Store) Command(names ...string) *api.Command {
-	if len(names) < 1 {
-		return nil
-	}
-
-	if cmd, ok := s.cmdCache[strings.Join(names, ":")]; ok {
-		return cmd
-	}
-
-	var parent *api.Command
-
-	if len(names) > 1 {
-		parent = s.Command(names[0 : len(names)-1]...)
-	}
-
-	cmd := s.findCmd(parent, names[len(names)-1])
-	if cmd != nil {
-		s.cmdCache[strings.Join(names, ":")] = cmd
-	}
-
-	return cmd
-}
-
 // Len returns the number of plugins in the store.
 func (s *Store) Len() int {
 	return len(s.Plugins)
+}
+
+// LogValue implements [slog.LogValuer] for Store. It returns a group value for
+// logging a Store.
+func (s *Store) LogValue() slog.Value {
+	var attrs []slog.Attr
+
+	names := make([]string, len(s.Plugins))
+	for i, p := range s.Plugins {
+		names[i] = p.Manifest().Name
+	}
+
+	attrs = append(attrs, slog.Any("plugins", names), slog.Any("commands", LogCmds(s.Commands)))
+
+	return slog.GroupValue(attrs...)
+}
+
+func (s *Store) Command(prev *Command, name string) *Command {
+	var cmds []*Command
+
+	if prev == nil {
+		cmds = s.Commands
+	} else {
+		cmds = prev.Commands
+	}
+
+	for _, cmd := range cmds {
+		if cmd.Name == name {
+			return cmd
+		}
+	}
+
+	return nil
 }
 
 // Search finds the available plugins by their "manifest.json" files and loads
@@ -185,7 +193,7 @@ func (s *Store) findCmd(parent *api.Command, name string) *api.Command {
 			if manifest.Domain == "core" {
 				for _, c := range manifest.Commands {
 					if c.Name == name || slices.Contains(c.Aliases, name) {
-						return &c
+						return c
 					}
 				}
 			}
@@ -208,7 +216,7 @@ func (s *Store) findCmd(parent *api.Command, name string) *api.Command {
 
 	for _, c := range parent.Commands {
 		if c.Name == name || slices.Contains(c.Aliases, name) {
-			return &c
+			return c
 		}
 	}
 
@@ -285,7 +293,7 @@ func load(ctx context.Context, path fspath.Path, dirEntry os.DirEntry) (*api.Man
 func logLoadedManifest(ctx context.Context, manifests []*api.Manifest) {
 	// Maybe not necessary, but it's nice to create the log values only if
 	// they're used.
-	if slog.Default().Enabled(ctx, slog.Level(logs.LevelDebug)) {
+	if slog.Default().Enabled(ctx, slog.Level(logs.LevelTrace)) {
 		names := make([]string, len(manifests))
 		domains := make([]string, len(manifests))
 
@@ -294,7 +302,7 @@ func logLoadedManifest(ctx context.Context, manifests []*api.Manifest) {
 			domains[i] = m.Domain
 		}
 
-		logging.Debug(ctx, "loaded plugin manifests", "names", names, "domains", domains)
+		logging.Trace(ctx, "loaded plugin manifests", "names", names, "domains", domains)
 	}
 }
 
@@ -436,14 +444,7 @@ func searchPathEntry(ctx context.Context, opts pathEntryOptions) error {
 
 	*opts.manifests = append(*opts.manifests, manifest)
 
-	logging.Trace(
-		ctx,
-		"manifest loaded",
-		"manifest",
-		manifest,
-		"manifests",
-		*opts.manifests,
-	)
+	logging.Trace(ctx, "manifest loaded", "manifest", manifest)
 
 	return nil
 }

@@ -25,7 +25,7 @@ func coreManifest() *api.Manifest {
 		Description: "TODO",
 		Executable:  "",
 		Config:      nil,
-		Commands: []api.Command{
+		Commands: []*api.Command{
 			{
 				Name:  "attend",
 				Usage: "attend [options]",
