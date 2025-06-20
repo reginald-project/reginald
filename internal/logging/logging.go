@@ -36,7 +36,6 @@ import (
 
 	"github.com/reginald-project/reginald-sdk-go/logs"
 	"github.com/reginald-project/reginald/internal/fspath"
-	"github.com/reginald-project/reginald/internal/logging/internal"
 	"github.com/reginald-project/reginald/internal/terminal"
 )
 
@@ -180,63 +179,28 @@ func Init(cfg Config) error {
 }
 
 // Trace calls [log] with level set to trace on the default logger.
-func Trace(msg string, args ...any) {
-	log(context.Background(), slog.Default(), logs.LevelTrace, msg, args...)
-}
-
-// TraceContext calls [log] with level set to trace on the default logger.
-func TraceContext(ctx context.Context, msg string, args ...any) {
+func Trace(ctx context.Context, msg string, args ...any) {
 	log(ctx, slog.Default(), logs.LevelTrace, msg, args...)
 }
 
 // Debug calls [log] with level set to debug on the default logger.
-func Debug(msg string, args ...any) {
-	log(context.Background(), slog.Default(), logs.LevelDebug, msg, args...)
-}
-
-// DebugContext calls [log] with level set to debug on the default logger.
-func DebugContext(ctx context.Context, msg string, args ...any) {
+func Debug(ctx context.Context, msg string, args ...any) {
 	log(ctx, slog.Default(), logs.LevelDebug, msg, args...)
 }
 
 // Info calls [log] with level set to info on the default logger.
-func Info(msg string, args ...any) {
-	log(context.Background(), slog.Default(), logs.LevelInfo, msg, args...)
-}
-
-// InfoContext calls [log] with level set to info on the default logger.
-func InfoContext(ctx context.Context, msg string, args ...any) {
+func Info(ctx context.Context, msg string, args ...any) {
 	log(ctx, slog.Default(), logs.LevelInfo, msg, args...)
 }
 
 // Warn calls [log] with level set to warn on the default logger.
-func Warn(msg string, args ...any) {
-	log(context.Background(), slog.Default(), logs.LevelWarn, msg, args...)
-}
-
-// WarnContext calls [log] with level set to warn on the default logger.
-func WarnContext(ctx context.Context, msg string, args ...any) {
+func Warn(ctx context.Context, msg string, args ...any) {
 	log(ctx, slog.Default(), logs.LevelWarn, msg, args...)
 }
 
 // Error calls [log] with level set to error on the default logger.
-func Error(msg string, args ...any) {
-	log(context.Background(), slog.Default(), logs.LevelError, msg, args...)
-}
-
-// ErrorContext calls [log] with level set to error on the default logger.
-func ErrorContext(ctx context.Context, msg string, args ...any) {
+func Error(ctx context.Context, msg string, args ...any) {
 	log(ctx, slog.Default(), logs.LevelError, msg, args...)
-}
-
-// Log calls [log] on the default logger.
-func Log(ctx context.Context, level logs.Level, msg string, args ...any) {
-	log(ctx, slog.Default(), level, msg, args...)
-}
-
-// LogAttrs calls [logAttrs] on the default logger.
-func LogAttrs(ctx context.Context, level logs.Level, msg string, attrs ...slog.Attr) {
-	logAttrs(ctx, slog.Default(), level, msg, attrs...)
 }
 
 // log is the low-level logging method for methods that take ...any. It must
@@ -249,11 +213,10 @@ func log(ctx context.Context, l *slog.Logger, level logs.Level, msg string, args
 
 	var pc uintptr
 
-	if !internal.IgnorePC {
+	if !ignorePC {
 		var pcs [1]uintptr
 
-		// skip [runtime.Callers, this function, this function's caller]
-		runtime.Callers(3, pcs[:])
+		runtime.Callers(logCallerDepth, pcs[:])
 
 		pc = pcs[0]
 	}
@@ -263,44 +226,13 @@ func log(ctx context.Context, l *slog.Logger, level logs.Level, msg string, args
 	r.Add(args...)
 
 	if ctx == nil {
-		ctx = context.Background()
+		panic("logging context is nil")
 	}
 
-	_ = l.Handler().Handle(ctx, r)
-}
-
-// logAttrs is like [log], but for methods that take ...Attr.
-func logAttrs(
-	ctx context.Context,
-	l *slog.Logger,
-	level logs.Level,
-	msg string,
-	attrs ...slog.Attr,
-) {
-	if !l.Enabled(ctx, slog.Level(level)) {
-		return
+	if err := l.Handler().Handle(ctx, r); err != nil {
+		// TODO: Handle this better.
+		panic(err)
 	}
-
-	var pc uintptr
-
-	if !internal.IgnorePC {
-		var pcs [1]uintptr
-
-		// skip [runtime.Callers, this function, this function's caller]
-		runtime.Callers(3, pcs[:])
-
-		pc = pcs[0]
-	}
-
-	r := slog.NewRecord(time.Now(), slog.Level(level), msg, pc)
-
-	r.AddAttrs(attrs...)
-
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	_ = l.Handler().Handle(ctx, r)
 }
 
 func replaceAttrFunc(timeFormat string) func([]string, slog.Attr) slog.Attr {

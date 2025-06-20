@@ -38,8 +38,8 @@ func run() int {
 
 	err := cli.Run()
 	if err != nil {
-		var success *cli.Success
-		if errors.As(err, &success) {
+		var successErr *cli.SuccessError
+		if errors.As(err, &successErr) {
 			return 0
 		}
 

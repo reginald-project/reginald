@@ -39,8 +39,9 @@ import (
 var (
 	ErrInvalidConfig      = errors.New("invalid config")
 	errConfigFileNotFound = errors.New("config file not found")
-	errInvalidCast        = errors.New("cannot convert type")
 	errDefaultConfig      = errors.New("using default config")
+	errInvalidCast        = errors.New("cannot convert type")
+	errNilFlag            = errors.New("no flag found")
 )
 
 // textUnmarshalerType is a helper variable for checking if types of fields in
@@ -59,12 +60,13 @@ var dynamicFields = []string{"Defaults", "Directory", "Plugins", "Tasks"}
 
 // ApplyOptions is the type for the options for the Apply function.
 type ApplyOptions struct {
+	Dir     fspath.Path    // base directory for the program operations
+	FlagSet *flags.FlagSet // flag set for the apply operation
+
 	// idents is the list of the config identifiers that form the "path" to
 	// the config value that is currently being parsed. It must always start
 	// with the global prefix for the environment variables.
-	idents  []string
-	Dir     fspath.Path    // base directory for the program operations
-	FlagSet *flags.FlagSet // flag set for the apply operation
+	idents []string
 }
 
 // Apply applies the values of the config values from environment variables and
@@ -77,7 +79,7 @@ func Apply(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 	if opts.idents[0] != EnvPrefix {
 		panic(
 			fmt.Sprintf(
-				"Apply must be called with no config identifiers or with the global prefix for the environment variables as the first identifier: %q",
+				"Apply must be called with no config identifiers or with the global prefix for the environment variables as the first identifier: %q", //nolint:lll
 				EnvPrefix,
 			),
 		)
@@ -93,10 +95,8 @@ func Apply(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 
 // ApplyPlugins applies the config values for plugins from environment variables
 // and command-line flags to cfg. It modifies the pointed cfg.
-func ApplyPlugins(ctx context.Context) error {
-	logging.DebugContext(ctx, "applying plugins")
-
-	return nil
+func ApplyPlugins(ctx context.Context) {
+	logging.Debug(ctx, "applying plugins")
 }
 
 // Parse parses the configuration according to the configuration given with
@@ -116,9 +116,10 @@ func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
 		return nil, fmt.Errorf("%w", err)
 	}
 
-	logging.DebugContext(ctx, "read config file", "cfg", cfg)
+	logging.Debug(ctx, "read config file", "cfg", cfg)
 
 	opts := ApplyOptions{
+		idents:  nil,
 		Dir:     dir, // this is the working dir by default so no extra work is needed
 		FlagSet: flagSet,
 	}
@@ -126,7 +127,7 @@ func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
 		return nil, fmt.Errorf("%w", err)
 	}
 
-	logging.InfoContext(ctx, "parsed config", "cfg", cfg)
+	logging.Info(ctx, "parsed config", "cfg", cfg)
 
 	return cfg, nil
 }
@@ -139,8 +140,8 @@ func Validate(cfg *Config, plugins *plugin.Store) error {
 	for k := range cfg.Plugins {
 		ok := false
 	PluginLoop:
-		for _, plugin := range plugins.Plugins {
-			manifest := plugin.Manifest()
+		for _, p := range plugins.Plugins {
+			manifest := p.Manifest()
 
 			if manifest.Domain == k && manifest.Config != nil {
 				ok = true
@@ -234,7 +235,7 @@ func applyColorMode(value reflect.Value, opts ApplyOptions) error {
 	if opts.FlagSet.Changed(flagName) {
 		f := opts.FlagSet.Lookup(flagName)
 		if f == nil {
-			return fmt.Errorf("failed to find flag %q", flagName)
+			return fmt.Errorf("%w: %s", errNilFlag, flagName)
 		}
 
 		var v reflect.Value
@@ -260,20 +261,9 @@ func applyInt(value reflect.Value, opts ApplyOptions) error {
 	env := envValue(opts.idents)
 
 	if env != "" {
-		if canUnmarshal(value) {
-			var v reflect.Value
-
-			v, err = unmarshal(value, env)
-			if err != nil {
-				return fmt.Errorf("%w", err)
-			}
-
-			x = v.Int()
-		} else {
-			x, err = strconv.ParseInt(env, 10, 64)
-			if err != nil {
-				return fmt.Errorf("%w", err)
-			}
+		x, err = parseInt(env, value)
+		if err != nil {
+			return fmt.Errorf("%w", err)
 		}
 	}
 
@@ -336,6 +326,7 @@ func applyPathSlice(value reflect.Value, opts ApplyOptions) error {
 	var err error
 
 	i := value.Interface()
+
 	x, ok := i.([]fspath.Path)
 	if !ok {
 		panic(fmt.Sprintf("failed to convert value to slice of paths: %[1]v (%[1]T)", i))
@@ -406,61 +397,20 @@ func applyString(value reflect.Value, opts ApplyOptions) error {
 }
 
 func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) error {
+	var err error
+
 	if len(opts.idents) == 1 {
-		i := -1
-
-		for j := range cfg.NumField() {
-			if cfg.Type().Field(j).Name == "Directory" {
-				i = j
-
-				break
-			}
-		}
-
-		if i < 0 {
-			panic(fmt.Sprintf("failed to find Directory field in %q", cfg.Type().Name()))
-		}
-
-		field := cfg.Type().Field(i)
-		val := cfg.Field(i)
-
-		logging.TraceContext(
-			ctx,
-			"checking config field",
-			"key",
-			field.Name,
-			"value",
-			val,
-			"opts",
-			opts,
-		)
-
-		if !val.CanSet() {
-			panic(fmt.Sprintf("cannot set Directory field in %q", cfg.Type().Name()))
-		}
-
-		var err error
-
-		newOpts := ApplyOptions{
-			idents:  append(opts.idents, field.Name),
-			Dir:     opts.Dir,
-			FlagSet: opts.FlagSet,
-		}
-
-		if err = applyPath(val, newOpts); err != nil {
+		opts, err = setDir(ctx, cfg, opts)
+		if err != nil {
 			return fmt.Errorf("%w", err)
 		}
-
-		opts.Dir = fspath.Path(val.String())
-
-		logging.TraceContext(ctx, "set config field", "key", field.Name, "value", val)
 	}
 
 	for i := range cfg.NumField() {
 		field := cfg.Type().Field(i)
 		val := cfg.Field(i)
 
-		logging.TraceContext(
+		logging.Trace(
 			ctx,
 			"checking config field",
 			"key",
@@ -472,18 +422,16 @@ func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) erro
 		)
 
 		if !val.CanSet() {
-			logging.TraceContext(ctx, "skipping config field", "key", field.Name, "value", val)
+			logging.Trace(ctx, "skipping config field", "key", field.Name, "value", val)
 
 			continue
 		}
 
 		if slices.Contains(dynamicFields, field.Name) {
-			logging.TraceContext(ctx, "skipping config field", "key", field.Name, "value", val)
+			logging.Trace(ctx, "skipping config field", "key", field.Name, "value", val)
 
 			continue
 		}
-
-		var err error
 
 		newOpts := ApplyOptions{
 			idents:  append(opts.idents, field.Name),
@@ -502,11 +450,13 @@ func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) erro
 			}
 		case reflect.Slice:
 			e := val.Type().Elem()
-			if e.Kind() == reflect.String && e.Name() == "Path" {
-				err = applyPathSlice(val, newOpts)
-			} else {
-				panic(fmt.Sprintf("unsupported config field type for %s: %s", field.Name, val.Kind()))
+			if e.Kind() != reflect.String || e.Name() != "Path" {
+				panic(
+					fmt.Sprintf("unsupported config field type for %s: %s", field.Name, val.Kind()),
+				)
 			}
+
+			err = applyPathSlice(val, newOpts)
 		case reflect.String:
 			if val.Type().Name() == "Path" {
 				err = applyPath(val, newOpts)
@@ -523,7 +473,7 @@ func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) erro
 			return fmt.Errorf("%w", err)
 		}
 
-		logging.TraceContext(ctx, "set config field", "key", field.Name, "value", val)
+		logging.Trace(ctx, "set config field", "key", field.Name, "value", val)
 	}
 
 	return nil
@@ -593,7 +543,7 @@ func parseFile(ctx context.Context, flagSet *flags.FlagSet, cfg *Config) error {
 		return nil
 	}
 
-	logging.TraceContext(ctx, "reading config file", "path", configFile)
+	logging.Trace(ctx, "reading config file", "path", configFile)
 
 	data, err := configFile.Clean().ReadFile()
 	if err != nil {
@@ -606,16 +556,16 @@ func parseFile(ctx context.Context, flagSet *flags.FlagSet, cfg *Config) error {
 		return fmt.Errorf("failed to decode the config file: %w", err)
 	}
 
-	logging.TraceContext(ctx, "unmarshaled config file", "cfg", rawCfg)
+	logging.Trace(ctx, "unmarshaled config file", "cfg", rawCfg)
 	normalizeKeys(rawCfg)
-	logging.TraceContext(ctx, "normalized keys", "cfg", rawCfg)
+	logging.Trace(ctx, "normalized keys", "cfg", rawCfg)
 
 	decoderConfig := &mapstructure.DecoderConfig{ //nolint:exhaustruct // use default values
 		DecodeHook: mapstructure.TextUnmarshallerHookFunc(),
 		Result:     cfg,
 	}
 
-	logging.TraceContext(ctx, "created default config", "cfg", cfg)
+	logging.Trace(ctx, "created default config", "cfg", cfg)
 
 	d, err := mapstructure.NewDecoder(decoderConfig)
 	if err != nil {
@@ -627,6 +577,79 @@ func parseFile(ctx context.Context, flagSet *flags.FlagSet, cfg *Config) error {
 	}
 
 	return nil
+}
+
+// parseInt parses the given string value into an int64. If the value can be
+// resolved using a TextUnmarshaler, the function uses the given value's type to
+// unmarshal the value.
+func parseInt(s string, value reflect.Value) (int64, error) {
+	if canUnmarshal(value) {
+		v, err := unmarshal(value, s)
+		if err != nil {
+			return 0, fmt.Errorf("%w", err)
+		}
+
+		return v.Int(), nil
+	}
+
+	x, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%w", err)
+	}
+
+	return x, nil
+}
+
+func setDir(ctx context.Context, cfg reflect.Value, opts ApplyOptions) (ApplyOptions, error) {
+	i := -1
+
+	for j := range cfg.NumField() {
+		if cfg.Type().Field(j).Name == "Directory" {
+			i = j
+
+			break
+		}
+	}
+
+	if i < 0 {
+		panic(fmt.Sprintf("failed to find Directory field in %q", cfg.Type().Name()))
+	}
+
+	field := cfg.Type().Field(i)
+	val := cfg.Field(i)
+
+	logging.Trace(
+		ctx,
+		"checking config field",
+		"key",
+		field.Name,
+		"value",
+		val,
+		"opts",
+		opts,
+	)
+
+	if !val.CanSet() {
+		panic(fmt.Sprintf("cannot set Directory field in %q", cfg.Type().Name()))
+	}
+
+	var err error
+
+	newOpts := ApplyOptions{
+		idents:  append(opts.idents, field.Name),
+		Dir:     opts.Dir,
+		FlagSet: opts.FlagSet,
+	}
+
+	if err = applyPath(val, newOpts); err != nil {
+		return ApplyOptions{}, fmt.Errorf("%w", err)
+	}
+
+	opts.Dir = fspath.Path(val.String())
+
+	logging.Trace(ctx, "set config field", "key", field.Name, "value", val)
+
+	return opts, nil
 }
 
 // unmarshal converts s to the type of value by calling value's type's

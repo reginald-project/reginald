@@ -103,7 +103,7 @@ func (f *FlagSet) AddFlagSet(newSet *FlagSet) {
 
 // AddPluginFlag adds a flag to the flag set according to the given ConfigEntry
 // specification from a plugin.
-func (f *FlagSet) AddPluginFlag(cfg api.ConfigEntry) error {
+func (f *FlagSet) AddPluginFlag(cfg *api.ConfigEntry) error {
 	if cfg.Flag == nil {
 		return nil
 	}
@@ -305,8 +305,8 @@ func (f *FlagSet) PathSlice(name string, value []fspath.Path, usage, doc string)
 	return f.PathSliceP(name, "", value, usage, doc)
 }
 
-// PathP is like Path, but accepts a shorthand letter that can be used after
-// a single dash.
+// PathSliceP is like Path, but accepts a shorthand letter that can be used
+// after a single dash.
 func (f *FlagSet) PathSliceP(
 	name, shorthand string,
 	value []fspath.Path,
@@ -391,7 +391,7 @@ func (f *FlagSet) GetPath(name string) (fspath.Path, error) {
 	return fspath.Path(val), nil
 }
 
-// GetPath returns the string slice value of a flag with the given name and
+// GetPathSlice returns the string slice value of a flag with the given name and
 // converts it to [fspath.Path] slice.
 func (f *FlagSet) GetPathSlice(name string) ([]fspath.Path, error) {
 	val, err := f.GetStringSlice(name)

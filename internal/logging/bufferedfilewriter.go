@@ -92,7 +92,7 @@ func (w *BufferedFileWriter) Flush() error {
 	defer func() {
 		if err := f.Close(); err != nil {
 			// TODO: See if there is some better way to handle this error.
-			Error("failed to close buffered file writer file", "err", err)
+			fmt.Fprintf(os.Stderr, "failed to close buffered file writer file: %v\n", err)
 		}
 	}()
 

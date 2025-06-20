@@ -41,18 +41,12 @@ const (
 	Name        = "reginald" // name of the command that's run
 )
 
-// Errors returned by the CLI commands.
-var (
-	errDuplicateCommand  = errors.New("duplicate command")
-	errMutuallyExclusive = errors.New("two mutually exclusive flags set at the same time")
-)
-
 // A runInfo is the parsed information for the program run. It is returned from
 // the bootstrapping function.
 type runInfo struct {
-	args    []string
-	cfg     *config.Config
-	plugins *plugin.Store
+	cfg     *config.Config //nolint:unused // TODO: Will be used soon.
+	plugins *plugin.Store  //nolint:unused // TODO: Will be used soon.
+	args    []string       //nolint:unused // TODO: Will be used soon.
 }
 
 // Run runs the CLI application and returns any errors from the run.
@@ -95,7 +89,7 @@ func Run() error {
 // addFlags adds the flags from the given command to the flag set.
 func addFlags(flagSet *flags.FlagSet, cmd *api.Command) error {
 	for _, cfg := range cmd.Config {
-		if err := flagSet.AddPluginFlag(cfg); err != nil {
+		if err := flagSet.AddPluginFlag(&cfg); err != nil {
 			return fmt.Errorf("%w", err)
 		}
 	}
@@ -114,8 +108,8 @@ func bootstrap(ctx context.Context) (*runInfo, error) {
 		return nil, fmt.Errorf("%w", err)
 	}
 
-	logging.DebugContext(ctx, "bootstrap logger initialized")
-	logging.InfoContext(
+	logging.Debug(ctx, "bootstrap logger initialized")
+	logging.Info(
 		ctx,
 		"bootstrapping Reginald",
 		"version",
@@ -138,12 +132,14 @@ func bootstrap(ctx context.Context) (*runInfo, error) {
 			err:  err,
 		}
 	}
+
 	defer terminal.Streams().Close()
-	logging.InfoContext(ctx, "executing Reginald", "version", version.Version())
+
+	logging.Info(ctx, "executing Reginald", "version", version.Version())
 
 	if !cfg.HasFile() {
 		if !terminal.Confirm("No config file was found. Continue?", true) {
-			return nil, &Success{}
+			return nil, &SuccessError{}
 		}
 
 		if !cfg.Interactive {
@@ -167,7 +163,13 @@ func bootstrap(ctx context.Context) (*runInfo, error) {
 		}
 	}
 
-	return nil, nil
+	info := &runInfo{
+		cfg:     cfg,
+		plugins: plugins,
+		args:    nil,
+	}
+
+	return info, nil
 }
 
 // collectFlags removes all of the known flags from the arguments list and
@@ -263,12 +265,12 @@ func findSubcommands(
 	names := []string{}
 
 	for len(args) >= 1 {
-		logging.TraceContext(ctx, "checking args", "names", names, "args", args, "remain", remain)
+		logging.Trace(ctx, "checking args", "names", names, "args", args, "remain", remain)
 
 		if len(args) > 1 {
 			args, remain = collectFlags(flagSet, args[1:], remain)
 
-			logging.TraceContext(ctx, "collected flags", "args", args, "remain", remain)
+			logging.Trace(ctx, "collected flags", "args", args, "remain", remain)
 		}
 
 		if len(args) >= 1 {
@@ -276,7 +278,7 @@ func findSubcommands(
 			args = args[1:]
 			next := plugins.Command(names...)
 
-			logging.TraceContext(
+			logging.Trace(
 				ctx,
 				"checked cmd names",
 				"names",
@@ -294,7 +296,7 @@ func findSubcommands(
 			cmd = next
 			if err := addFlags(flagSet, cmd); err != nil {
 				// TODO: This should be handled better.
-				logging.ErrorContext(ctx, "failed to add flags from commands", "err", err)
+				logging.Error(ctx, "failed to add flags from commands", "err", err)
 				terminal.Errorf("Failed to add flags from commands: %v", err)
 
 				return nil, nil
@@ -361,7 +363,7 @@ func initConfig(ctx context.Context) (*config.Config, error) {
 	// first.
 	err := flagSet.Parse(os.Args[1:])
 	if err != nil {
-		logging.DebugContext(ctx, "initial flag parsing yielded an error", "err", err.Error())
+		logging.Debug(ctx, "initial flag parsing yielded an error", "err", err.Error())
 	}
 
 	cfg, err := config.Parse(ctx, flagSet)
@@ -380,7 +382,7 @@ func initOut(ctx context.Context, cfg *config.Config) error {
 		return fmt.Errorf("failed to initialize logging: %w", err)
 	}
 
-	logging.DebugContext(ctx, "logging initialized")
+	logging.Debug(ctx, "logging initialized")
 
 	return nil
 }
@@ -488,12 +490,12 @@ func parseArgs(ctx context.Context, cfg *config.Config, plugins *plugin.Store) e
 	pflag.CommandLine.VisitAll(func(f *pflag.Flag) {
 		panic(fmt.Sprintf("flag %q is set in the CommandLine flag set", f.Name))
 	})
-	logging.DebugContext(ctx, "parsing command-line arguments", "args", args)
+	logging.Debug(ctx, "parsing command-line arguments", "args", args)
 
 	flagSet := newFlagSet()
 	cmds, remain := findSubcommands(ctx, flagSet, plugins, args)
 
-	logging.DebugContext(ctx, "command-line arguments parsed", "cmd", cmds, "args", remain)
+	logging.Debug(ctx, "command-line arguments parsed", "cmd", cmds, "args", remain)
 
 	if err := flagSet.Parse(remain); err != nil {
 		return fmt.Errorf("failed to parse the command-line arguments: %w", err)
@@ -507,11 +509,11 @@ func parseArgs(ctx context.Context, cfg *config.Config, plugins *plugin.Store) e
 		return fmt.Errorf("%w", err)
 	}
 
-	if err := config.ApplyPlugins(ctx); err != nil {
-		return fmt.Errorf("failed to apply config values: %w", err)
-	}
-
-	logging.DebugContext(ctx, "full config parsed", "cfg", cfg)
+	// if err := config.ApplyPlugins(ctx); err != nil {
+	// 	return fmt.Errorf("failed to apply config values: %w", err)
+	// }
+	config.ApplyPlugins(ctx)
+	logging.Debug(ctx, "config parsed", "cfg", cfg, "args", flagSet.Args())
 
 	return nil
 }

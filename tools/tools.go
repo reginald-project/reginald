@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Pakcage internal contains the internal utilities for the logger.
-package internal
+//go:build tool
 
-// If IgnorePC is true, do not invoke runtime.Callers to get the pc. This is
-// solely for benchmarking the slowdown from runtime.Callers.
-var IgnorePC = false
+// Package tools contains the utilities for the tools used by Reginald.
+package tools

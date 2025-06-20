@@ -77,19 +77,19 @@ type Output int
 // lock before writing. If the reading or writing operations using this type
 // return an error, it will be stored within the struct.
 type IO struct {
-	promptCh      chan promptRequest
-	outCh         chan message
-	flushCh       chan chan struct{}
 	in            io.Reader
 	out           io.Writer
 	errOut        io.Writer
-	wg            sync.WaitGroup
+	promptCh      chan promptRequest
+	outCh         chan message
+	flushCh       chan chan struct{}
 	errs          []error
-	errsMu        sync.Mutex
 	quiet         bool
 	verbose       bool //nolint:unused // TODO: Will be used soon.
 	interactive   bool
 	colorsEnabled bool
+	errsMu        sync.Mutex
+	wg            sync.WaitGroup
 }
 
 // A StreamWriter is an [io.Writer] created from an instance of [IO] that
@@ -111,8 +111,8 @@ type message struct {
 // promptRequest is the type for the prompts that are sent to the IO.
 // A promptRequest signals that the program should wait for user input.
 type promptRequest struct {
-	prompt   string
 	response chan string
+	prompt   string
 }
 
 // NewIO returns a new IO for the given settings.
@@ -267,6 +267,7 @@ func (s *IO) Err() error {
 func (s *IO) Flush() {
 	ack := make(chan struct{})
 	s.flushCh <- ack
+
 	<-ack
 }
 
@@ -330,7 +331,10 @@ func (s *IO) Println(a ...any) {
 	}
 }
 
-// Warnln formats using the default formats for its operands and writes to standard error output of s. Spaces are always added between operands and a newline is appended. If colors are enabled, the message is printed in yellow. It stores possible errors within s.
+// Warnln formats using the default formats for its operands and writes to
+// standard error output of s. Spaces are always added between operands and
+// a newline is appended. If colors are enabled, the message is printed in
+// yellow. It stores possible errors within s.
 func (s *IO) Warnln(a ...any) {
 	if s.quiet {
 		return
@@ -344,7 +348,7 @@ func (s *IO) Warnln(a ...any) {
 
 // Write writes the contents of p into the output channel. It returns the number
 // of bytes written.
-func (w *StreamWriter) Write(p []byte) (int, error) {
+func (w *StreamWriter) Write(p []byte) (int, error) { //nolint:unparam // implements interface
 	w.s.outCh <- message{
 		msg:    string(p),
 		output: w.output,
@@ -409,8 +413,8 @@ func PrintErrf(format string, a ...any) {
 }
 
 // SetStreams set the default global IO instace to the given [IO].
-func SetStreams(io *IO) {
-	streams = io
+func SetStreams(s *IO) {
+	streams = s
 }
 
 // Streams returns the default global terminal IO instance.
@@ -418,7 +422,11 @@ func Streams() *IO {
 	return streams
 }
 
-// Warnln formats using the default formats for its operands and writes to standard error output of the default IO streams. Spaces are always added between operands and a newline is appended. If colors are enabled, the message is printed in yellow. It stores possible errors within the default IO streams.
+// Warnln formats using the default formats for its operands and writes to
+// standard error output of the default IO streams. Spaces are always added
+// between operands and a newline is appended. If colors are enabled,
+// the message is printed in yellow. It stores possible errors within
+// the default IO streams.
 func Warnln(a ...any) {
 	if streams == nil {
 		panic("tried to call nil IO")
@@ -454,6 +462,29 @@ func (s *IO) colorln(c code, a ...any) string {
 	return fmt.Sprintf("%s[%dm%s%s[%dm\n", escape, c, msg, escape, reset)
 }
 
+func (s *IO) doPrompt(p promptRequest, buf *bufio.Writer, scanner *bufio.Scanner, flush func()) {
+	flush()
+
+	if _, err := buf.WriteString(p.prompt); err != nil {
+		s.appendErr(err)
+		close(p.response)
+
+		return
+	}
+
+	flush()
+
+	if scanner.Scan() {
+		p.response <- scanner.Text()
+	} else {
+		if err := scanner.Err(); err != nil {
+			s.appendErr(err)
+		}
+
+		close(p.response)
+	}
+}
+
 // output is the main loop for the IO, run in its own goroutine. It reads
 // the messages from the input channel and writes them to the output channel,
 // and also handles prompting the user for input.
@@ -487,25 +518,7 @@ func (s *IO) output(ctx context.Context) {
 				return
 			}
 
-			var err error
-
-			switch msg.output {
-			case Buffered:
-				_, err = buf.WriteString(msg.msg)
-			case Stdout:
-				flush()
-				_, err = fmt.Fprint(s.out, msg.msg)
-			case Stderr:
-				flush()
-				_, err = fmt.Fprint(s.errOut, msg.msg)
-			default:
-				// TODO: Maybe the program should panic here.
-				err = fmt.Errorf("%w: %v", errInvalidOutput, msg.output)
-			}
-
-			if err != nil {
-				s.appendErr(err)
-			}
+			s.writeOut(msg, buf, flush)
 		case p, ok := <-s.promptCh:
 			if !ok {
 				if err := buf.Flush(); err != nil {
@@ -515,29 +528,34 @@ func (s *IO) output(ctx context.Context) {
 				continue
 			}
 
-			flush()
-
-			if _, err := buf.WriteString(p.prompt); err != nil {
-				s.appendErr(err)
-				close(p.response)
-
-				continue
-			}
-
-			flush()
-
-			if scanner.Scan() {
-				p.response <- scanner.Text()
-			} else {
-				if err := scanner.Err(); err != nil {
-					s.appendErr(err)
-				}
-
-				close(p.response)
-			}
+			s.doPrompt(p, buf, scanner, flush)
 		case ack := <-s.flushCh:
 			flush()
 			close(ack)
 		}
+	}
+}
+
+func (s *IO) writeOut(msg message, buf *bufio.Writer, flush func()) {
+	var err error
+
+	switch msg.output {
+	case Buffered:
+		_, err = buf.WriteString(msg.msg)
+	case Stdout:
+		flush()
+
+		_, err = fmt.Fprint(s.out, msg.msg)
+	case Stderr:
+		flush()
+
+		_, err = fmt.Fprint(s.errOut, msg.msg)
+	default:
+		// TODO: Maybe the program should panic or something here.
+		err = fmt.Errorf("%w: %v", errInvalidOutput, msg.output)
+	}
+
+	if err != nil {
+		s.appendErr(err)
 	}
 }

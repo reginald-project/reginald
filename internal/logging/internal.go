@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/*
-Reginald plugin for Go.
-*/
-package main
+package logging
 
-import (
-	"fmt"
-	"os"
-)
+// logCallerDepth is the depth of the stack trace to skip when logging.
+// The skipped stack is [runtime.Callers, the function, the function's caller].
+const logCallerDepth = 3
 
-func main() { fmt.Fprintln(os.Stderr, "Hello world") }
+// IgnorePC controls whether to invoke runtime.Callers to get the pc in
+// the logging functions. This is solely for making the logging function
+// analogous with the logging functions in the standard library.
+var ignorePC = false //nolint:gochecknoglobals // can be set at compile time

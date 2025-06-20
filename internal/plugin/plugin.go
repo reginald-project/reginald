@@ -45,15 +45,12 @@ var (
 // A Plugin is a plugin that Reginald recognizes.
 type Plugin interface {
 	// Manifest returns the loaded manifest for the plugin.
-	Manifest() api.Manifest
+	Manifest() *api.Manifest
 }
 
 // A Store stores the plugins, provides information on them, and has functions
 // for using the plugins within the program.
 type Store struct {
-	// Plugins is the list of plugins.
-	Plugins []Plugin
-
 	// cmdCache is a cache of the commands for the plugins. The commands are
 	// stored as they are accessed for the first time. The key in the map is
 	// the parent commands and the command name, starting from the plugin domain
@@ -62,11 +59,30 @@ type Store struct {
 	// is accessed by its alias, the command is stored in the cache using that
 	// alias in the place it was used when accessing through Command.
 	cmdCache map[string]*api.Command
+
+	// Plugins is the list of plugins.
+	Plugins []Plugin
+}
+
+type searchOptions struct {
+	mu           *sync.Mutex
+	manifests    *api.Manifests
+	panicHandler func()
+	path         fspath.Path
+	wd           fspath.Path
+}
+
+type pathEntryOptions struct {
+	mu           *sync.Mutex
+	manifests    *api.Manifests
+	panicHandler func()
+	dir          os.DirEntry
+	path         fspath.Path
 }
 
 // NewStore creates a new Store that contains the plugins from the given
 // manifests.
-func NewStore(manifests []api.Manifest) *Store {
+func NewStore(manifests api.Manifests) *Store {
 	plugins := make([]Plugin, 0, len(manifests))
 
 	// TODO: These need to be properly handled.
@@ -123,121 +139,28 @@ func (s *Store) Len() int {
 
 // Search finds the available plugins by their "manifest.json" files and loads
 // the manifest information.
-func Search(ctx context.Context, wd fspath.Path, paths []fspath.Path) ([]api.Manifest, error) {
-	var (
-		mu        sync.Mutex
-		manifests []api.Manifest
-	)
+func Search(ctx context.Context, wd fspath.Path, paths []fspath.Path) (api.Manifests, error) {
+	var mu sync.Mutex
 
 	// The built-in plugins should be added first as they are already included
 	// with the program. The external plugins are validated while they are being
 	// loaded so by loading the built-in plugins first, we can make sure that no
 	// external plugin collides with them.
-	manifests = append(manifests, builtin.Manifests()...)
+	manifests := slices.Clone(builtin.Manifests())
 
 	eg, gctx := errgroup.WithContext(ctx)
 
 	for _, path := range paths {
-		handlePanic := panichandler.WithStackTrace()
+		opts := searchOptions{
+			path:         path,
+			wd:           wd,
+			mu:           &mu,
+			manifests:    &manifests,
+			panicHandler: panichandler.WithStackTrace(),
+		}
 
 		eg.Go(func() error {
-			defer handlePanic()
-
-			var err error
-
-			if !path.IsAbs() {
-				if strings.HasPrefix(path.String(), "~") {
-					path, err = path.Abs()
-				} else {
-					path, err = fspath.NewAbs(string(wd), string(path))
-				}
-
-				if err != nil {
-					return fmt.Errorf("%w", err)
-				}
-			}
-
-			logging.TraceContext(gctx, "checking plugin search path", "path", path)
-
-			var dir []os.DirEntry
-
-			dir, err = path.Clean().ReadDir()
-			if err != nil {
-				return fmt.Errorf("failed to read directory %q: %w", path, err)
-			}
-
-			g2, ctx2 := errgroup.WithContext(gctx)
-
-			for _, entry := range dir {
-				handlePanic := panichandler.WithStackTrace()
-
-				g2.Go(func() error {
-					defer handlePanic()
-
-					logging.TraceContext(
-						ctx2,
-						"checking dir entry",
-						"path",
-						path,
-						"name",
-						entry.Name(),
-					)
-
-					manifest, err := load(ctx2, path, entry)
-					if err != nil {
-						if errors.Is(err, errNoManifestFile) {
-							logging.TraceContext(
-								ctx2,
-								"no manifest file found",
-								"path",
-								path,
-								"name",
-								entry.Name(),
-							)
-
-							return nil
-						}
-
-						return fmt.Errorf("%w", err)
-					}
-
-					logging.TraceContext(ctx2, "loaded manifest", "manifest", manifest)
-					mu.Lock()
-					defer mu.Unlock()
-
-					if err = checkDuplicates(ctx2, manifest, manifests); err != nil {
-						return fmt.Errorf("%w", err)
-					}
-
-					logging.TraceContext(
-						ctx2,
-						"appending manifest",
-						"manifest",
-						manifest,
-						"path",
-						path,
-					)
-
-					manifests = append(manifests, manifest)
-
-					logging.TraceContext(
-						ctx2,
-						"manifest loaded",
-						"manifest",
-						manifest,
-						"manifests",
-						manifests,
-					)
-
-					return nil
-				})
-			}
-
-			if err = g2.Wait(); err != nil {
-				return fmt.Errorf("%w", err)
-			}
-
-			return nil
+			return searchPath(gctx, opts)
 		})
 	}
 
@@ -256,7 +179,7 @@ func Search(ctx context.Context, wd fspath.Path, paths []fspath.Path) ([]api.Man
 			domains = append(domains, m.Domain)
 		}
 
-		logging.DebugContext(ctx, "loaded plugin manifests", "names", names, "domains", domains)
+		logging.Debug(ctx, "loaded plugin manifests", "names", names, "domains", domains)
 	}
 
 	return manifests, nil
@@ -304,66 +227,26 @@ func (s *Store) findCmd(parent *api.Command, name string) *api.Command {
 	return nil
 }
 
-// check validates the given Manifest and normalizes its values, for example
-// setting the name of the plugin as its domain if the plugin doesn't provide
-// one.
-func check(manifest api.Manifest, path fspath.Path) (api.Manifest, error) {
-	if manifest.Name == "" {
-		return api.Manifest{}, fmt.Errorf(
-			"%w: manifest at %q did not specify a name",
-			errInvalidManifest,
-			path,
-		)
-	}
-
-	if manifest.Domain == "" {
-		manifest.Domain = manifest.Name
-	}
-
-	if manifest.Executable == "" {
-		return api.Manifest{}, fmt.Errorf(
-			"%w: manifest at %q did not specify executable",
-			errInvalidManifest,
-			path,
-		)
-	}
-
-	execPath, err := fspath.NewAbs(string(path.Dir()), manifest.Executable)
-	if err != nil {
-		return api.Manifest{}, fmt.Errorf("%w", err)
-	}
-
-	if ok, err := execPath.IsFile(); err != nil {
-		return api.Manifest{}, fmt.Errorf("%w", err)
-	} else if !ok {
-		return api.Manifest{}, fmt.Errorf("%w: executable at %q is not a file", errInvalidManifest, execPath)
-	}
-
-	manifest.Executable = string(execPath)
-
-	return manifest, nil
-}
-
 // checkDuplicates checks if the manifest has duplicate fields with manifests
 // that are already defined. A manifest may not have the same name, domain, or
 // executable as some other manifest. As the function reads the manifests slice,
 // the lock protecting the slice should be locked before calling this function.
-func checkDuplicates(ctx context.Context, manifest api.Manifest, manifests []api.Manifest) error {
+func checkDuplicates(ctx context.Context, manifest *api.Manifest, manifests api.Manifests) error {
 	for _, m := range manifests {
 		if m.Name == manifest.Name {
-			logging.TraceContext(ctx, "conflicting manifests", "new", manifest, "old", m)
+			logging.Trace(ctx, "conflicting manifests", "new", manifest, "old", m)
 
 			return fmt.Errorf("%w: duplicate plugin name %q", errInvalidManifest, m.Name)
 		}
 
 		if m.Domain == manifest.Domain {
-			logging.TraceContext(ctx, "conflicting manifests", "new", manifest, "old", m)
+			logging.Trace(ctx, "conflicting manifests", "new", manifest, "old", m)
 
 			return fmt.Errorf("%w: duplicate plugin domain %q", errInvalidManifest, m.Domain)
 		}
 
 		if m.Executable == manifest.Executable {
-			logging.TraceContext(ctx, "conflicting manifests", "new", manifest, "old", m)
+			logging.Trace(ctx, "conflicting manifests", "new", manifest, "old", m)
 
 			return fmt.Errorf(
 				"%w: duplicate plugin executable path %q",
@@ -377,37 +260,186 @@ func checkDuplicates(ctx context.Context, manifest api.Manifest, manifests []api
 }
 
 // load loads the manifest from the search path for the DirEntry.
-func load(ctx context.Context, path fspath.Path, dirEntry os.DirEntry) (api.Manifest, error) {
+func load(ctx context.Context, path fspath.Path, dirEntry os.DirEntry) (*api.Manifest, error) {
 	if !dirEntry.IsDir() {
-		logging.TraceContext(ctx, "entry is not directory", "path", path, "name", dirEntry.Name())
+		logging.Trace(ctx, "entry is not directory", "path", path, "name", dirEntry.Name())
 
-		return api.Manifest{}, fmt.Errorf("%w: %s", errNoManifestFile, path)
+		return nil, fmt.Errorf("%w: %s", errNoManifestFile, path)
 	}
 
 	manifestPath := path.Join(dirEntry.Name(), "manifest.json")
 	if ok, err := manifestPath.IsFile(); err != nil {
-		return api.Manifest{}, fmt.Errorf("%w", err)
+		return nil, fmt.Errorf("%w", err)
 	} else if !ok {
-		return api.Manifest{}, fmt.Errorf("%w: %s", errNoManifestFile, manifestPath)
+		return nil, fmt.Errorf("%w: %s", errNoManifestFile, manifestPath)
 	}
 
 	data, err := manifestPath.Clean().ReadFile()
 	if err != nil {
-		return api.Manifest{}, fmt.Errorf("%w", err)
+		return nil, fmt.Errorf("%w", err)
 	}
 
 	d := json.NewDecoder(bytes.NewReader(data))
 	d.DisallowUnknownFields()
 
-	var manifest api.Manifest
-	if err := d.Decode(&manifest); err != nil {
-		return api.Manifest{}, fmt.Errorf("%w", err)
+	var manifest *api.Manifest
+	if err = d.Decode(manifest); err != nil {
+		return nil, fmt.Errorf("%w", err)
 	}
 
-	manifest, err = check(manifest, manifestPath)
-	if err != nil {
-		return api.Manifest{}, fmt.Errorf("%w", err)
+	if err = revise(manifest, manifestPath); err != nil {
+		return nil, fmt.Errorf("%w", err)
 	}
 
 	return manifest, nil
+}
+
+// revise validates the given Manifest and normalizes its values, for example
+// setting the name of the plugin as its domain if the plugin doesn't provide
+// one. It modifies the given manifest in place.
+func revise(manifest *api.Manifest, path fspath.Path) error {
+	if manifest.Name == "" {
+		return fmt.Errorf(
+			"%w: manifest at %q did not specify a name",
+			errInvalidManifest,
+			path,
+		)
+	}
+
+	if manifest.Domain == "" {
+		manifest.Domain = manifest.Name
+	}
+
+	if manifest.Executable == "" {
+		return fmt.Errorf(
+			"%w: manifest at %q did not specify executable",
+			errInvalidManifest,
+			path,
+		)
+	}
+
+	execPath, err := fspath.NewAbs(string(path.Dir()), manifest.Executable)
+	if err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	if ok, err := execPath.IsFile(); err != nil {
+		return fmt.Errorf("%w", err)
+	} else if !ok {
+		return fmt.Errorf("%w: executable at %q is not a file", errInvalidManifest, execPath)
+	}
+
+	manifest.Executable = string(execPath)
+
+	return nil
+}
+
+func searchPath(ctx context.Context, opts searchOptions) error {
+	defer opts.panicHandler()
+
+	var err error
+
+	if !opts.path.IsAbs() {
+		if strings.HasPrefix(opts.path.String(), "~") {
+			opts.path, err = opts.path.Abs()
+		} else {
+			opts.path, err = fspath.NewAbs(string(opts.wd), string(opts.path))
+		}
+
+		if err != nil {
+			return fmt.Errorf("%w", err)
+		}
+	}
+
+	logging.Trace(ctx, "checking plugin search path", "path", opts.path)
+
+	var dir []os.DirEntry
+
+	dir, err = opts.path.Clean().ReadDir()
+	if err != nil {
+		return fmt.Errorf("failed to read directory %q: %w", opts.path, err)
+	}
+
+	eg, gctx := errgroup.WithContext(ctx)
+
+	for _, entry := range dir {
+		entryOpts := pathEntryOptions{
+			path:         opts.path,
+			dir:          entry,
+			mu:           opts.mu,
+			manifests:    opts.manifests,
+			panicHandler: panichandler.WithStackTrace(),
+		}
+
+		eg.Go(func() error {
+			return searchPathEntry(gctx, entryOpts)
+		})
+	}
+
+	if err = eg.Wait(); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	return nil
+}
+
+func searchPathEntry(ctx context.Context, opts pathEntryOptions) error {
+	defer opts.panicHandler()
+
+	logging.Trace(
+		ctx,
+		"checking dir entry",
+		"path",
+		opts.path,
+		"name",
+		opts.dir.Name(),
+	)
+
+	manifest, err := load(ctx, opts.path, opts.dir)
+	if err != nil {
+		if errors.Is(err, errNoManifestFile) {
+			logging.Trace(
+				ctx,
+				"no manifest file found",
+				"path",
+				opts.path,
+				"name",
+				opts.dir.Name(),
+			)
+
+			return nil
+		}
+
+		return fmt.Errorf("%w", err)
+	}
+
+	logging.Trace(ctx, "loaded manifest", "manifest", manifest)
+	opts.mu.Lock()
+	defer opts.mu.Unlock()
+
+	if err = checkDuplicates(ctx, manifest, *opts.manifests); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	logging.Trace(
+		ctx,
+		"appending manifest",
+		"manifest",
+		manifest,
+		"path",
+		opts.path,
+	)
+
+	*opts.manifests = append(*opts.manifests, manifest)
+
+	logging.Trace(
+		ctx,
+		"manifest loaded",
+		"manifest",
+		manifest,
+		"manifests",
+		*opts.manifests,
+	)
+
+	return nil
 }

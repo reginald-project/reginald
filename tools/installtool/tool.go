@@ -29,7 +29,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reginald-project/reginald/tools/toolexec"
+	"github.com/reginald-project/reginald/tools"
 )
 
 func main() {
@@ -130,7 +130,7 @@ func goEnv(exe, key string) string {
 }
 
 func goInstall(exe, mod, version string) {
-	err := toolexec.Run(exe, "install", mod+"@v"+version)
+	err := tools.Run(exe, "install", mod+"@v"+version)
 	if err != nil {
 		log.Fatalf("Failed to install %s: %v", mod, err)
 	}
@@ -147,7 +147,7 @@ func installGolangciLint(exe, version string) {
 	}
 	defer resp.Body.Close()
 
-	err = toolexec.Run("sh", "-s", "--", "-b", installDir, "v"+version)
+	err = tools.Run("sh", "-s", "--", "-b", installDir, "v"+version)
 	if err != nil {
 		log.Fatalf("Failed to install golangci-lint: %v", err)
 	}
@@ -193,7 +193,7 @@ func installGolines(exe, version string) {
 		log.Fatalf("Failed to parse golines ref sha")
 	}
 
-	err = toolexec.Run(
+	err = tools.Run(
 		exe,
 		"install",
 		"-ldflags",
@@ -247,9 +247,5 @@ func shouldInstall(tool, version string) bool {
 		log.Fatalf("Unknown tool: %s", tool)
 	}
 
-	if current == version {
-		return false
-	}
-
-	return true
+	return current != version
 }

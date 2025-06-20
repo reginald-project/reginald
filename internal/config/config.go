@@ -128,6 +128,7 @@ func DefaultConfig() *Config {
 	}
 
 	return &Config{
+		sourceFile:  "",
 		Color:       terminal.ColorAuto,
 		Defaults:    TaskDefaults{},
 		Directory:   fspath.Path(wd),

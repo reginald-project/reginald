@@ -21,20 +21,20 @@ import "github.com/reginald-project/reginald-sdk-go/api"
 // the plugin executables.
 type External struct {
 	// manifest is the manifest for this plugin.
-	manifest api.Manifest
+	manifest *api.Manifest
 
 	// loaded tells whether the executable for this plugin is loaded and started
 	// up.
-	loaded bool
+	loaded bool //nolint:unused // TODO: Will be used soon.
 }
 
 // Manifest returns the loaded manifest for the plugin.
-func (e *External) Manifest() api.Manifest {
+func (e *External) Manifest() *api.Manifest {
 	return e.manifest
 }
 
 // newExternal returns a new external plugin for the given manifest.
-func newExternal(m api.Manifest) *External {
+func newExternal(m *api.Manifest) *External {
 	return &External{
 		manifest: m,
 		loaded:   false,

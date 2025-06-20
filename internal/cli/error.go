@@ -18,20 +18,23 @@ package cli
 // causing the program to exit and associates an exit code with it. The program
 // will return the exit code once it ends its execution.
 type ExitError struct {
+	err error
+
 	// Code is the exit code associated with this error. It will be used by
 	// the program as the exit code it returns to the caller.
 	Code int
-	err  error
 }
 
-// Success is an error that is returned by the CLI when the program is
+// SuccessError is an error that is returned by the CLI when the program is
 // successfully executed but voluntarily exits early. It used, for example, if
 // the user opts into exiting in interactive mode.
-type Success struct{}
+//
+// The name might be confusing, but let it go.
+type SuccessError struct{}
 
-// Error returns the value of s as a string. This function implements the error
-// interface for Success.
-func (s *Success) Error() string {
+// Error returns the value of the error as a string. This function implements
+// the error interface for Success.
+func (*SuccessError) Error() string {
 	return "success"
 }
 

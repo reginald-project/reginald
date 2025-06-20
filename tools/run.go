@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package toolexec
+//go:build tool
+
+package tools
 
 import (
 	"fmt"
@@ -47,6 +49,7 @@ func announce(args ...string) {
 
 func quote(args []string) string {
 	fmtArgs := make([]string, len(args))
+
 	for i, arg := range args {
 		if strings.ContainsAny(arg, " \t'\"") {
 			fmtArgs[i] = fmt.Sprintf("%q", arg)
