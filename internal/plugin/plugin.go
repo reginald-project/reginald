@@ -66,7 +66,7 @@ type Store struct {
 
 type searchOptions struct {
 	mu           *sync.Mutex
-	manifests    *api.Manifests
+	manifests    *[]*api.Manifest
 	panicHandler func()
 	path         fspath.Path
 	wd           fspath.Path
@@ -74,7 +74,7 @@ type searchOptions struct {
 
 type pathEntryOptions struct {
 	mu           *sync.Mutex
-	manifests    *api.Manifests
+	manifests    *[]*api.Manifest
 	panicHandler func()
 	dir          os.DirEntry
 	path         fspath.Path
@@ -82,7 +82,7 @@ type pathEntryOptions struct {
 
 // NewStore creates a new Store that contains the plugins from the given
 // manifests.
-func NewStore(manifests api.Manifests) *Store {
+func NewStore(manifests []*api.Manifest) *Store {
 	plugins := make([]Plugin, 0, len(manifests))
 
 	// TODO: These need to be properly handled.
@@ -139,7 +139,7 @@ func (s *Store) Len() int {
 
 // Search finds the available plugins by their "manifest.json" files and loads
 // the manifest information.
-func Search(ctx context.Context, wd fspath.Path, paths []fspath.Path) (api.Manifests, error) {
+func Search(ctx context.Context, wd fspath.Path, paths []fspath.Path) ([]*api.Manifest, error) {
 	var mu sync.Mutex
 
 	// The built-in plugins should be added first as they are already included
@@ -219,7 +219,7 @@ func (s *Store) findCmd(parent *api.Command, name string) *api.Command {
 // that are already defined. A manifest may not have the same name, domain, or
 // executable as some other manifest. As the function reads the manifests slice,
 // the lock protecting the slice should be locked before calling this function.
-func checkDuplicates(ctx context.Context, manifest *api.Manifest, manifests api.Manifests) error {
+func checkDuplicates(ctx context.Context, manifest *api.Manifest, manifests []*api.Manifest) error {
 	for _, m := range manifests {
 		if m.Name == manifest.Name {
 			logging.Trace(ctx, "conflicting manifests", "new", manifest, "old", m)
@@ -282,7 +282,7 @@ func load(ctx context.Context, path fspath.Path, dirEntry os.DirEntry) (*api.Man
 	return manifest, nil
 }
 
-func logLoadedManifest(ctx context.Context, manifests api.Manifests) {
+func logLoadedManifest(ctx context.Context, manifests []*api.Manifest) {
 	// Maybe not necessary, but it's nice to create the log values only if
 	// they're used.
 	if slog.Default().Enabled(ctx, slog.Level(logs.LevelDebug)) {
