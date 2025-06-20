@@ -97,7 +97,7 @@ clean: FORCE
 
 # TOOL HELPERS
 
-addlicense gci go-licenses gofumpt golangci-lint golines: FORCE installtool
+addlicense delve gci go-licenses gofumpt golangci-lint golines: FORCE installtool
 	@./installtool $@ $(TOOLFLAGS)
 
 buildtask: tools/buildtask/tool.go

@@ -66,6 +66,7 @@ func main() {
 
 	versions := map[string]string{
 		"addlicense":    "1.1.1",
+		"delve":         "1.25.0",
 		"gci":           "0.13.6",
 		"go-licenses":   "1.6.0",
 		"gofumpt":       "0.8.0",
@@ -77,7 +78,15 @@ func main() {
 		log.Fatalf("Unknown tool: %s", tool)
 	}
 
+	if tool == "delve" {
+		tool = "dlv"
+	}
+
 	if !shouldInstall(tool, version) && !*force {
+		if tool == "dlv" {
+			tool = "delve"
+		}
+
 		fmt.Printf("%s: `%s` is up to date.\n", self, tool)
 
 		return
@@ -86,6 +95,8 @@ func main() {
 	switch tool {
 	case "addlicense":
 		goInstall(exe, "github.com/google/addlicense", version)
+	case "dlv":
+		goInstall(exe, "github.com/go-delve/delve/cmd/dlv", version)
 	case "gci":
 		goInstall(exe, "github.com/daixiang0/gci", version)
 	case "go-licenses":
@@ -99,6 +110,12 @@ func main() {
 	default:
 		log.Fatalf("Unknown tool: %s", tool)
 	}
+
+	if tool == "dlv" {
+		tool = "delve"
+	}
+
+	fmt.Printf("%s: `%s` version %s installed.\n", self, tool, version)
 }
 
 func goEnv(exe, key string) string {
@@ -202,7 +219,13 @@ func shouldInstall(tool, version string) bool {
 		return false
 	}
 
-	out, err := exec.Command(tool, "--version").Output()
+	args := []string{"--version"}
+
+	if tool == "dlv" {
+		args = []string{"version"}
+	}
+
+	out, err := exec.Command(tool, args...).Output()
 	if err != nil {
 		log.Fatalf("Failed to check %s version: %v", tool, err)
 	}
@@ -212,6 +235,8 @@ func shouldInstall(tool, version string) bool {
 	switch tool {
 	case "gci":
 		current = strings.Fields(string(out))[2]
+	case "dlv":
+		current = strings.Fields(string(out))[3]
 	case "gofumpt":
 		current = strings.Fields(string(out))[0][1:]
 	case "golangci-lint":
