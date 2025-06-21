@@ -49,7 +49,7 @@ func bootstrap(ctx context.Context) (*runInfo, error) {
 	defer streams.Close()
 
 	if err := logging.InitBootstrap(streams); err != nil {
-		return nil, fmt.Errorf("%w", err)
+		return nil, fmt.Errorf("failed to init bootstrap logger: %w", err)
 	}
 
 	logging.Debug(ctx, "bootstrap logger initialized")
@@ -125,7 +125,7 @@ func bootstrap(ctx context.Context) (*runInfo, error) {
 	if len(strictErr.errs) > 0 && cfg.Strict {
 		return nil, &ExitError{
 			Code: 1,
-			err:  fmt.Errorf("%w", strictErr),
+			err:  strictErr,
 		}
 	}
 
@@ -135,7 +135,7 @@ func bootstrap(ctx context.Context) (*runInfo, error) {
 	if err != nil {
 		return nil, &ExitError{
 			Code: 1,
-			err:  fmt.Errorf("failed to parse the command-line arguments: %w", err),
+			err:  err,
 		}
 	}
 

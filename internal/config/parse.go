@@ -83,12 +83,7 @@ func Apply(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 		)
 	}
 
-	err := applyStruct(ctx, reflect.ValueOf(cfg).Elem(), opts)
-	if err != nil {
-		return fmt.Errorf("%w", err)
-	}
-
-	return nil
+	return applyStruct(ctx, reflect.ValueOf(cfg).Elem(), opts)
 }
 
 // ApplyPlugins applies the config values for plugins from environment variables
@@ -189,7 +184,7 @@ func applyBool(value reflect.Value, opts ApplyOptions) error {
 	if env != "" {
 		x, err = strconv.ParseBool(env)
 		if err != nil {
-			return fmt.Errorf("%w", err)
+			return fmt.Errorf("failed to parse %q as a boolean: %w", env, err)
 		}
 	}
 
@@ -236,7 +231,7 @@ func applyColorMode(value reflect.Value, opts ApplyOptions) error {
 
 		v, err = unmarshal(value, env)
 		if err != nil {
-			return fmt.Errorf("%w", err)
+			return err
 		}
 
 		// TODO: Unsafe conversion.
@@ -256,7 +251,7 @@ func applyColorMode(value reflect.Value, opts ApplyOptions) error {
 
 		v, err = unmarshal(value, f.Value.String())
 		if err != nil {
-			return fmt.Errorf("%w", err)
+			return err
 		}
 
 		// TODO: Unsafe conversion.
@@ -277,7 +272,7 @@ func applyInt(value reflect.Value, opts ApplyOptions) error {
 	if env != "" {
 		x, err = parseInt(env, value)
 		if err != nil {
-			return fmt.Errorf("%w", err)
+			return err
 		}
 	}
 
@@ -325,7 +320,7 @@ func applyPath(value reflect.Value, opts ApplyOptions) error {
 	if !x.IsAbs() {
 		path, err := fspath.NewAbs(string(opts.Dir), string(x))
 		if err != nil {
-			return fmt.Errorf("%w", err)
+			return fmt.Errorf("failed to create absolute path from %q: %w", x, err)
 		}
 
 		x = path.Clean()
@@ -352,10 +347,10 @@ func applyPathSlice(value reflect.Value, opts ApplyOptions) error {
 	// fine for now.
 	if env != "" {
 		parts := strings.Split(env, ",")
-		x = make([]fspath.Path, 0, len(parts))
+		x = make([]fspath.Path, len(parts))
 
-		for _, part := range parts {
-			x = append(x, fspath.Path(part))
+		for i, part := range parts {
+			x[i] = fspath.Path(part)
 		}
 	}
 
@@ -373,7 +368,7 @@ func applyPathSlice(value reflect.Value, opts ApplyOptions) error {
 		if !p.IsAbs() {
 			path, err := fspath.NewAbs(string(opts.Dir), string(p))
 			if err != nil {
-				return fmt.Errorf("%w", err)
+				return fmt.Errorf("failed to create absolute path from %q: %w", x, err)
 			}
 
 			x[i] = path.Clean()
@@ -416,7 +411,7 @@ func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) erro
 	if len(opts.idents) == 1 {
 		opts, err = setDir(ctx, cfg, opts)
 		if err != nil {
-			return fmt.Errorf("%w", err)
+			return err
 		}
 	}
 
@@ -455,13 +450,13 @@ func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) erro
 
 		switch val.Kind() { //nolint:exhaustive // TODO: implemented as needed
 		case reflect.Bool:
-			err = applyBool(val, newOpts)
+			return applyBool(val, newOpts)
 		case reflect.Int:
 			if val.Type().Name() == "ColorMode" {
-				err = applyColorMode(val, newOpts)
-			} else {
-				err = applyInt(val, newOpts)
+				return applyColorMode(val, newOpts)
 			}
+
+			return applyInt(val, newOpts)
 		case reflect.Slice:
 			e := val.Type().Elem()
 			if e.Kind() != reflect.String || e.Name() != "Path" {
@@ -470,24 +465,18 @@ func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) erro
 				)
 			}
 
-			err = applyPathSlice(val, newOpts)
+			return applyPathSlice(val, newOpts)
 		case reflect.String:
 			if val.Type().Name() == "Path" {
-				err = applyPath(val, newOpts)
-			} else {
-				err = applyString(val, newOpts)
+				return applyPath(val, newOpts)
 			}
+
+			return applyString(val, newOpts)
 		case reflect.Struct:
-			err = applyStruct(ctx, val, newOpts)
+			return applyStruct(ctx, val, newOpts)
 		default:
 			panic(fmt.Sprintf("unsupported config field type for %s: %s", field.Name, val.Kind()))
 		}
-
-		if err != nil {
-			return fmt.Errorf("%w", err)
-		}
-
-		logging.Trace(ctx, "set config field", "key", field.Name, "value", val)
 	}
 
 	return nil
@@ -603,7 +592,7 @@ func parseFile(ctx context.Context, dir fspath.Path, flagSet *flags.FlagSet, cfg
 	}
 
 	if err := d.Decode(rawCfg); err != nil {
-		return fmt.Errorf("failed to read environment variables for config: %w", err)
+		return fmt.Errorf("failed to decode the config file: %w", err)
 	}
 
 	return nil
@@ -616,7 +605,7 @@ func parseInt(s string, value reflect.Value) (int64, error) {
 	if canUnmarshal(value) {
 		v, err := unmarshal(value, s)
 		if err != nil {
-			return 0, fmt.Errorf("%w", err)
+			return 0, err
 		}
 
 		return v.Int(), nil
@@ -624,7 +613,7 @@ func parseInt(s string, value reflect.Value) (int64, error) {
 
 	x, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("%w", err)
+		return 0, fmt.Errorf("failed to parse %q as an integer: %w", s, err)
 	}
 
 	return x, nil
@@ -663,16 +652,14 @@ func setDir(ctx context.Context, cfg reflect.Value, opts ApplyOptions) (ApplyOpt
 		panic(fmt.Sprintf("cannot set Directory field in %q", cfg.Type().Name()))
 	}
 
-	var err error
-
 	newOpts := ApplyOptions{
 		idents:  append(opts.idents, field.Name),
 		Dir:     opts.Dir,
 		FlagSet: opts.FlagSet,
 	}
 
-	if err = applyPath(val, newOpts); err != nil {
-		return ApplyOptions{}, fmt.Errorf("%w", err)
+	if err := applyPath(val, newOpts); err != nil {
+		return ApplyOptions{}, err
 	}
 
 	opts.Dir = fspath.Path(val.String())

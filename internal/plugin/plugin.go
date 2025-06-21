@@ -192,7 +192,7 @@ func Search(ctx context.Context, wd fspath.Path, paths []fspath.Path) ([]*api.Ma
 	}
 
 	if err := eg.Wait(); err != nil {
-		return nil, fmt.Errorf("%w", err)
+		return nil, fmt.Errorf("failed to load manifests: %w", err)
 	}
 
 	logLoadedManifest(ctx, manifests)
@@ -241,19 +241,19 @@ func load(ctx context.Context, path fspath.Path, dirEntry os.DirEntry) (*api.Man
 	if !dirEntry.IsDir() {
 		logging.Trace(ctx, "entry is not directory", "path", path, "name", dirEntry.Name())
 
-		return nil, fmt.Errorf("%w: %s", errNoManifestFile, path)
+		return nil, fmt.Errorf("%w: %s is not a directory", errNoManifestFile, path)
 	}
 
 	manifestPath := path.Join(dirEntry.Name(), "manifest.json")
 	if ok, err := manifestPath.IsFile(); err != nil {
-		return nil, fmt.Errorf("%w", err)
+		return nil, fmt.Errorf("failed to check if %q is a file: %w", manifestPath, err)
 	} else if !ok {
-		return nil, fmt.Errorf("%w: %s", errNoManifestFile, manifestPath)
+		return nil, fmt.Errorf("%w: %s is not a file", errNoManifestFile, manifestPath)
 	}
 
 	data, err := manifestPath.Clean().ReadFile()
 	if err != nil {
-		return nil, fmt.Errorf("%w", err)
+		return nil, fmt.Errorf("failed to read %q: %w", manifestPath, err)
 	}
 
 	d := json.NewDecoder(bytes.NewReader(data))
@@ -261,11 +261,11 @@ func load(ctx context.Context, path fspath.Path, dirEntry os.DirEntry) (*api.Man
 
 	var manifest *api.Manifest
 	if err = d.Decode(&manifest); err != nil {
-		return nil, fmt.Errorf("%w", err)
+		return nil, fmt.Errorf("failed to decode the manifest at %q: %w", manifestPath, err)
 	}
 
-	if err = revise(manifest, manifestPath); err != nil {
-		return nil, fmt.Errorf("%w", err)
+	if err := revise(manifest, manifestPath); err != nil {
+		return nil, err
 	}
 
 	return manifest, nil
@@ -313,11 +313,16 @@ func revise(manifest *api.Manifest, path fspath.Path) error {
 
 	execPath, err := fspath.NewAbs(string(path.Dir()), manifest.Executable)
 	if err != nil {
-		return fmt.Errorf("%w", err)
+		return fmt.Errorf(
+			"failed to create absolute executable path from %q for plugin %q: %w",
+			manifest.Executable,
+			manifest.Name,
+			err,
+		)
 	}
 
 	if ok, err := execPath.IsFile(); err != nil {
-		return fmt.Errorf("%w", err)
+		return fmt.Errorf("failed to check if %q is a file: %w", execPath, err)
 	} else if !ok {
 		return fmt.Errorf("%w: executable at %q is not a file", errInvalidManifest, execPath)
 	}
@@ -353,7 +358,7 @@ func searchPath(ctx context.Context, opts searchOptions) error {
 		}
 
 		if err != nil {
-			return fmt.Errorf("%w", err)
+			return fmt.Errorf("failed to create absolute path from %q: %w", opts.path, err)
 		}
 	}
 
@@ -387,7 +392,7 @@ func searchPath(ctx context.Context, opts searchOptions) error {
 	}
 
 	if err = eg.Wait(); err != nil {
-		return fmt.Errorf("%w", err)
+		return fmt.Errorf("failed to search for plugins: %w", err)
 	}
 
 	return nil
@@ -420,15 +425,15 @@ func searchPathEntry(ctx context.Context, opts pathEntryOptions) error {
 			return nil
 		}
 
-		return fmt.Errorf("%w", err)
+		return err
 	}
 
 	logging.Trace(ctx, "loaded manifest", "manifest", manifest)
 	opts.mu.Lock()
 	defer opts.mu.Unlock()
 
-	if err = checkDuplicates(ctx, manifest, *opts.manifests); err != nil {
-		return fmt.Errorf("%w", err)
+	if err := checkDuplicates(ctx, manifest, *opts.manifests); err != nil {
+		return err
 	}
 
 	logging.Trace(

@@ -193,7 +193,7 @@ func DefaultDir() (fspath.Path, error) {
 func DefaultLogOutput() (fspath.Path, error) {
 	path, err := defaultPlatformLogFile()
 	if err != nil {
-		return "", fmt.Errorf("%w", err)
+		return "", err
 	}
 
 	return path, nil
@@ -396,7 +396,7 @@ func resolveFile(
 		var ok bool
 
 		if ok, err = file.IsFile(); err != nil {
-			return "", fmt.Errorf("%w", err)
+			return "", fmt.Errorf("failed to check if %q is a file: %w", file, err)
 		} else if ok {
 			return file.Clean(), nil
 		}
@@ -425,7 +425,7 @@ func resolveFile(
 	logging.Trace(ctx, "checking config file", "file", file)
 
 	if ok, err := file.IsFile(); err != nil {
-		return "", fmt.Errorf("%w", err)
+		return "", fmt.Errorf("failed to check if %q is a file: %w", file, err)
 	} else if ok {
 		return file, nil
 	}
@@ -458,7 +458,7 @@ func resolveFile(
 				logging.Trace(ctx, "checking config file", "path", file)
 
 				if ok, err := file.IsFile(); err != nil {
-					return "", fmt.Errorf("%w", err)
+					return "", fmt.Errorf("failed to check if %q is a file: %w", file, err)
 				} else if ok {
 					return file, nil
 				}

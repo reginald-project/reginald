@@ -42,7 +42,7 @@ func New(elem ...string) Path {
 func NewAbs(elem ...string) (Path, error) {
 	p, err := New(elem...).Abs()
 	if err != nil {
-		return "", fmt.Errorf("failed to create Path: %w", err)
+		return "", fmt.Errorf("%w", err)
 	}
 
 	return p, nil
@@ -176,7 +176,7 @@ func (p Path) Join(elem ...string) Path {
 // MkdirAll wraps [os.MkdirAll].
 func (p Path) MkdirAll(perm os.FileMode) error {
 	if err := os.MkdirAll(string(p), perm); err != nil {
-		return fmt.Errorf("failed to create directory %q: %w", p, err)
+		return fmt.Errorf("%w", err)
 	}
 
 	return nil
@@ -193,7 +193,7 @@ func (p Path) MkdirAll(perm os.FileMode) error {
 func (p Path) OpenFile(flag int, perm os.FileMode) (*os.File, error) {
 	f, err := os.OpenFile(string(p), flag, perm) // #nosec G304 -- utility function
 	if err != nil {
-		return nil, fmt.Errorf("failed to open %q: %w", p, err)
+		return nil, fmt.Errorf("%w", err)
 	}
 
 	return f, nil
