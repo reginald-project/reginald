@@ -71,14 +71,14 @@ type ApplyOptions struct {
 // command-line flags to cfg. It modifies the pointed cfg.
 func Apply(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 	if len(opts.idents) == 0 {
-		opts.idents = []string{EnvPrefix}
+		opts.idents = []string{defaultPrefix}
 	}
 
-	if opts.idents[0] != EnvPrefix {
+	if opts.idents[0] != defaultPrefix {
 		panic(
 			fmt.Sprintf(
 				"Apply must be called with no config identifiers or with the global prefix for the environment variables as the first identifier: %q", //nolint:lll
-				EnvPrefix,
+				defaultPrefix,
 			),
 		)
 	}

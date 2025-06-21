@@ -32,13 +32,9 @@ import (
 	"github.com/reginald-project/reginald/internal/terminal"
 )
 
-// EnvPrefix is the prefix added to the names of the config values when reading
-// them from environment variables.
-const EnvPrefix = "reginald"
-
 const (
-	defaultFileName    = "reginald"
-	defaultLogFileName = defaultFileName + ".log"
+	defaultPrefix      = "reginald"
+	defaultLogFileName = defaultPrefix + ".log"
 )
 
 // Config is the parsed configuration of the program run. There should be only
@@ -377,7 +373,7 @@ func resolveFile(
 		fileValue string
 	)
 
-	if env := os.Getenv(strings.ToUpper(EnvPrefix + "_CONFIG_FILE")); env != "" {
+	if env := os.Getenv(strings.ToUpper(defaultPrefix + "_CONFIG_FILE")); env != "" {
 		fileValue = env
 	}
 
@@ -408,7 +404,7 @@ func resolveFile(
 
 	wd := dir
 
-	if env := os.Getenv(strings.ToUpper(EnvPrefix + "_DIRECTORY")); env != "" {
+	if env := os.Getenv(strings.ToUpper(defaultPrefix + "_DIRECTORY")); env != "" {
 		wd = fspath.Path(env)
 	}
 
@@ -446,8 +442,8 @@ func resolveFile(
 		wd,
 	}
 	configNames := []string{
-		strings.ToLower(defaultFileName),
-		"." + strings.ToLower(defaultFileName),
+		strings.ToLower(defaultPrefix),
+		"." + strings.ToLower(defaultPrefix),
 	}
 	extensions := []string{
 		"toml",
@@ -470,5 +466,5 @@ func resolveFile(
 		}
 	}
 
-	return "", &FileError{}
+	return "", &FileError{""}
 }

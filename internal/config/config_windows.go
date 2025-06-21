@@ -25,7 +25,7 @@ import (
 
 func defaultPlatformLogFile() (fspath.Path, error) {
 	if env := os.Getenv("XDG_STATE_HOME"); env != "" {
-		path, err := fspath.NewAbs(env, defaultFileName, defaultLogFileName)
+		path, err := fspath.NewAbs(env, defaultPrefix, defaultLogFileName)
 		if err != nil {
 			return "", fmt.Errorf("failed to convert log file to absolute path: %w", err)
 		}
@@ -33,7 +33,7 @@ func defaultPlatformLogFile() (fspath.Path, error) {
 		return path, nil
 	}
 
-	path, err := fspath.NewAbs("%LOCALAPPDATA%", defaultFileName, defaultLogFileName)
+	path, err := fspath.NewAbs("%LOCALAPPDATA%", defaultPrefix, defaultLogFileName)
 	if err != nil {
 		return "", fmt.Errorf(
 			"failed to convert Windows plugins directory to absolute path: %w",
@@ -46,7 +46,7 @@ func defaultPlatformLogFile() (fspath.Path, error) {
 
 func defaultPlatformPluginPaths() ([]fspath.Path, error) {
 	if env := os.Getenv("XDG_DATA_HOME"); env != "" {
-		path, err := fspath.NewAbs(env, defaultFileName, "plugins")
+		path, err := fspath.NewAbs(env, defaultPrefix, "plugins")
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert plugins directory to absolute path: %w", err)
 		}
@@ -54,7 +54,7 @@ func defaultPlatformPluginPaths() ([]fspath.Path, error) {
 		return []fspath.Path{path}, nil
 	}
 
-	path, err := fspath.NewAbs("%LOCALAPPDATA%", defaultFileName, "plugins")
+	path, err := fspath.NewAbs("%LOCALAPPDATA%", defaultPrefix, "plugins")
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to convert Windows plugins directory to absolute path: %w",
