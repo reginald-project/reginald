@@ -151,7 +151,7 @@ Loop:
 		case strings.HasPrefix(s, "--") && !hasNoOptDefVal(s[2:], flagSet):
 			// The '--flag arg' case.
 			fallthrough //nolint:gocritic // this is much clearer with an empty fallthrough
-		case strings.HasPrefix(s, "-") && !strings.HasPrefix(s, "--") && !shortHasNoOptDefVal(s[len(s)-1:], flagSet):
+		case strings.HasPrefix(s, "-") && !strings.HasPrefix(s, "--") && !hasShortNoOptDefVal(s[len(s)-1:], flagSet):
 			// The '-f arg' and '-abcf arg' cases. Only the last flag in can
 			// have a argument, so other ones aren't checked for the default
 			// value.
@@ -287,9 +287,9 @@ func hasNoOptDefVal(name string, fs *flags.FlagSet) bool {
 	return f.NoOptDefVal != ""
 }
 
-// shortHasNoOptDefVal checks if the flag for the given shorthand has a
+// hasShortNoOptDefVal checks if the flag for the given shorthand has a
 // NoOptDefVal set.
-func shortHasNoOptDefVal(name string, fs *flags.FlagSet) bool {
+func hasShortNoOptDefVal(name string, fs *flags.FlagSet) bool {
 	f := fs.ShorthandLookup(name[:1])
 	if f == nil {
 		return false
