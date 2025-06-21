@@ -65,7 +65,7 @@ func main() {
 
 			info, err := os.Stat(output)
 			if err == nil && !sourceFilesLaterThan(info.ModTime()) {
-				fmt.Printf("%s: `%s` is up to date.\n", self, output)
+				fmt.Fprintf(os.Stdout, "%s: `%s` is up to date.\n", self, output)
 
 				return nil
 			}

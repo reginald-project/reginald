@@ -82,7 +82,7 @@ func main() {
 			tool = "delve"
 		}
 
-		fmt.Printf("%s: `%s` is up to date.\n", self, tool)
+		fmt.Fprintf(os.Stdout, "%s: `%s` is up to date.\n", self, tool)
 
 		return
 	}
@@ -110,7 +110,7 @@ func main() {
 		tool = "delve"
 	}
 
-	fmt.Printf("%s: `%s` version %s installed.\n", self, tool, version)
+	fmt.Fprintf(os.Stdout, "%s: `%s` version %s installed.\n", self, tool, version)
 }
 
 func goEnv(exe, key string) string {
