@@ -36,9 +36,9 @@ const (
 // A runInfo is the parsed information for the program run. It is returned from
 // the bootstrapping function.
 type runInfo struct {
-	cfg     *config.Config //nolint:unused // TODO: Will be used soon.
-	plugins *plugin.Store  //nolint:unused // TODO: Will be used soon.
-	args    []string       //nolint:unused // TODO: Will be used soon.
+	cfg   *config.Config //nolint:unused // TODO: Will be used soon.
+	store *plugin.Store  //nolint:unused // TODO: Will be used soon.
+	args  []string       //nolint:unused // TODO: Will be used soon.
 }
 
 // Run runs the CLI application and returns any errors from the run.

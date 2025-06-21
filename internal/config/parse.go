@@ -136,11 +136,11 @@ func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
 // the config are valid plugin or plugin command names.
 //
 // TODO: This should have a better implementation.
-func Validate(cfg *Config, plugins *plugin.Store) error {
+func Validate(cfg *Config, store *plugin.Store) error {
 	for k := range cfg.Plugins {
 		ok := false
 	PluginLoop:
-		for _, p := range plugins.Plugins {
+		for _, p := range store.Plugins {
 			manifest := p.Manifest()
 
 			if manifest.Domain == k && manifest.Config != nil {

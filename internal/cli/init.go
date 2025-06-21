@@ -90,7 +90,7 @@ func bootstrap(ctx context.Context) (*runInfo, error) {
 		}
 	}
 
-	plugins, err := initPlugins(ctx, cfg)
+	store, err := initPlugins(ctx, cfg)
 	if err != nil {
 		return nil, &ExitError{
 			Code: 1,
@@ -98,7 +98,7 @@ func bootstrap(ctx context.Context) (*runInfo, error) {
 		}
 	}
 
-	err = parseArgs(ctx, cfg, plugins)
+	err = parseArgs(ctx, cfg, store)
 	if err != nil {
 		return nil, &ExitError{
 			Code: 1,
@@ -107,9 +107,9 @@ func bootstrap(ctx context.Context) (*runInfo, error) {
 	}
 
 	info := &runInfo{
-		cfg:     cfg,
-		plugins: plugins,
-		args:    nil,
+		cfg:   cfg,
+		store: store,
+		args:  nil,
 	}
 
 	return info, nil
@@ -340,11 +340,11 @@ func initPlugins(ctx context.Context, cfg *config.Config) (*plugin.Store, error)
 		return nil, fmt.Errorf("failed to search for plugins: %w", err)
 	}
 
-	plugins := plugin.NewStore(manifests)
+	store := plugin.NewStore(manifests)
 
-	logging.Debug(ctx, "created plugins", "store", plugins)
+	logging.Debug(ctx, "created plugins", "store", store)
 
-	return plugins, nil
+	return store, nil
 }
 
 // newFlagSet creates a [flags.FlagSet] that contains the command-line flags for
@@ -428,7 +428,7 @@ func newFlagSet() *flags.FlagSet {
 // to them. The function creates a new flag set for the root command, finds
 // the subcommand for the command-line arguments, and sets the flags from
 // the subcommand to the flag set.
-func parseArgs(ctx context.Context, cfg *config.Config, plugins *plugin.Store) error {
+func parseArgs(ctx context.Context, cfg *config.Config, store *plugin.Store) error {
 	// There is no need to remove the first element of the arguments slice as
 	// findSubcommand takes care of that.
 	args := os.Args
@@ -440,7 +440,7 @@ func parseArgs(ctx context.Context, cfg *config.Config, plugins *plugin.Store) e
 	logging.Debug(ctx, "parsing command-line arguments", "args", args)
 
 	flagSet := newFlagSet()
-	cmds, remain := findSubcommands(ctx, flagSet, plugins, args)
+	cmds, remain := findSubcommands(ctx, flagSet, store, args)
 
 	logging.Debug(ctx, "command-line arguments parsed", "cmd", cmds, "args", remain)
 
@@ -452,7 +452,7 @@ func parseArgs(ctx context.Context, cfg *config.Config, plugins *plugin.Store) e
 		return fmt.Errorf("%w", err)
 	}
 
-	if err := config.Validate(cfg, plugins); err != nil {
+	if err := config.Validate(cfg, store); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
