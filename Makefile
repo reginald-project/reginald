@@ -1,4 +1,4 @@
-# Copyright 2025 Antti Kivi
+# Copyright 2025 The Reginald Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ OUTPUT =
 TOOLFLAGS =
 
 ALLOWED_LICENSES = Apache-2.0,BSD-2-Clause,BSD-3-Clause,MIT
-COPYRIGHT_HOLDER = Antti Kivi
+COPYRIGHT_HOLDER = The Reginald Authors
 LICENSE = apache
 ADDLICENSE_PATTERNS = *.go internal plugins tools
 
