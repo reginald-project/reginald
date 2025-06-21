@@ -17,7 +17,9 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -31,6 +33,8 @@ import (
 
 	"github.com/reginald-project/reginald/tools"
 )
+
+var errNoVersion = errors.New("no version found")
 
 func main() {
 	log.SetFlags(0)
@@ -64,18 +68,9 @@ func main() {
 		self = "installtool.go"
 	}
 
-	versions := map[string]string{
-		"addlicense":    "1.1.1",
-		"delve":         "1.25.0",
-		"gci":           "0.13.6",
-		"go-licenses":   "1.6.0",
-		"gofumpt":       "0.8.0",
-		"golangci-lint": "2.1.6",
-		"golines":       "0.12.2",
-	}
-	version, ok := versions[tool]
-	if !ok {
-		log.Fatalf("Unknown tool: %s", tool)
+	version, err := readVersion(tool)
+	if err != nil {
+		log.Fatalf("Failed to read `%s` version: %v", tool, err)
 	}
 
 	if tool == "delve" {
@@ -208,6 +203,34 @@ func installGolines(exe, version string) {
 	if err != nil {
 		log.Fatalf("Failed to install github.com/segmentio/golines: %v", err)
 	}
+}
+
+func readVersion(tool string) (string, error) {
+	path := "Makefile"
+	prefix := fmt.Sprintf("%s_VERSION = ", strings.ToUpper(strings.ReplaceAll(tool, "-", "_")))
+
+	file, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to open %s: %w", path, err)
+	}
+
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(line, prefix)), nil
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("failed to read %s version: %w", tool, err)
+	}
+
+	return "", fmt.Errorf("%w: %s", errNoVersion, tool)
 }
 
 func shouldInstall(tool, version string) bool {
