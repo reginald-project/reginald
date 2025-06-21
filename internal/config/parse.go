@@ -112,7 +112,7 @@ func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
 	cfg := DefaultConfig()
 	dir := cfg.Directory
 
-	if err := parseFile(ctx, flagSet, cfg); err != nil {
+	if err := parseFile(ctx, dir, flagSet, cfg); err != nil {
 		return nil, fmt.Errorf("%w", err)
 	}
 
@@ -531,8 +531,8 @@ func normalizeKeys(cfg map[string]any) {
 
 // parseFile finds and parses the config file and sets the values to cfg. It
 // modifies the pointed cfg in place.
-func parseFile(ctx context.Context, flagSet *flags.FlagSet, cfg *Config) error {
-	configFile, err := resolveFile(flagSet)
+func parseFile(ctx context.Context, dir fspath.Path, flagSet *flags.FlagSet, cfg *Config) error {
+	configFile, err := resolveFile(ctx, dir, flagSet)
 	if err != nil && !errors.Is(err, errDefaultConfig) {
 		return fmt.Errorf("%w", err)
 	}

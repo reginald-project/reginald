@@ -18,6 +18,7 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"reflect"
@@ -360,7 +361,11 @@ func genFlagName(s string, invert bool) string {
 // returns the first one that contains a file with a valid name. The returned
 // path is absolute. If no configuration file is found, the function returns an
 // empty string and an error.
-func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
+func resolveFile(
+	ctx context.Context,
+	dir fspath.Path,
+	flagSet *flags.FlagSet,
+) (fspath.Path, error) {
 	var (
 		err       error
 		fileValue string
@@ -383,6 +388,8 @@ func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
 
 	file := fspath.Path(fileValue)
 
+	logging.Trace(ctx, "checking config file", "file", file)
+
 	// Use the fileValue if it is an absolute path.
 	if file.IsAbs() {
 		var ok bool
@@ -394,7 +401,7 @@ func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
 		}
 	}
 
-	var wd fspath.Path
+	wd := dir
 
 	if env := os.Getenv(strings.ToUpper(EnvPrefix + "_DIRECTORY")); env != "" {
 		wd = fspath.Path(env)
@@ -412,17 +419,10 @@ func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
 		}
 	}
 
-	if wd == "" {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return "", fmt.Errorf("%w", err)
-		}
-
-		wd = fspath.Path(cwd)
-	}
-
 	// Check if the config file f matches a file in the working directory.
 	file = wd.Join(string(file))
+
+	logging.Trace(ctx, "checking config file", "file", file)
 
 	if ok, err := file.IsFile(); err != nil {
 		return "", fmt.Errorf("%w", err)
@@ -454,6 +454,9 @@ func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
 		for _, n := range configNames {
 			for _, e := range extensions {
 				file = d.Join(fmt.Sprintf("%s.%s", n, e))
+
+				logging.Trace(ctx, "checking config file", "path", file)
+
 				if ok, err := file.IsFile(); err != nil {
 					return "", fmt.Errorf("%w", err)
 				} else if ok {
