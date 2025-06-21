@@ -34,7 +34,7 @@ import (
 
 // EnvPrefix is the prefix added to the names of the config values when reading
 // them from environment variables.
-const EnvPrefix = "REGINALD"
+const EnvPrefix = "reginald"
 
 const (
 	defaultFileName    = "reginald"

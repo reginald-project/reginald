@@ -501,7 +501,23 @@ func configKey(idents []string) string {
 // envValue returns the value of the environment variable for the given config
 // identifiers.
 func envValue(idents []string) string {
-	return os.Getenv(strings.ToUpper(strings.Join(idents, "_")))
+	key := ""
+
+	for i, ident := range idents {
+		if i > 0 {
+			key += "_"
+		}
+
+		for j, c := range ident {
+			if j > 0 && 'A' <= c && c <= 'Z' {
+				key += "_"
+			}
+
+			key += string(c)
+		}
+	}
+
+	return os.Getenv(strings.ToUpper(key))
 }
 
 // normalizeKeys checks the config value keys in the given raw config map and
