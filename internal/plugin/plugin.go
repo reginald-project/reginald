@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"slices"
@@ -72,39 +73,6 @@ type pathEntryOptions struct {
 	panicHandler func()
 	dir          os.DirEntry
 	path         fspath.Path
-}
-
-// DefaultStore creates a new empty Store that is used in place of a nil
-// Store.
-func DefaultStore() *Store {
-	manifests := slices.Clone(builtin.Manifests())
-
-	plugins := make([]Plugin, 0, len(manifests))
-	commands := make([]*Command, 0)
-
-	for _, m := range manifests {
-		var plugin Plugin
-
-		if m.Name != "builtin" {
-			panic("default store with a non-builtin plugin")
-		}
-
-		plugin = newBuiltin(m)
-
-		pluginCmds := newCommands(plugin)
-		if pluginCmds != nil {
-			commands = append(commands, pluginCmds...)
-		}
-
-		plugins = append(plugins, plugin)
-	}
-
-	store := &Store{
-		Plugins:  plugins,
-		Commands: commands,
-	}
-
-	return store
 }
 
 // NewStore creates a new Store that contains the plugins from the given
@@ -183,14 +151,17 @@ func (s *Store) Command(prev *Command, name string) *Command {
 // Search finds the available plugins by their "manifest.json" files and loads
 // the manifest information.
 func Search(ctx context.Context, wd fspath.Path, paths []fspath.Path) ([]*api.Manifest, error) {
-	var mu sync.Mutex
+	var (
+		mu       sync.Mutex
+		errMu    sync.Mutex
+		pathErrs PathErrors
+	)
 
 	// The built-in plugins should be added first as they are already included
 	// with the program. The external plugins are validated while they are being
 	// loaded so by loading the built-in plugins first, we can make sure that no
 	// external plugin collides with them.
 	manifests := slices.Clone(builtin.Manifests())
-
 	eg, gctx := errgroup.WithContext(ctx)
 
 	for _, path := range paths {
@@ -203,7 +174,20 @@ func Search(ctx context.Context, wd fspath.Path, paths []fspath.Path) ([]*api.Ma
 		}
 
 		eg.Go(func() error {
-			return searchPath(gctx, opts)
+			err := searchPath(gctx, opts)
+			if err != nil {
+				var pathErr *PathError
+				if !errors.As(err, &pathErr) {
+					return err
+				}
+
+				errMu.Lock()
+				defer errMu.Unlock()
+
+				pathErrs = append(pathErrs, pathErr)
+			}
+
+			return nil
 		})
 	}
 
@@ -212,6 +196,10 @@ func Search(ctx context.Context, wd fspath.Path, paths []fspath.Path) ([]*api.Ma
 	}
 
 	logLoadedManifest(ctx, manifests)
+
+	if len(pathErrs) > 0 {
+		return manifests, pathErrs
+	}
 
 	return manifests, nil
 }
@@ -375,6 +363,10 @@ func searchPath(ctx context.Context, opts searchOptions) error {
 
 	dir, err = opts.path.Clean().ReadDir()
 	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return &PathError{Path: opts.path}
+		}
+
 		return fmt.Errorf("failed to read directory %q: %w", opts.path, err)
 	}
 

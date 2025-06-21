@@ -38,8 +38,6 @@ import (
 // Errors returned from the configuration parser.
 var (
 	ErrInvalidConfig = errors.New("invalid config")
-	ErrNotExist      = errors.New("config file not found")
-	errDefaultConfig = errors.New("using default config")
 	errInvalidCast   = errors.New("cannot convert type")
 	errNilFlag       = errors.New("no flag found")
 )
@@ -112,8 +110,12 @@ func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
 	cfg := DefaultConfig()
 	dir := cfg.Directory
 
+	var fileErr *FileError
+
 	if err := parseFile(ctx, dir, flagSet, cfg); err != nil {
-		return nil, fmt.Errorf("%w", err)
+		if !errors.As(err, &fileErr) {
+			return nil, err
+		}
 	}
 
 	logging.Debug(ctx, "read config file", "cfg", cfg)
@@ -124,10 +126,14 @@ func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
 		FlagSet: flagSet,
 	}
 	if err := Apply(ctx, cfg, opts); err != nil {
-		return nil, fmt.Errorf("%w", err)
+		return nil, err
 	}
 
 	logging.Info(ctx, "parsed config", "cfg", cfg)
+
+	if fileErr != nil {
+		return cfg, fileErr
+	}
 
 	return cfg, nil
 }
@@ -557,8 +563,8 @@ func normalizeKeys(cfg map[string]any) {
 // modifies the pointed cfg in place.
 func parseFile(ctx context.Context, dir fspath.Path, flagSet *flags.FlagSet, cfg *Config) error {
 	configFile, err := resolveFile(ctx, dir, flagSet)
-	if err != nil && !errors.Is(err, errDefaultConfig) {
-		return fmt.Errorf("%w", err)
+	if err != nil {
+		return err
 	}
 
 	cfg.sourceFile = configFile

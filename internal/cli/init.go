@@ -68,14 +68,15 @@ func bootstrap(ctx context.Context) (*runInfo, error) {
 
 	cfg, err := initConfig(ctx)
 	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
+		var fileErr *config.FileError
+		if !errors.As(err, &fileErr) {
 			return nil, &ExitError{
 				Code: 1,
 				err:  err,
 			}
 		}
 
-		strictErr.errs = append(strictErr.errs, err)
+		strictErr.errs = append(strictErr.errs, fileErr)
 	}
 
 	if err = initOut(ctx, cfg); err != nil {
@@ -92,39 +93,36 @@ func bootstrap(ctx context.Context) (*runInfo, error) {
 	switch {
 	case cfg.HasFile():
 		// no-op
-	case cfg.Strict:
-		strictErr.errs = append(strictErr.errs, config.ErrNotExist)
 	case !cfg.Interactive:
 		terminal.Warnln("No config file was found")
 	case !terminal.Confirm("No config file was found. Continue?", true):
 		return nil, &SuccessError{}
 	}
 
+	var pathErrs plugin.PathErrors
+
 	store, err := initPlugins(ctx, cfg)
 	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
+		if !errors.As(err, &pathErrs) {
 			return nil, &ExitError{
 				Code: 1,
-				err:  fmt.Errorf("%w", err),
+				err:  err,
 			}
 		}
 
 		strictErr.errs = append(strictErr.errs, err)
 	}
 
-	if store == nil && !cfg.Strict {
-		if !terminal.Confirm("Plugin directory not found. Continue?", true) {
-			return nil, &SuccessError{}
-		}
-
-		if !cfg.Interactive {
-			terminal.Warnln("Plugin directory not found")
-		}
-
-		store = plugin.DefaultStore()
+	switch {
+	case pathErrs == nil:
+		// no-op
+	case !cfg.Interactive:
+		terminal.Warnln("Plugin directory not found")
+	case !terminal.Confirm("Plugin directory not found. Continue?", true):
+		return nil, &SuccessError{}
 	}
 
-	if len(strictErr.errs) > 0 {
+	if len(strictErr.errs) > 0 && cfg.Strict {
 		return nil, &ExitError{
 			Code: 1,
 			err:  fmt.Errorf("%w", strictErr),
@@ -365,12 +363,20 @@ func initConfig(ctx context.Context) (*config.Config, error) {
 	// first.
 	err := flagSet.Parse(os.Args[1:])
 	if err != nil {
-		logging.Debug(ctx, "initial flag parsing yielded an error", "err", err.Error())
+		logging.Warn(ctx, "initial flag parsing yielded an error", "err", err.Error())
 	}
+
+	var fileErr *config.FileError
 
 	cfg, err := config.Parse(ctx, flagSet)
 	if err != nil {
-		return nil, fmt.Errorf("%w", err)
+		if !errors.As(err, &fileErr) {
+			return nil, fmt.Errorf("failed to parse config: %w", err)
+		}
+	}
+
+	if fileErr != nil {
+		return cfg, fileErr
 	}
 
 	return cfg, nil
@@ -392,14 +398,24 @@ func initOut(ctx context.Context, cfg *config.Config) error {
 // initPlugins looks up the plugin manifests and creates a new plugin store
 // instance from them.
 func initPlugins(ctx context.Context, cfg *config.Config) (*plugin.Store, error) {
+	var pathErrs plugin.PathErrors
+
 	manifests, err := plugin.Search(ctx, cfg.Directory, cfg.PluginPaths)
 	if err != nil {
-		return nil, fmt.Errorf("failed to search for plugins: %w", err)
+		if !errors.As(err, &pathErrs) {
+			return nil, fmt.Errorf("failed to search for plugins: %w", err)
+		}
+
+		logging.Error(ctx, "failed to search for plugins", "err", pathErrs)
 	}
 
 	store := plugin.NewStore(manifests)
 
 	logging.Debug(ctx, "created plugins", "store", store)
+
+	if len(pathErrs) > 0 {
+		return store, pathErrs
+	}
 
 	return store, nil
 }

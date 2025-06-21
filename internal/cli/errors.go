@@ -14,6 +14,13 @@
 
 package cli
 
+import (
+	"errors"
+	"strings"
+
+	"github.com/reginald-project/reginald/internal/plugin"
+)
+
 // An ExitError is an error returned by the CLI that wraps an error that is
 // causing the program to exit and associates an exit code with it. The program
 // will return the exit code once it ends its execution.
@@ -48,8 +55,7 @@ func (*SuccessError) Error() string {
 	return "success"
 }
 
-// Error returns the value of e as a string. This function implements the error
-// interface for ExitError.
+// Error returns the value of e as a string.
 func (e *ExitError) Error() string {
 	return e.err.Error()
 }
@@ -59,12 +65,22 @@ func (e *ExitError) Unwrap() error {
 	return e.err
 }
 
-// Error returns the value of e as a string. This function implements the error
-// interface for strictError.
+// Error returns the value of e as a string.
 func (e *strictError) Error() string {
+	if len(e.errs) == 1 {
+		return e.errs[0].Error()
+	}
+
 	s := ""
 
 	for _, err := range e.errs {
+		var pathErrs plugin.PathErrors
+		if errors.As(err, &pathErrs) && len(pathErrs) > 1 {
+			s += "\n  - plugin search paths not found: " + strings.Join(pathErrs.Paths(), "; ")
+
+			continue
+		}
+
 		s += "\n  - " + err.Error()
 	}
 

@@ -311,8 +311,6 @@ linters:
         - mu sync.Mutex
         - ok bool
         - wg sync.WaitGroup
-    wrapcheck:
-      report-internal-errors: false
     wsl:
       strict-append: true
       allow-assign-and-call: false

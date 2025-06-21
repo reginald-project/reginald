@@ -396,7 +396,6 @@ func resolveFile(
 
 	logging.Trace(ctx, "checking config file", "file", file)
 
-	// Use the fileValue if it is an absolute path.
 	if file.IsAbs() {
 		var ok bool
 
@@ -425,7 +424,6 @@ func resolveFile(
 		}
 	}
 
-	// Check if the config file f matches a file in the working directory.
 	file = wd.Join(string(file))
 
 	logging.Trace(ctx, "checking config file", "file", file)
@@ -439,7 +437,7 @@ func resolveFile(
 	// If the config file flag is set but it didn't resolve, fail so that the
 	// program doesn't use a config file from some other location by surprise.
 	if fileValue != "" {
-		return "", fmt.Errorf("%w: tried to resolve file with %q", ErrNotExist, fileValue)
+		return "", &FileError{file: file}
 	}
 
 	// TODO: Add more locations, at least the default location in the user home
@@ -472,5 +470,5 @@ func resolveFile(
 		}
 	}
 
-	return "", fmt.Errorf("%w", errDefaultConfig)
+	return "", &FileError{}
 }
