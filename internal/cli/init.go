@@ -195,7 +195,7 @@ Loop:
 func findSubcommands(
 	ctx context.Context,
 	flagSet *flags.FlagSet,
-	plugins *plugin.Store,
+	store *plugin.Store,
 	args []string,
 ) (*plugin.Command, []string) {
 	if len(args) <= 1 {
@@ -204,26 +204,28 @@ func findSubcommands(
 
 	var cmd *plugin.Command
 
-	remain := []string{}
+	flagsFound := []string{}
 
 	for len(args) >= 1 {
-		logging.Trace(ctx, "checking args", "cmd", cmd, "args", args, "remain", remain)
+		logging.Trace(ctx, "checking args", "cmd", cmd, "args", args, "flags", flagsFound)
 
 		if len(args) > 1 {
-			args, remain = collectFlags(flagSet, args[1:], remain)
+			args, flagsFound = collectFlags(flagSet, args[1:], flagsFound)
 
-			logging.Trace(ctx, "collected flags", "args", args, "remain", remain)
+			logging.Trace(ctx, "collected flags", "args", args, "flags", flagsFound)
 		}
 
 		if len(args) >= 1 {
-			args = args[1:]
-			next := plugins.Command(cmd, args[0])
+			next := store.Command(cmd, args[0])
+
+			logging.Trace(ctx, "next command", "cmd", next)
 
 			if next == nil {
 				break
 			}
 
 			cmd = next
+
 			if err := addFlags(flagSet, cmd); err != nil {
 				// TODO: This should be handled better.
 				logging.Error(ctx, "failed to add flags from commands", "err", err)
@@ -234,7 +236,9 @@ func findSubcommands(
 		}
 	}
 
-	return cmd, remain
+	args = append(args, flagsFound...)
+
+	return cmd, args
 }
 
 // hasFlag checks whether the given flag s is in fs. The whole flag string must

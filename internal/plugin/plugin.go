@@ -78,9 +78,8 @@ type pathEntryOptions struct {
 // manifests.
 func NewStore(manifests []*api.Manifest) *Store {
 	plugins := make([]Plugin, 0, len(manifests))
-	commands := make([]*Command, 0)
+	commands := make([]*Command, 0, len(manifests))
 
-	// TODO: These need to be properly handled.
 	for _, m := range manifests {
 		var plugin Plugin
 
@@ -122,11 +121,14 @@ func (s *Store) LogValue() slog.Value {
 		names[i] = p.Manifest().Name
 	}
 
-	attrs = append(attrs, slog.Any("plugins", names), slog.Any("commands", LogCmds(s.Commands)))
+	attrs = append(attrs, slog.Any("plugins", names), slog.Any("commands", logCmds(s.Commands)))
 
 	return slog.GroupValue(attrs...)
 }
 
+// Command returns the command with the given name from the store. If prev is
+// nil, the command is looked up from the store root. Otherwise, it is looked up
+// from the subcommands of prev.
 func (s *Store) Command(prev *Command, name string) *Command {
 	var cmds []*Command
 
@@ -137,7 +139,7 @@ func (s *Store) Command(prev *Command, name string) *Command {
 	}
 
 	for _, cmd := range cmds {
-		if cmd.Name == name {
+		if cmd.Name == name || (len(cmd.Aliases) > 0 && slices.Contains(cmd.Aliases, name)) {
 			return cmd
 		}
 	}
@@ -179,48 +181,6 @@ func Search(ctx context.Context, wd fspath.Path, paths []fspath.Path) ([]*api.Ma
 	logLoadedManifest(ctx, manifests)
 
 	return manifests, nil
-}
-
-// findCmd finds the command for the given name in the given parent command. If
-// parent is nil, the function looks for name in the core commands and
-// the plugin domains. If the name resolves to a plugin domain, the function
-// returns a new command for that domain.
-func (s *Store) findCmd(parent *api.Command, name string) *api.Command {
-	if parent == nil {
-		for _, plugin := range s.Plugins {
-			manifest := plugin.Manifest()
-
-			if manifest.Domain == "core" {
-				for _, c := range manifest.Commands {
-					if c.Name == name || slices.Contains(c.Aliases, name) {
-						return c
-					}
-				}
-			}
-
-			if manifest.Domain == name {
-				return &api.Command{
-					Name: manifest.Domain,
-					// TODO: Generate some kind of actually useful usage line.
-					Usage:       manifest.Domain + " [options]",
-					Description: manifest.Description,
-					Aliases:     nil,
-					Config:      manifest.Config,
-					Commands:    manifest.Commands,
-				}
-			}
-		}
-
-		return nil
-	}
-
-	for _, c := range parent.Commands {
-		if c.Name == name || slices.Contains(c.Aliases, name) {
-			return c
-		}
-	}
-
-	return nil
 }
 
 // checkDuplicates checks if the manifest has duplicate fields with manifests
@@ -342,6 +302,19 @@ func revise(manifest *api.Manifest, path fspath.Path) error {
 	}
 
 	manifest.Executable = string(execPath)
+
+	// We need to make sure that there are no nil commands as we decided to
+	// panic later on nil commands.
+	j := 0
+
+	for _, cmd := range manifest.Commands {
+		if cmd != nil {
+			manifest.Commands[j] = cmd
+			j++
+		}
+	}
+
+	manifest.Commands = manifest.Commands[:j]
 
 	return nil
 }
