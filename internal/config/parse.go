@@ -37,11 +37,11 @@ import (
 
 // Errors returned from the configuration parser.
 var (
-	ErrInvalidConfig      = errors.New("invalid config")
-	errConfigFileNotFound = errors.New("config file not found")
-	errDefaultConfig      = errors.New("using default config")
-	errInvalidCast        = errors.New("cannot convert type")
-	errNilFlag            = errors.New("no flag found")
+	ErrInvalidConfig = errors.New("invalid config")
+	ErrNotExist      = errors.New("config file not found")
+	errDefaultConfig = errors.New("using default config")
+	errInvalidCast   = errors.New("cannot convert type")
+	errNilFlag       = errors.New("no flag found")
 )
 
 // textUnmarshalerType is a helper variable for checking if types of fields in
@@ -137,6 +137,14 @@ func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
 //
 // TODO: This should have a better implementation.
 func Validate(cfg *Config, store *plugin.Store) error {
+	if cfg.Quiet && cfg.Verbose {
+		return fmt.Errorf("%w: cannot be both quiet and verbose", ErrInvalidConfig)
+	}
+
+	if cfg.Interactive && cfg.Strict {
+		return fmt.Errorf("%w: cannot be both interactive and strict", ErrInvalidConfig)
+	}
+
 	for k := range cfg.Plugins {
 		ok := false
 	PluginLoop:

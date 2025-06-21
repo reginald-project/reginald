@@ -36,9 +36,11 @@ const (
 // A runInfo is the parsed information for the program run. It is returned from
 // the bootstrapping function.
 type runInfo struct {
-	cfg   *config.Config //nolint:unused // TODO: Will be used soon.
-	store *plugin.Store  //nolint:unused // TODO: Will be used soon.
-	args  []string       //nolint:unused // TODO: Will be used soon.
+	cfg     *config.Config //nolint:unused // TODO: Will be used soon.
+	store   *plugin.Store  //nolint:unused // TODO: Will be used soon.
+	args    []string       //nolint:unused // TODO: Will be used soon.
+	help    bool           // whether the help flag was set
+	version bool           // whether the version flag was set
 }
 
 // Run runs the CLI application and returns any errors from the run.
@@ -59,7 +61,7 @@ func Run() error {
 		cancel()
 	}()
 
-	_, err := bootstrap(ctx)
+	info, err := bootstrap(ctx)
 	if err != nil {
 		var exitErr *ExitError
 		if errors.As(err, &exitErr) {
@@ -73,6 +75,14 @@ func Run() error {
 			Code: 1,
 			err:  err,
 		}
+	}
+
+	if info.help {
+		return nil
+	}
+
+	if info.version {
+		return nil
 	}
 
 	return nil

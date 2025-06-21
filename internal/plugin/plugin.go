@@ -74,6 +74,39 @@ type pathEntryOptions struct {
 	path         fspath.Path
 }
 
+// DefaultStore creates a new empty Store that is used in place of a nil
+// Store.
+func DefaultStore() *Store {
+	manifests := slices.Clone(builtin.Manifests())
+
+	plugins := make([]Plugin, 0, len(manifests))
+	commands := make([]*Command, 0)
+
+	for _, m := range manifests {
+		var plugin Plugin
+
+		if m.Name != "builtin" {
+			panic("default store with a non-builtin plugin")
+		}
+
+		plugin = newBuiltin(m)
+
+		pluginCmds := newCommands(plugin)
+		if pluginCmds != nil {
+			commands = append(commands, pluginCmds...)
+		}
+
+		plugins = append(plugins, plugin)
+	}
+
+	store := &Store{
+		Plugins:  plugins,
+		Commands: commands,
+	}
+
+	return store
+}
+
 // NewStore creates a new Store that contains the plugins from the given
 // manifests.
 func NewStore(manifests []*api.Manifest) *Store {
@@ -84,7 +117,7 @@ func NewStore(manifests []*api.Manifest) *Store {
 		var plugin Plugin
 
 		// Built-in plugins don't require any complex setups.
-		if m.Domain == "builtin" {
+		if m.Name == "builtin" {
 			plugin = newBuiltin(m)
 		} else {
 			plugin = newExternal(m)

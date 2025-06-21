@@ -32,6 +32,16 @@ type ExitError struct {
 // The name might be confusing, but let it go.
 type SuccessError struct{}
 
+// strictError is an error that is returned by the CLI when the program is
+// executed in strict mode and the config file or the plugins directory is not
+// found.
+
+// strictError is used to store errors that are returned during the bootstrap
+// process that cause the program to exit only if the strict mode is enabled.
+type strictError struct {
+	errs []error
+}
+
 // Error returns the value of the error as a string. This function implements
 // the error interface for Success.
 func (*SuccessError) Error() string {
@@ -47,4 +57,21 @@ func (e *ExitError) Error() string {
 // Unwrap returns the wrapped error.
 func (e *ExitError) Unwrap() error {
 	return e.err
+}
+
+// Error returns the value of e as a string. This function implements the error
+// interface for strictError.
+func (e *strictError) Error() string {
+	s := ""
+
+	for _, err := range e.errs {
+		s += "\n  - " + err.Error()
+	}
+
+	return s
+}
+
+// Unwrap returns the wrapped errors from s.
+func (e *strictError) Unwrap() []error {
+	return e.errs
 }

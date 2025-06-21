@@ -85,6 +85,11 @@ type Config struct {
 
 	// Interactive tells the program to run in interactive mode.
 	Interactive bool `mapstructure:"interactive"`
+
+	// Strict tells the program to enable strict mode. If the strict mode is
+	// enabled, the program will exit if the config file or the plugins
+	// directory is not found.
+	Strict bool `mapstructure:"strict"`
 }
 
 // A Task is the configuration of a task instance.
@@ -134,6 +139,7 @@ func DefaultConfig() *Config {
 		Defaults:    TaskDefaults{},
 		Directory:   fspath.Path(wd),
 		Interactive: false,
+		Strict:      false,
 		Logging: logging.Config{
 			Enabled: true,
 			Format:  "json",
@@ -433,7 +439,7 @@ func resolveFile(
 	// If the config file flag is set but it didn't resolve, fail so that the
 	// program doesn't use a config file from some other location by surprise.
 	if fileValue != "" {
-		return "", fmt.Errorf("%w: tried to resolve file with %q", errConfigFileNotFound, fileValue)
+		return "", fmt.Errorf("%w: tried to resolve file with %q", ErrNotExist, fileValue)
 	}
 
 	// TODO: Add more locations, at least the default location in the user home

@@ -16,6 +16,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -61,12 +62,20 @@ func bootstrap(ctx context.Context) (*runInfo, error) {
 		version.Revision(),
 	)
 
+	strictErr := &strictError{
+		errs: nil,
+	}
+
 	cfg, err := initConfig(ctx)
 	if err != nil {
-		return nil, &ExitError{
-			Code: 1,
-			err:  err,
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, &ExitError{
+				Code: 1,
+				err:  err,
+			}
 		}
+
+		strictErr.errs = append(strictErr.errs, err)
 	}
 
 	if err = initOut(ctx, cfg); err != nil {
@@ -80,25 +89,51 @@ func bootstrap(ctx context.Context) (*runInfo, error) {
 
 	logging.Info(ctx, "executing Reginald", "version", version.Version())
 
-	if !cfg.HasFile() {
-		if !terminal.Confirm("No config file was found. Continue?", true) {
-			return nil, &SuccessError{}
-		}
-
-		if !cfg.Interactive {
-			terminal.Warnln("No config file was found")
-		}
+	switch {
+	case cfg.HasFile():
+		// no-op
+	case cfg.Strict:
+		strictErr.errs = append(strictErr.errs, config.ErrNotExist)
+	case !cfg.Interactive:
+		terminal.Warnln("No config file was found")
+	case !terminal.Confirm("No config file was found. Continue?", true):
+		return nil, &SuccessError{}
 	}
 
 	store, err := initPlugins(ctx, cfg)
 	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, &ExitError{
+				Code: 1,
+				err:  fmt.Errorf("%w", err),
+			}
+		}
+
+		strictErr.errs = append(strictErr.errs, err)
+	}
+
+	if store == nil && !cfg.Strict {
+		if !terminal.Confirm("Plugin directory not found. Continue?", true) {
+			return nil, &SuccessError{}
+		}
+
+		if !cfg.Interactive {
+			terminal.Warnln("Plugin directory not found")
+		}
+
+		store = plugin.DefaultStore()
+	}
+
+	if len(strictErr.errs) > 0 {
 		return nil, &ExitError{
 			Code: 1,
-			err:  fmt.Errorf("%w", err),
+			err:  fmt.Errorf("%w", strictErr),
 		}
 	}
 
-	err = parseArgs(ctx, cfg, store)
+	var flagSet *flags.FlagSet
+
+	flagSet, err = parseArgs(ctx, cfg, store)
 	if err != nil {
 		return nil, &ExitError{
 			Code: 1,
@@ -106,10 +141,32 @@ func bootstrap(ctx context.Context) (*runInfo, error) {
 		}
 	}
 
+	var helpSet bool
+
+	helpSet, err = flagSet.GetBool("help")
+	if err != nil {
+		return nil, &ExitError{
+			Code: 1,
+			err:  err,
+		}
+	}
+
+	var versionSet bool
+
+	versionSet, err = flagSet.GetBool("version")
+	if err != nil {
+		return nil, &ExitError{
+			Code: 1,
+			err:  err,
+		}
+	}
+
 	info := &runInfo{
-		cfg:   cfg,
-		store: store,
-		args:  nil,
+		cfg:     cfg,
+		store:   store,
+		args:    flagSet.Args(),
+		help:    helpSet,
+		version: versionSet,
 	}
 
 	return info, nil
@@ -404,6 +461,8 @@ func newFlagSet() *flags.FlagSet {
 		"run in interactive mode",
 		"",
 	)
+	flagSet.Bool("strict", defaults.Strict, "enable strict mode", "")
+	flagSet.MarkMutuallyExclusive("interactive", "strict")
 
 	colorMode := defaults.Color
 
@@ -428,7 +487,11 @@ func newFlagSet() *flags.FlagSet {
 // to them. The function creates a new flag set for the root command, finds
 // the subcommand for the command-line arguments, and sets the flags from
 // the subcommand to the flag set.
-func parseArgs(ctx context.Context, cfg *config.Config, store *plugin.Store) error {
+func parseArgs(
+	ctx context.Context,
+	cfg *config.Config,
+	store *plugin.Store,
+) (*flags.FlagSet, error) {
 	// There is no need to remove the first element of the arguments slice as
 	// findSubcommand takes care of that.
 	args := os.Args
@@ -445,15 +508,15 @@ func parseArgs(ctx context.Context, cfg *config.Config, store *plugin.Store) err
 	logging.Debug(ctx, "command-line arguments parsed", "cmd", cmds, "args", remain)
 
 	if err := flagSet.Parse(remain); err != nil {
-		return fmt.Errorf("failed to parse the command-line arguments: %w", err)
+		return nil, fmt.Errorf("failed to parse the command-line arguments: %w", err)
 	}
 
 	if err := flagSet.CheckMutuallyExclusive(); err != nil {
-		return fmt.Errorf("%w", err)
+		return nil, fmt.Errorf("%w", err)
 	}
 
 	if err := config.Validate(cfg, store); err != nil {
-		return fmt.Errorf("%w", err)
+		return nil, fmt.Errorf("%w", err)
 	}
 
 	// if err := config.ApplyPlugins(ctx); err != nil {
@@ -462,5 +525,5 @@ func parseArgs(ctx context.Context, cfg *config.Config, store *plugin.Store) err
 	config.ApplyPlugins(ctx)
 	logging.Debug(ctx, "config parsed", "cfg", cfg, "args", flagSet.Args())
 
-	return nil
+	return flagSet, nil
 }
