@@ -129,42 +129,20 @@ func initialize(ctx context.Context) (*runInfo, error) {
 		}
 	}
 
-	var flagSet *flags.FlagSet
-
-	flagSet, err = parseArgs(ctx, cfg, store)
-	if err != nil {
-		return nil, &ExitError{
-			Code: 1,
-			err:  err,
-		}
-	}
-
-	var helpSet bool
-
-	helpSet, err = flagSet.GetBool("help")
-	if err != nil {
-		return nil, &ExitError{
-			Code: 1,
-			err:  err,
-		}
-	}
-
-	var versionSet bool
-
-	versionSet, err = flagSet.GetBool("version")
-	if err != nil {
-		return nil, &ExitError{
-			Code: 1,
-			err:  err,
-		}
-	}
-
 	info := &runInfo{
+		cmd:     nil,
 		cfg:     cfg,
 		store:   store,
-		args:    flagSet.Args(),
-		help:    helpSet,
-		version: versionSet,
+		args:    nil,
+		help:    false,
+		version: false,
+	}
+
+	if err = parseArgs(ctx, info); err != nil {
+		return nil, &ExitError{
+			Code: 1,
+			err:  err,
+		}
 	}
 
 	return info, nil
@@ -499,15 +477,12 @@ func newFlagSet() *flags.FlagSet {
 	return flagSet
 }
 
-// parseArgs parses the command-line arguments and modifies the config according
-// to them. The function creates a new flag set for the root command, finds
-// the subcommand for the command-line arguments, and sets the flags from
-// the subcommand to the flag set.
-func parseArgs(
-	ctx context.Context,
-	cfg *config.Config,
-	store *plugin.Store,
-) (*flags.FlagSet, error) {
+// parseArgs parses the command-line arguments and modifies the run info and
+// the config in it according to them. The function creates a new flag set for
+// the root command, finds the subcommand for the command-line arguments, and
+// sets the flags from the subcommand to the flag set. The remaining arguments
+// are stored in the run info.
+func parseArgs(ctx context.Context, info *runInfo) error {
 	// There is no need to remove the first element of the arguments slice as
 	// findSubcommand takes care of that.
 	args := os.Args
@@ -519,27 +494,39 @@ func parseArgs(
 	logging.Debug(ctx, "parsing command-line arguments", "args", args)
 
 	flagSet := newFlagSet()
-	cmds, remain := findSubcommands(ctx, flagSet, store, args)
+	info.cmd, args = findSubcommands(ctx, flagSet, info.store, args)
 
-	logging.Debug(ctx, "command-line arguments parsed", "cmd", cmds, "args", remain)
+	logging.Debug(ctx, "command-line arguments parsed", "cmd", info.cmd, "args", args)
 
-	if err := flagSet.Parse(remain); err != nil {
-		return nil, fmt.Errorf("failed to parse the command-line arguments: %w", err)
+	if err := flagSet.Parse(args); err != nil {
+		return fmt.Errorf("failed to parse the command-line arguments: %w", err)
 	}
+
+	info.args = flagSet.Args()
 
 	if err := flagSet.CheckMutuallyExclusive(); err != nil {
-		return nil, fmt.Errorf("%w", err)
+		return fmt.Errorf("%w", err)
 	}
 
-	if err := config.Validate(cfg, store); err != nil {
-		return nil, fmt.Errorf("%w", err)
+	if err := config.Validate(info.cfg, info.store); err != nil {
+		return fmt.Errorf("%w", err)
 	}
 
 	// if err := config.ApplyPlugins(ctx); err != nil {
 	// 	return fmt.Errorf("failed to apply config values: %w", err)
 	// }
 	config.ApplyPlugins(ctx)
-	logging.Debug(ctx, "config parsed", "cfg", cfg, "args", flagSet.Args())
+	logging.Debug(ctx, "config parsed", "cfg", info.cfg, "args", flagSet.Args())
 
-	return flagSet, nil
+	var err error
+
+	if info.help, err = flagSet.GetBool("help"); err != nil {
+		return fmt.Errorf("failed to get value for --help: %w", err)
+	}
+
+	if info.version, err = flagSet.GetBool("version"); err != nil {
+		return fmt.Errorf("failed to get value for --version: %w", err)
+	}
+
+	return nil
 }
