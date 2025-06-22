@@ -89,13 +89,6 @@ type IO struct {
 	wg            sync.WaitGroup
 }
 
-// A StreamWriter is an [io.Writer] created from an instance of [IO] that
-// can be used to write to the same output channel.
-type StreamWriter struct {
-	s      *IO
-	output Output
-}
-
 // code is the type for the ANSI color codes.
 type code int
 
@@ -147,18 +140,6 @@ func NewIO(ctx context.Context, quiet, verbose, interactive bool, colors ColorMo
 	go s.output(ctx)
 
 	return s
-}
-
-// NewWriter creates a new StreamWriter. It panics on errors.
-func NewWriter(s *IO, output Output) *StreamWriter {
-	if s == nil {
-		panic("attempt to create StreamWriter with nil IOStreams")
-	}
-
-	return &StreamWriter{
-		s:      s,
-		output: output,
-	}
 }
 
 // Ask asks the user for input. It returns the input that the user entered as
@@ -341,17 +322,6 @@ func (s *IO) Warnln(a ...any) {
 		msg:    s.colorln(yellow, a...),
 		output: Stderr,
 	}
-}
-
-// Write writes the contents of p into the output channel. It returns the number
-// of bytes written.
-func (w *StreamWriter) Write(p []byte) (int, error) { //nolint:unparam // implements interface
-	w.s.outCh <- message{
-		msg:    string(p),
-		output: w.output,
-	}
-
-	return len(p), nil
 }
 
 // Ask asks the user for input. It returns the input that the user entered as
