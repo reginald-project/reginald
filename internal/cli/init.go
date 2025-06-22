@@ -41,10 +41,10 @@ func addFlags(flagSet *flags.FlagSet, cmd *plugin.Command) error {
 	return nil
 }
 
-// bootstrap initializes the program run by creating the logger and output
+// initialize initializes the program run by creating the logger and output
 // streams, loading the plugin information, and parsing the command-line
 // arguments.
-func bootstrap(ctx context.Context) (*runInfo, error) {
+func initialize(ctx context.Context) (*runInfo, error) {
 	streams := terminal.NewIO(ctx, false, false, false, terminal.ColorNever)
 	defer streams.Close()
 
@@ -55,7 +55,7 @@ func bootstrap(ctx context.Context) (*runInfo, error) {
 	logging.Debug(ctx, "bootstrap logger initialized")
 	logging.Info(
 		ctx,
-		"bootstrapping Reginald",
+		"initializing Reginald",
 		"version",
 		version.Version(),
 		"commit",

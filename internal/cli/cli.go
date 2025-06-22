@@ -61,7 +61,7 @@ func Run() error {
 		cancel()
 	}()
 
-	info, err := bootstrap(ctx)
+	info, err := initialize(ctx)
 	if err != nil {
 		var exitErr *ExitError
 		if errors.As(err, &exitErr) {
