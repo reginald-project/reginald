@@ -14,13 +14,17 @@
 
 package builtin
 
-import "github.com/reginald-project/reginald-sdk-go/api"
+import (
+	"github.com/reginald-project/reginald-sdk-go/api"
+	"github.com/reginald-project/reginald/internal/version"
+)
 
 // coreManifest returns the manifest for the core plugin.
 func coreManifest() *api.Manifest {
 	return &api.Manifest{
-		Name:   "builtin",
-		Domain: "core",
+		Name:    "builtin",
+		Version: version.Version().String(),
+		Domain:  "core",
 		// TODO : Add a description.
 		Description: "TODO",
 		Executable:  "",
