@@ -26,10 +26,12 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/reginald-project/reginald/internal/cli"
 	"github.com/reginald-project/reginald/internal/panichandler"
+	"github.com/reginald-project/reginald/internal/terminal"
 )
 
 func main() {
@@ -61,22 +63,52 @@ func run() int {
 		cancel()
 	}()
 
+	terminal.SetStreams(terminal.NewIO(ctx))
+
+	var wg sync.WaitGroup
+
+	cleanupCh := make(chan error, 1)
+	handleCleanupPanic := panichandler.WithStackTrace()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer handleCleanupPanic()
+		<-ctx.Done()
+
+		if err := terminal.Streams().Close(); err != nil {
+			cleanupCh <- err
+
+			return
+		}
+
+		cleanupCh <- nil
+	}()
+
+	exitCode := 0
+
 	err := cli.Run(ctx)
 	if err != nil {
 		var successErr *cli.SuccessError
-		if errors.As(err, &successErr) {
-			return 0
+		if !errors.As(err, &successErr) {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+
+			var exitErr *cli.ExitError
+			if errors.As(err, &exitErr) {
+				exitCode = exitErr.Code
+			} else {
+				exitCode = 1
+			}
 		}
-
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-
-		var exitErr *cli.ExitError
-		if errors.As(err, &exitErr) {
-			return exitErr.Code
-		}
-
-		return 1
 	}
 
-	return 0
+	cancel()
+	wg.Wait()
+
+	err = <-cleanupCh
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		exitCode = 1
+	}
+
+	return exitCode
 }

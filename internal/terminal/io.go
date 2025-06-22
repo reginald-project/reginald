@@ -105,21 +105,8 @@ type promptRequest struct {
 	prompt   string
 }
 
-// NewIO returns a new IO for the given settings.
-func NewIO(ctx context.Context, quiet, verbose, interactive bool, colors ColorMode) *IO {
-	var colorsEnabled bool
-
-	switch colors {
-	case ColorAlways:
-		colorsEnabled = true
-	case ColorNever:
-		colorsEnabled = false
-	case ColorAuto:
-		colorsEnabled = term.IsTerminal(int(os.Stdout.Fd()))
-	default:
-		panic(fmt.Sprintf("invalid IOStreams color mode: %v", colors))
-	}
-
+// NewIO returns a new IO instace.
+func NewIO(ctx context.Context) *IO {
 	s := &IO{
 		promptCh:      make(chan promptRequest),
 		outCh:         make(chan message),
@@ -130,10 +117,10 @@ func NewIO(ctx context.Context, quiet, verbose, interactive bool, colors ColorMo
 		wg:            sync.WaitGroup{},
 		errs:          nil,
 		errsMu:        sync.Mutex{},
-		quiet:         quiet,
-		verbose:       verbose,
-		interactive:   interactive,
-		colorsEnabled: colorsEnabled,
+		quiet:         false,
+		verbose:       false,
+		interactive:   false,
+		colorsEnabled: false,
 	}
 
 	s.wg.Add(1)
@@ -158,18 +145,35 @@ func (s *IO) Ask(prompt string) (string, error) {
 
 	resp, ok := <-responseCh
 	if !ok {
-		return "", s.Err()
+		if len(s.errs) > 0 {
+			s.errsMu.Lock()
+			defer s.errsMu.Unlock()
+			return "", errors.Join(s.errs...)
+		}
+
+		return "", nil
 	}
 
 	return resp, nil
 }
 
 // Close closes the IO. It waits for the output goroutine to finish and then
-// closes the input and output channels.
-func (s *IO) Close() {
-	s.Flush()
+// closes the input and output channels. It also implements [io.Closer].
+func (s *IO) Close() error {
 	close(s.outCh)
+	close(s.promptCh)
 	s.wg.Wait()
+
+	fmt.Println("STREAMS CLOSED", s)
+
+	if len(s.errs) > 0 {
+		s.errsMu.Lock()
+		defer s.errsMu.Unlock()
+
+		return errors.Join(s.errs...)
+	}
+
+	return nil
 }
 
 // Confirm asks the user for a boolean input. It returns the input that the user
@@ -179,7 +183,7 @@ func (s *IO) Close() {
 func (s *IO) Confirm(prompt string, defaultChoice bool) bool {
 	confirmed, err := s.ConfirmE(prompt, defaultChoice)
 	if err != nil {
-		s.errs = append(s.errs, err)
+		s.appendErr(err)
 
 		return false
 	}
@@ -232,21 +236,30 @@ func (s *IO) ConfirmE(prompt string, defaultChoice bool) (bool, error) {
 	}
 }
 
-// Err returns the errors that s has encountered. [errors.Join] is called on the
-// errors before returning them.
-func (s *IO) Err() error {
-	s.errsMu.Lock()
-	defer s.errsMu.Unlock()
-
-	return errors.Join(s.errs...)
-}
-
 // Flush flushes the underlying buffer.
 func (s *IO) Flush() {
 	ack := make(chan struct{})
 	s.flushCh <- ack
 
 	<-ack
+}
+
+// InitStreams initializes s for by propagating the config values.
+func (s *IO) Init(quiet, verbose, interactive bool, colors ColorMode) {
+	s.quiet = quiet
+	s.verbose = verbose
+	s.interactive = interactive
+
+	switch colors {
+	case ColorAlways:
+		s.colorsEnabled = true
+	case ColorNever:
+		s.colorsEnabled = false
+	case ColorAuto:
+		s.colorsEnabled = term.IsTerminal(int(os.Stdout.Fd()))
+	default:
+		panic(fmt.Sprintf("invalid IOStreams color mode: %v", colors))
+	}
 }
 
 // Errorf formats according to a format specifier and writes to standard error
@@ -502,6 +515,15 @@ func (s *IO) doPrompt(p promptRequest, buf *bufio.Writer, scanner *bufio.Scanner
 func (s *IO) output(ctx context.Context) {
 	defer s.wg.Done()
 
+	// In case the context is canceled while the input is being read with
+	// scanner.Scan(), close the input to prevent deadlock.
+	go func() {
+		<-ctx.Done()
+		if closer, ok := s.in.(io.Closer); ok {
+			closer.Close()
+		}
+	}()
+
 	buf := bufio.NewWriter(s.out)
 	scanner := bufio.NewScanner(s.in)
 
@@ -511,11 +533,11 @@ func (s *IO) output(ctx context.Context) {
 		}
 	}
 
+	defer flush()
+
 	for {
 		select {
 		case <-ctx.Done():
-			flush()
-
 			return
 		case msg, ok := <-s.outCh:
 			if !ok {

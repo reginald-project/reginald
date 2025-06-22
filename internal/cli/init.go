@@ -45,10 +45,7 @@ func addFlags(flagSet *flags.FlagSet, cmd *plugin.Command) error {
 // streams, loading the plugin information, and parsing the command-line
 // arguments.
 func initialize(ctx context.Context) (*runInfo, error) {
-	streams := terminal.NewIO(ctx, false, false, false, terminal.ColorNever)
-	defer streams.Close()
-
-	if err := logging.InitBootstrap(streams); err != nil {
+	if err := logging.InitBootstrap(); err != nil {
 		return nil, fmt.Errorf("failed to init bootstrap logger: %w", err)
 	}
 
@@ -85,8 +82,6 @@ func initialize(ctx context.Context) (*runInfo, error) {
 			err:  err,
 		}
 	}
-
-	defer terminal.Streams().Close()
 
 	logging.Info(ctx, "executing Reginald", "version", version.Version())
 
@@ -362,7 +357,7 @@ func initConfig(ctx context.Context) (*config.Config, error) {
 
 // initOut initializes the output streams and the logging for the program.
 func initOut(ctx context.Context, cfg *config.Config) error {
-	terminal.SetStreams(terminal.NewIO(ctx, cfg.Quiet, cfg.Verbose, cfg.Interactive, cfg.Color))
+	terminal.Streams().Init(cfg.Quiet, cfg.Verbose, cfg.Interactive, cfg.Color)
 
 	if err := logging.Init(cfg.Logging); err != nil {
 		return fmt.Errorf("failed to initialize logging: %w", err)

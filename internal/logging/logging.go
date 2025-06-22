@@ -69,7 +69,7 @@ type Config struct {
 
 // InitBootstrap initializes the bootstrap logger and sets it as the default
 // logger in [log/slog].
-func InitBootstrap(ios *terminal.IO) error {
+func InitBootstrap() error {
 	// TODO: Document this: logs are printed when `REGINALD_DEBUG` is set to `1`
 	// or `true`, the logs are buffered when no value is given, and the logs are
 	// explicitly discarded when `REGINALD_DEBUG` is `0` or `false`.
@@ -111,7 +111,7 @@ func InitBootstrap(ios *terminal.IO) error {
 	slog.SetDefault(
 		slog.New(
 			slog.NewTextHandler(
-				terminal.NewWriter(ios, terminal.Stderr),
+				terminal.NewWriter(terminal.Streams(), terminal.Stderr),
 				&slog.HandlerOptions{
 					AddSource:   true,
 					Level:       logs.LevelTrace,
