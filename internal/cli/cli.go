@@ -18,13 +18,11 @@ package cli
 import (
 	"context"
 	"errors"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/reginald-project/reginald/internal/config"
-	"github.com/reginald-project/reginald/internal/panichandler"
 	"github.com/reginald-project/reginald/internal/plugin"
+	"github.com/reginald-project/reginald/internal/terminal"
+	"github.com/reginald-project/reginald/internal/version"
 )
 
 // Program-related constants.
@@ -45,23 +43,7 @@ type runInfo struct {
 }
 
 // Run runs the CLI application and returns any errors from the run.
-func Run() error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Set up canceling the context on certain signals so the plugins are
-	// killed.
-	sigc := make(chan os.Signal, 1)
-
-	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
-
-	handlePanic := panichandler.WithStackTrace()
-	go func() {
-		defer handlePanic()
-		<-sigc
-		cancel()
-	}()
-
+func Run(ctx context.Context) error {
 	info, err := initialize(ctx)
 	if err != nil {
 		var exitErr *ExitError

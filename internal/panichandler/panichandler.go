@@ -20,6 +20,7 @@ package panichandler
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"runtime/debug"
@@ -52,6 +53,13 @@ Thank you for helping Reginald!
 // message, and exits the program.
 var panicMu sync.Mutex //nolint:gochecknoglobals // used be multiple goroutines
 
+// cancel is the cancel function for the program context. It should be set at
+// the beginning of the program. It must be run before exiting the program.
+var cancel context.CancelFunc //nolint:gochecknoglobals // global cancel for the context
+
+// cancelOnce is used to ensure that cancel is only set once.
+var cancelOnce sync.Once //nolint:gochecknoglobals // global cancel for the context
+
 // Handle recovers the panics of the program and prints the information included
 // with them with the stack trace and a helpful message that guides the user to
 // report the bug using the issue tracker.
@@ -62,7 +70,7 @@ func Handle() {
 	//revive:disable-next-line:defer This is a deferred function.
 	r := recover()
 
-	panicHandler(r, nil)
+	handlePanic(r, nil)
 }
 
 // WithStackTrace returns a function that is similar to Handle but it captures
@@ -79,14 +87,27 @@ func WithStackTrace() func() {
 		//revive:disable-next-line:defer This is a deferred function.
 		r := recover()
 
-		panicHandler(r, trace)
+		handlePanic(r, trace)
 	}
 }
 
-func panicHandler(r any, t []byte) {
+// SetCancel sets the cancel function for the program context.
+func SetCancel(c context.CancelFunc) {
+	cancelOnce.Do(func() {
+		cancel = c
+	})
+}
+
+func handlePanic(r any, t []byte) {
 	if r == nil {
 		return
 	}
+
+	if cancel == nil {
+		panic("cancel function not set")
+	}
+
+	cancel()
 
 	var buf bytes.Buffer
 
@@ -109,28 +130,23 @@ func panicHandler(r any, t []byte) {
 	}
 
 	if w, ok := logging.BootstrapWriter.(*logging.BufferedFileWriter); ok {
-		// TODO: See if this should use the actual file system in use instead of
-		// defaulting to the OS file system.
 		if err := w.Flush(); err != nil {
 			buf.WriteString(fmt.Sprintf("\nFailed to write the boostrap log to file: %v\n\n", err))
 			buf.WriteString("The bootstrap logs:\n")
 			buf.Write(w.Bytes())
 		} else {
-			buf.WriteString(fmt.Sprintf("\nBootstrap logs are written to %s\n", w.File()))
-			buf.WriteString("Consider including them when opening an issue.")
+			buf.WriteString(fmt.Sprintf("\nBootstrap log is written to %s\n", w.File()))
+			buf.WriteString("Consider including it when opening an issue.")
 		}
 	}
 
 	buf.WriteString("\n" + footer)
-
-	// iostreams.StdioMu.Lock()
 
 	if _, err := os.Stderr.Write(buf.Bytes()); err != nil {
 		// This is absolutely stupid but, if we get here, all is lost anyway.
 		buf.WriteString(fmt.Sprintf("FAILED TO WRITE BYTES TO STDERR: %v\n", err))
 	}
 
-	// iostreams.StdioMu.Unlock()
 	//revive:disable-next-line:deep-exit Panic handler has to exit with error.
 	os.Exit(1)
 }

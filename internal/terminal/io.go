@@ -399,6 +399,15 @@ func Errorf(format string, a ...any) {
 	streams.Errorf(format, a...)
 }
 
+// Flush flushes the underlying buffer of [Streams].
+func Flush() {
+	if streams == nil {
+		panic("tried to call nil IO")
+	}
+
+	streams.Flush()
+}
+
 // PrintErrf formats according to a format specifier and writes to standard
 // error output of [Streams]. It stores possible errors within [Streams].
 func PrintErrf(format string, a ...any) {
