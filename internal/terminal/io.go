@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package terminal defines the terminal and IO utilities for the Reginald
-// terminal user interface. Most importantly, it defines the global instance
-// that should be used for output in the program.
 package terminal
 
 import (
@@ -281,6 +278,15 @@ func (s *IO) Errorf(format string, a ...any) {
 	}
 }
 
+// PrintErrf formats according to a format specifier and writes to standard
+// error output of s. It stores possible errors within s.
+func (s *IO) PrintErrf(format string, a ...any) {
+	s.outCh <- message{
+		msg:    fmt.Sprintf(format, a...),
+		output: Stderr,
+	}
+}
+
 // Print formats using the default formats for its operands and writes to
 // standard output buffer of s. Spaces are added between operands when neither
 // is a string. It stores possible errors within s.
@@ -292,15 +298,6 @@ func (s *IO) Print(a ...any) {
 	s.outCh <- message{
 		msg:    fmt.Sprint(a...),
 		output: Buffered,
-	}
-}
-
-// PrintErrf formats according to a format specifier and writes to standard
-// error output of s. It stores possible errors within s.
-func (s *IO) PrintErrf(format string, a ...any) {
-	s.outCh <- message{
-		msg:    fmt.Sprintf(format, a...),
-		output: Stderr,
 	}
 }
 
@@ -410,6 +407,38 @@ func PrintErrf(format string, a ...any) {
 	}
 
 	streams.PrintErrf(format, a...)
+}
+
+// Print formats using the default formats for its operands and writes to
+// standard output buffer of [Streams]. Spaces are added between operands when
+// neither is a string. It stores possible errors within [Streams].
+func Print(a ...any) {
+	if streams == nil {
+		panic("tried to call nil IO")
+	}
+
+	streams.Print(a...)
+}
+
+// Printf formats according to a format specifier and writes to standard output
+// buffer of [Streams]. It stores possible errors within [Streams].
+func Printf(format string, a ...any) {
+	if streams == nil {
+		panic("tried to call nil IO")
+	}
+
+	streams.Printf(format, a...)
+}
+
+// Println formats using the default formats for its operands and writes to
+// standard output buffer of [Streams]. Spaces are always added between operands
+// and a newline is appended. It stores possible errors within [Streams].
+func Println(a ...any) {
+	if streams == nil {
+		panic("tried to call nil IO")
+	}
+
+	streams.Println(a...)
 }
 
 // SetStreams set the default global IO instace to the given [IO].
