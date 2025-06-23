@@ -28,6 +28,10 @@ type Command struct {
 
 	*api.Command
 
+	// parent is the parent command of this command. It is nil for the root
+	// commands.
+	Parent *Command
+
 	// Commands is a list of subcommands that this command provides.
 	Commands []*Command
 }
@@ -74,21 +78,26 @@ func newCommand(plugin Plugin, manifest *api.Command) *Command {
 		panic("creating command for nil manifest")
 	}
 
+	cmd := &Command{
+		Command:  manifest,
+		Commands: nil,
+		Parent:   nil,
+		Plugin:   plugin,
+	}
+
 	var cmds []*Command
 
 	if len(manifest.Commands) > 0 {
 		cmds = make([]*Command, len(manifest.Commands))
 
-		for i, cmd := range manifest.Commands {
-			cmds[i] = newCommand(plugin, cmd)
+		for i, c := range manifest.Commands {
+			newCmd := newCommand(plugin, c)
+			newCmd.Parent = cmd
+			cmds[i] = newCmd
 		}
 	}
 
-	cmd := &Command{
-		Command:  manifest,
-		Commands: cmds,
-		Plugin:   plugin,
-	}
+	cmd.Commands = cmds
 
 	return cmd
 }

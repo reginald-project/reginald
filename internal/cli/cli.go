@@ -18,7 +18,9 @@ package cli
 import (
 	"context"
 	"errors"
+	"os"
 	"runtime"
+	"slices"
 
 	"github.com/reginald-project/reginald/internal/config"
 	"github.com/reginald-project/reginald/internal/plugin"
@@ -66,12 +68,46 @@ func Run(ctx context.Context) error {
 	}
 
 	if info.version {
-		printVersion(info.cmd)
+		runVersion(info.cmd)
 
 		return nil
 	}
 
 	return nil
+}
+
+// runVersion runs the version command or flag by resolving the place of
+// the command or the flag in the arguments list. It prints the version of
+// the command that was given before the flag.
+func runVersion(cmd *plugin.Command) {
+	root := rootCommand(cmd)
+
+	var found *plugin.Command
+
+Loop:
+	for _, arg := range os.Args[1:] {
+		if arg == "--version" {
+			break
+		}
+
+		if found != nil {
+			for _, c := range found.Commands {
+				if c.Name == arg || slices.Contains(c.Aliases, arg) {
+					found = c
+
+					continue Loop
+				}
+			}
+
+			continue
+		}
+
+		if arg == root.Name || slices.Contains(root.Aliases, arg) {
+			found = root
+		}
+	}
+
+	printVersion(found)
 }
 
 // pirntVersion prints the program's version or, if the user specified
@@ -98,4 +134,15 @@ func printVersion(cmd *plugin.Command) {
 	}
 
 	terminal.Flush()
+}
+
+// rootCommand returns the root command of the given command.
+func rootCommand(cmd *plugin.Command) *plugin.Command {
+	root := cmd
+
+	for root.Parent != nil {
+		root = root.Parent
+	}
+
+	return root
 }
