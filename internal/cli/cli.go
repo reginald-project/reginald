@@ -18,6 +18,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"runtime"
 
 	"github.com/reginald-project/reginald/internal/config"
 	"github.com/reginald-project/reginald/internal/plugin"
@@ -65,8 +66,36 @@ func Run(ctx context.Context) error {
 	}
 
 	if info.version {
+		printVersion(info.cmd)
+
 		return nil
 	}
 
 	return nil
+}
+
+// pirntVersion prints the program's version or, if the user specified
+// the "--version" flag for a command from a plugin, the version of the plugin.
+func printVersion(cmd *plugin.Command) {
+	terminal.Printf(
+		"%s version %s (%s/%s)\n",
+		Name,
+		version.Version(),
+		runtime.GOOS,
+		runtime.GOARCH,
+	)
+
+	if cmd != nil && cmd.Plugin.Manifest().Name != "builtin" {
+		manifest := cmd.Plugin.Manifest()
+		terminal.Printf("Plugin %q version %s\n", manifest.Name, manifest.Version)
+		terminal.Println()
+		terminal.Printf(
+			"%s is licensed under the Apache License, Version 2.0: <https://www.apache.org/licenses/LICENSE-2.0>\n",
+			ProgramName,
+		)
+	} else {
+		terminal.Println("Licensed under the Apache License, Version 2.0: <https://www.apache.org/licenses/LICENSE-2.0>")
+	}
+
+	terminal.Flush()
 }

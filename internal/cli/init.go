@@ -85,15 +85,6 @@ func initialize(ctx context.Context) (*runInfo, error) {
 
 	logging.Info(ctx, "executing Reginald", "version", version.Version())
 
-	switch {
-	case cfg.HasFile():
-		// no-op
-	case !cfg.Interactive:
-		terminal.Warnln("No config file was found")
-	case !terminal.Confirm(ctx, "No config file was found. Continue?", true):
-		return nil, &SuccessError{}
-	}
-
 	var pathErrs plugin.PathErrors
 
 	store, err := initPlugins(ctx, cfg)
@@ -106,15 +97,6 @@ func initialize(ctx context.Context) (*runInfo, error) {
 		}
 
 		strictErr.errs = append(strictErr.errs, err)
-	}
-
-	switch {
-	case pathErrs == nil:
-		// no-op
-	case !cfg.Interactive:
-		terminal.Warnln("Plugin directory not found")
-	case !terminal.Confirm(ctx, "Plugin directory not found. Continue?", true):
-		return nil, &SuccessError{}
 	}
 
 	if len(strictErr.errs) > 0 && cfg.Strict {
@@ -138,6 +120,29 @@ func initialize(ctx context.Context) (*runInfo, error) {
 			Code: 1,
 			err:  err,
 		}
+	}
+
+	// Best to skip printing if "--help" or "--version" was used.
+	if info.help || info.version {
+		return info, nil
+	}
+
+	switch {
+	case cfg.HasFile():
+		// no-op
+	case !cfg.Interactive:
+		terminal.Warnln("No config file was found")
+	case !terminal.Confirm(ctx, "No config file was found. Continue?", true):
+		return nil, &SuccessError{}
+	}
+
+	switch {
+	case pathErrs == nil:
+		// no-op
+	case !cfg.Interactive:
+		terminal.Warnln("Plugin directory not found")
+	case !terminal.Confirm(ctx, "Plugin directory not found. Continue?", true):
+		return nil, &SuccessError{}
 	}
 
 	return info, nil
