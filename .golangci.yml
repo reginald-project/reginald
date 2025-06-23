@@ -102,6 +102,12 @@ linters:
       max: 5 # TODO: Adjust as needed to find a good value.
     loggercheck:
       slog: true
+      rules:
+        - github.com/reginald-project/reginald/internal/logging.Trace
+        - github.com/reginald-project/reginald/internal/logging.Debug
+        - github.com/reginald-project/reginald/internal/logging.Info
+        - github.com/reginald-project/reginald/internal/logging.Warn
+        - github.com/reginald-project/reginald/internal/logging.Error
     maintidx:
       under: 25
     makezero:
