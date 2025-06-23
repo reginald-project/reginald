@@ -28,14 +28,13 @@ import (
 	"sync"
 
 	"github.com/reginald-project/reginald/internal/logging"
+	"github.com/reginald-project/reginald/internal/terminal"
 	"github.com/reginald-project/reginald/internal/text"
 	"github.com/reginald-project/reginald/internal/version"
-	"golang.org/x/term"
 )
 
 const (
-	defaultPrintWidth = 80
-	header            = "!!! REGINALD CRASHED !%s"
+	header = "!!! REGINALD CRASHED !%s"
 	//nolint:lll
 	panicInfo = `
 Reginald has encountered an unexpected error. This is most likely a bug in the program. In your bug report, please include the Reginald version and stack trace shown below and any additional information that may help with resolving the bug or replicating the issue.
@@ -114,7 +113,7 @@ func handlePanic(r any, t []byte) {
 
 	buf.WriteByte('\n')
 
-	width := termWidth()
+	width := terminal.Width()
 
 	buf.WriteString(fmt.Sprintf(header, strings.Repeat("!", width-len(header)+1)))
 	buf.WriteString("\n\n")
@@ -150,14 +149,4 @@ func handlePanic(r any, t []byte) {
 
 	//revive:disable-next-line:deep-exit Panic handler has to exit with error.
 	os.Exit(1)
-}
-
-// termWidth returns the current terminal width (in characters) or a default of
-// 80 if it cannot be determined.
-func termWidth() int {
-	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
-		return w
-	}
-
-	return defaultPrintWidth
 }

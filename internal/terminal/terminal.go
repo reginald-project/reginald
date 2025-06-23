@@ -60,6 +60,10 @@ const (
 	white
 )
 
+// defaultPrintWidth is the default width returned by Width if the width of
+// the terminal cannot be determined.
+const defaultWidth = 80
+
 // ErrQuietPrompt is returned when a prompt is requested from the user in quiet
 // mode.
 var ErrQuietPrompt = errors.New("cannot prompt for input in quiet mode")
@@ -471,6 +475,16 @@ func Warnln(a ...any) {
 	}
 
 	terminal.Warnln(a...)
+}
+
+// Width returns the current terminal width (in characters) or a default of 80
+// if it cannot be determined.
+func Width() int {
+	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
+		return w
+	}
+
+	return defaultWidth
 }
 
 func (s *Terminal) appendErr(err error) {
