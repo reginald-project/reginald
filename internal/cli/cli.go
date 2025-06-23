@@ -138,6 +138,10 @@ func printVersion(cmd *plugin.Command) {
 
 // rootCommand returns the root command of the given command.
 func rootCommand(cmd *plugin.Command) *plugin.Command {
+	if cmd == nil {
+		return nil
+	}
+
 	root := cmd
 
 	for root.Parent != nil {

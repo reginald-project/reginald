@@ -39,6 +39,15 @@ func coreManifest() *api.Manifest {
 				Config:      nil,
 				Commands:    nil,
 			},
+			{
+				Name:  "version",
+				Usage: "version",
+				// TODO : Add a description.
+				Description: "TODO",
+				Aliases:     nil,
+				Config:      nil,
+				Commands:    nil,
+			},
 		},
 		Tasks: nil,
 	}
