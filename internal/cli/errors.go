@@ -87,7 +87,7 @@ func (e *strictError) Error() string {
 	return s
 }
 
-// Unwrap returns the wrapped errors from s.
+// Unwrap returns the wrapped errors from e.
 func (e *strictError) Unwrap() []error {
 	return e.errs
 }

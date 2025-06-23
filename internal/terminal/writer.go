@@ -14,31 +14,31 @@
 
 package terminal
 
-// A StreamsWriter is an [io.Writer] created from an instance of [IO] that
-// can be used to write to the same output channel.
-type StreamsWriter struct {
-	s      *IO
-	output Output
+// A Writer is an [io.Writer] created from an instance of [Terminal] that can be
+// used to write to the output channels of the [Terminal].
+type Writer struct {
+	s    *Terminal
+	mode OutputMode
 }
 
-// NewWriter creates a new StreamWriter. It panics on errors.
-func NewWriter(s *IO, output Output) *StreamsWriter {
+// NewWriter creates a new Writer for the given [Terminal]. It panics on errors.
+func NewWriter(s *Terminal, mode OutputMode) *Writer {
 	if s == nil {
-		panic("attempt to create StreamWriter with nil IOStreams")
+		panic("attempt to create Writer with nil Terminal")
 	}
 
-	return &StreamsWriter{
-		s:      s,
-		output: output,
+	return &Writer{
+		s:    s,
+		mode: mode,
 	}
 }
 
 // Write writes the contents of p into the output channel. It returns the number
 // of bytes written.
-func (w *StreamsWriter) Write(p []byte) (int, error) { //nolint:unparam // implements interface
+func (w *Writer) Write(p []byte) (int, error) { //nolint:unparam // implements interface
 	w.s.outCh <- message{
-		msg:    string(p),
-		output: w.output,
+		msg:  string(p),
+		mode: w.mode,
 	}
 
 	return len(p), nil

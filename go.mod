@@ -4,6 +4,7 @@ go 1.24.4
 
 require (
 	github.com/anttikivi/semver v1.0.0
+	github.com/chzyer/readline v1.5.1
 	github.com/go-viper/mapstructure/v2 v2.2.1
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/reginald-project/reginald-sdk-go v0.0.0-20250621084941-adfb99bf494d

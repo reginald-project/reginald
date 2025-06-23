@@ -24,11 +24,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 
+	"github.com/chzyer/readline"
 	"github.com/reginald-project/reginald/internal/cli"
 	"github.com/reginald-project/reginald/internal/panichandler"
 	"github.com/reginald-project/reginald/internal/terminal"
@@ -63,19 +65,21 @@ func run() int {
 		cancel()
 	}()
 
-	terminal.SetStreams(terminal.NewIO(ctx))
+	terminal.Set(terminal.New(ctx))
 
 	var wg sync.WaitGroup
 
 	cleanupCh := make(chan error, 1)
 	handleCleanupPanic := panichandler.WithStackTrace()
+
 	wg.Add(1)
+
 	go func() {
 		defer wg.Done()
 		defer handleCleanupPanic()
 		<-ctx.Done()
 
-		if err := terminal.Streams().Close(); err != nil {
+		if err := terminal.Default().Close(); err != nil {
 			cleanupCh <- err
 
 			return
@@ -106,7 +110,11 @@ func run() int {
 
 	err = <-cleanupCh
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, io.EOF) &&
+			!errors.Is(err, readline.ErrInterrupt) {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		}
+
 		exitCode = 1
 	}
 

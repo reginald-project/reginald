@@ -111,7 +111,7 @@ func InitBootstrap() error {
 	slog.SetDefault(
 		slog.New(
 			slog.NewTextHandler(
-				terminal.NewWriter(terminal.Streams(), terminal.Stderr),
+				terminal.NewWriter(terminal.Default(), terminal.Stderr),
 				&slog.HandlerOptions{
 					AddSource:   true,
 					Level:       logs.LevelTrace,
@@ -137,9 +137,9 @@ func Init(cfg Config) error {
 
 	switch strings.ToLower(cfg.Output) {
 	case "stderr":
-		w = terminal.NewWriter(terminal.Streams(), terminal.Stderr)
+		w = terminal.NewWriter(terminal.Default(), terminal.Stderr)
 	case "stdout":
-		w = terminal.NewWriter(terminal.Streams(), terminal.Stdout)
+		w = terminal.NewWriter(terminal.Default(), terminal.Stdout)
 	default:
 		path := fspath.Path(cfg.Output)
 

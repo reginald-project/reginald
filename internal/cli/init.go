@@ -90,7 +90,7 @@ func initialize(ctx context.Context) (*runInfo, error) {
 		// no-op
 	case !cfg.Interactive:
 		terminal.Warnln("No config file was found")
-	case !terminal.Confirm("No config file was found. Continue?", true):
+	case !terminal.Confirm(ctx, "No config file was found. Continue?", true):
 		return nil, &SuccessError{}
 	}
 
@@ -113,7 +113,7 @@ func initialize(ctx context.Context) (*runInfo, error) {
 		// no-op
 	case !cfg.Interactive:
 		terminal.Warnln("Plugin directory not found")
-	case !terminal.Confirm("Plugin directory not found. Continue?", true):
+	case !terminal.Confirm(ctx, "Plugin directory not found. Continue?", true):
 		return nil, &SuccessError{}
 	}
 
@@ -357,7 +357,7 @@ func initConfig(ctx context.Context) (*config.Config, error) {
 
 // initOut initializes the output streams and the logging for the program.
 func initOut(ctx context.Context, cfg *config.Config) error {
-	terminal.Streams().Init(cfg.Quiet, cfg.Verbose, cfg.Interactive, cfg.Color)
+	terminal.Default().Init(cfg.Quiet, cfg.Verbose, cfg.Interactive, cfg.Color)
 
 	if err := logging.Init(cfg.Logging); err != nil {
 		return fmt.Errorf("failed to initialize logging: %w", err)
