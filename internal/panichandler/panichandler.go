@@ -28,6 +28,7 @@ import (
 	"sync"
 
 	"github.com/reginald-project/reginald/internal/logging"
+	"github.com/reginald-project/reginald/internal/text"
 	"github.com/reginald-project/reginald/internal/version"
 	"golang.org/x/term"
 )
@@ -117,7 +118,7 @@ func handlePanic(r any, t []byte) {
 
 	buf.WriteString(fmt.Sprintf(header, strings.Repeat("!", width-len(header)+1)))
 	buf.WriteString("\n\n")
-	buf.WriteString(wrap(panicInfo, width))
+	buf.WriteString(text.Wrap(panicInfo, width))
 	buf.WriteByte('\n')
 	buf.WriteString(fmt.Sprintf("Version: %s\n", version.Version()))
 	buf.WriteString(fmt.Sprintf("Panic: %v\n\n", r))
@@ -149,51 +150,6 @@ func handlePanic(r any, t []byte) {
 
 	//revive:disable-next-line:deep-exit Panic handler has to exit with error.
 	os.Exit(1)
-}
-
-func wrap(s string, width int) string {
-	var sb strings.Builder
-
-	for p := range strings.SplitSeq(s, "\n\n") {
-		words := strings.Fields(p)
-		l := 0
-
-		for i, w := range words {
-			addForSpace := 0
-
-			if l > 0 {
-				addForSpace = 1
-			}
-
-			if l+len(w)+addForSpace > width {
-				sb.WriteByte('\n')
-
-				l = 0
-			}
-
-			if l > 0 {
-				sb.WriteByte(' ')
-
-				l++
-			}
-
-			sb.WriteString(w)
-
-			l += len(w)
-
-			if i == len(words)-1 {
-				sb.WriteString("\n\n")
-			}
-		}
-	}
-
-	result := sb.String()
-
-	if strings.HasSuffix(result, "\n\n") {
-		result = result[:len(result)-1]
-	}
-
-	return result
 }
 
 // termWidth returns the current terminal width (in characters) or a default of
