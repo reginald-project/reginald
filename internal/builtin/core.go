@@ -32,7 +32,7 @@ func coreManifest() *api.Manifest {
 		Commands: []*api.Command{
 			{
 				Name:  "attend",
-				Usage: "attend [options]",
+				Usage: "attend",
 				// TODO : Add a description.
 				Description: "TODO",
 				Aliases:     []string{"apply", "tend"},
