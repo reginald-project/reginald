@@ -460,7 +460,7 @@ func newFlagSet() *flags.FlagSet {
 
 	colorMode := defaults.Color
 
-	flagSet.Var(&colorMode, config.FlagName("Color"), "enable colors in the output", "")
+	flagSet.Var(&colorMode, config.FlagName("Color"), "set the `<mode>` for color output", "")
 
 	logName := config.FlagName("Logging.Enabled")
 	noLogName := config.InvertedFlagName("Logging.Enabled")

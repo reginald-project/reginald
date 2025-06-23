@@ -214,6 +214,11 @@ func (f *FlagSet) MarkMutuallyExclusive(a ...string) {
 	f.mutuallyExclusive = append(f.mutuallyExclusive, a)
 }
 
+// MutuallyExclusive returns the list of mutually exclusive flags.
+func (f *FlagSet) MutuallyExclusive() [][]string {
+	return f.mutuallyExclusive
+}
+
 // WrapperLookup returns the Flag structure of the named flag, returning nil if
 // none exists.
 func (f *FlagSet) WrapperLookup(name string) *Flag {

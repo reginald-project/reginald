@@ -18,20 +18,26 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"runtime"
 	"slices"
+	"sort"
+	"strings"
 
 	"github.com/reginald-project/reginald/internal/config"
+	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/plugin"
 	"github.com/reginald-project/reginald/internal/terminal"
 	"github.com/reginald-project/reginald/internal/version"
+	"github.com/spf13/pflag"
 )
 
 // Program-related constants.
 const (
 	ProgramName = "Reginald" // canonical name for the program
 	Name        = "reginald" // name of the command that's run
+	usagePrefix = "Usage: "
 )
 
 // A runInfo is the parsed information for the program run. It is returned from
@@ -64,7 +70,7 @@ func Run(ctx context.Context) error {
 	}
 
 	if info.help {
-		return nil
+		return runHelp(info.cmd)
 	}
 
 	if info.version {
@@ -76,38 +82,114 @@ func Run(ctx context.Context) error {
 	return nil
 }
 
-// runVersion runs the version command or flag by resolving the place of
-// the command or the flag in the arguments list. It prints the version of
-// the command that was given before the flag.
-func runVersion(cmd *plugin.Command) {
-	root := rootCommand(cmd)
+// defaultUsage returns the default usage message for the program.
+func defaultUsage() string { //nolint:gocognit // no need to split this up
+	flagSet := newFlagSet()
+	mutexGroups := flagSet.MutuallyExclusive()
+	grouped := make(map[string]bool, 0)
 
-	var found *plugin.Command
+	for _, group := range mutexGroups {
+		for _, name := range group {
+			grouped[name] = true
+		}
+	}
 
-Loop:
-	for _, arg := range os.Args[1:] {
-		if arg == "--version" {
-			break
+	var singles []string
+
+	flagSet.VisitAll(func(f *pflag.Flag) {
+		if grouped[f.Name] {
+			return
 		}
 
-		if found != nil {
-			for _, c := range found.Commands {
-				if c.Name == arg || slices.Contains(c.Aliases, arg) {
-					found = c
+		value, _ := pflag.UnquoteUsage(f)
+		s := "["
 
-					continue Loop
+		if f.Shorthand != "" {
+			s += "-" + f.Shorthand + " "
+
+			if value != "" {
+				if f.NoOptDefVal != "" {
+					s += "[" + value + "]"
+				} else {
+					s += value
+				}
+
+				s += " "
+			}
+
+			s += "| "
+		}
+
+		s += "--" + f.Name
+
+		if value != "" {
+			if f.NoOptDefVal != "" {
+				s += "[=" + value + "]"
+			} else {
+				s += "=" + value
+			}
+		}
+
+		s += "]"
+
+		singles = append(singles, s)
+	})
+	sort.Strings(singles)
+
+	mutexParts := make([]string, 0, len(mutexGroups))
+
+	for _, group := range mutexGroups {
+		var elems []string
+
+		for _, name := range group {
+			f := flagSet.Lookup(name)
+			if f == nil {
+				panic(
+					fmt.Sprintf(
+						"failed to find flag %q marked as mutually exclusive when creating the usage message",
+						name,
+					),
+				)
+			}
+
+			value, _ := pflag.UnquoteUsage(f)
+			s := "--" + f.Name
+
+			if value != "" {
+				if f.NoOptDefVal != "" {
+					s += "[=" + value + "]"
+				} else {
+					s += "=" + value
 				}
 			}
+
+			elems = append(elems, s)
 
 			continue
 		}
 
-		if arg == root.Name || slices.Contains(root.Aliases, arg) {
-			found = root
-		}
+		sort.Strings(elems)
+
+		mutexParts = append(mutexParts,
+			fmt.Sprintf("[%s]", strings.Join(elems, " | ")),
+		)
 	}
 
-	printVersion(found)
+	usages := make([]string, 0, len(singles)+len(mutexParts))
+	usages = append(usages, singles...)
+	usages = append(usages, mutexParts...)
+
+	sort.Strings(usages)
+
+	parts := []string{Name}
+	parts = append(parts, usages...)
+
+	return strings.Join(parts, " ")
+}
+
+func printHelp(_ *plugin.Command, flagSet *flags.FlagSet) {
+	fmt.Fprintf(os.Stderr, "%s\n", defaultUsage())
+	flagSet.PrintDefaults()
 }
 
 // pirntVersion prints the program's version or, if the user specified
@@ -149,4 +231,80 @@ func rootCommand(cmd *plugin.Command) *plugin.Command {
 	}
 
 	return root
+}
+
+func runHelp(cmd *plugin.Command) error {
+	root := rootCommand(cmd)
+	flagSet := newFlagSet()
+
+	var found *plugin.Command
+
+Loop:
+	for _, arg := range os.Args[1:] {
+		if arg == "-h" || arg == "--help" {
+			break
+		}
+
+		if found != nil {
+			for _, c := range found.Commands {
+				if c.Name == arg || slices.Contains(c.Aliases, arg) {
+					found = c
+
+					if err := addFlags(flagSet, found); err != nil {
+						return err
+					}
+
+					continue Loop
+				}
+			}
+
+			continue
+		}
+
+		if arg == root.Name || slices.Contains(root.Aliases, arg) {
+			found = root
+
+			if err := addFlags(flagSet, found); err != nil {
+				return err
+			}
+		}
+	}
+
+	printHelp(found, flagSet)
+
+	return nil
+}
+
+// runVersion runs the version command or flag by resolving the place of
+// the command or the flag in the arguments list. It prints the version of
+// the command that was given before the flag.
+func runVersion(cmd *plugin.Command) {
+	root := rootCommand(cmd)
+
+	var found *plugin.Command
+
+Loop:
+	for _, arg := range os.Args[1:] {
+		if arg == "--version" {
+			break
+		}
+
+		if found != nil {
+			for _, c := range found.Commands {
+				if c.Name == arg || slices.Contains(c.Aliases, arg) {
+					found = c
+
+					continue Loop
+				}
+			}
+
+			continue
+		}
+
+		if arg == root.Name || slices.Contains(root.Aliases, arg) {
+			found = root
+		}
+	}
+
+	printVersion(found)
 }
