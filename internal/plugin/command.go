@@ -128,6 +128,8 @@ func newCommands(plugin Plugin) []*Command {
 		Name:        manifest.Domain,
 		Usage:       manifest.Domain + " [command] [options]",
 		Description: manifest.Description,
+		Help:        manifest.Help,
+		Manual:      "",
 		Aliases:     nil,
 		Config:      manifest.Config,
 		Commands:    manifest.Commands,

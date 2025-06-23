@@ -64,7 +64,7 @@ func Run(ctx context.Context) error {
 	}
 
 	if info.help || info.cmd == nil {
-		return runHelp(info.cmd)
+		return runHelp(info.cmd, info.store)
 	}
 
 	if info.version {

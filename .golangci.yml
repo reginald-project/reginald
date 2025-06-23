@@ -97,6 +97,7 @@ linters:
     nolintlint:
       allow-no-explanation:
         - lll
+        - mnd
         - varnamelen
       require-explanation: true
       require-specific: true

@@ -27,6 +27,7 @@ func coreManifest() *api.Manifest {
 		Domain:  "core",
 		// TODO : Add a description.
 		Description: "TODO",
+		Help:        "",
 		Executable:  "",
 		Config:      nil,
 		Commands: []*api.Command{
@@ -35,6 +36,8 @@ func coreManifest() *api.Manifest {
 				Usage: "attend",
 				// TODO : Add a description.
 				Description: "TODO",
+				Help:        "TODO",
+				Manual:      "TODO",
 				Aliases:     []string{"apply", "tend"},
 				Config:      nil,
 				Commands:    nil,
@@ -44,6 +47,8 @@ func coreManifest() *api.Manifest {
 				Usage: "version",
 				// TODO : Add a description.
 				Description: "TODO",
+				Help:        "TODO",
+				Manual:      "TODO",
 				Aliases:     nil,
 				Config:      nil,
 				Commands:    nil,
