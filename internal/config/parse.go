@@ -450,13 +450,13 @@ func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) erro
 
 		switch val.Kind() { //nolint:exhaustive // TODO: implemented as needed
 		case reflect.Bool:
-			return applyBool(val, newOpts)
+			err = applyBool(val, newOpts)
 		case reflect.Int:
 			if val.Type().Name() == "ColorMode" {
-				return applyColorMode(val, newOpts)
+				err = applyColorMode(val, newOpts)
+			} else {
+				err = applyInt(val, newOpts)
 			}
-
-			return applyInt(val, newOpts)
 		case reflect.Slice:
 			e := val.Type().Elem()
 			if e.Kind() != reflect.String || e.Name() != "Path" {
@@ -465,18 +465,24 @@ func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) erro
 				)
 			}
 
-			return applyPathSlice(val, newOpts)
+			err = applyPathSlice(val, newOpts)
 		case reflect.String:
 			if val.Type().Name() == "Path" {
-				return applyPath(val, newOpts)
+				err = applyPath(val, newOpts)
+			} else {
+				err = applyString(val, newOpts)
 			}
-
-			return applyString(val, newOpts)
 		case reflect.Struct:
-			return applyStruct(ctx, val, newOpts)
+			err = applyStruct(ctx, val, newOpts)
 		default:
 			panic(fmt.Sprintf("unsupported config field type for %s: %s", field.Name, val.Kind()))
 		}
+
+		if err != nil {
+			return err
+		}
+
+		logging.Trace(ctx, "set config field", "key", field.Name, "value", val)
 	}
 
 	return nil
