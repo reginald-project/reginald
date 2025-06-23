@@ -528,6 +528,10 @@ func parseArgs(ctx context.Context, info *runInfo) error {
 		return fmt.Errorf("failed to get value for --version: %w", err)
 	}
 
+	if info.cmd == nil && !info.version {
+		info.help = true
+	}
+
 	if info.cmd != nil && info.cmd.Name == "version" {
 		info.version = true
 	}
