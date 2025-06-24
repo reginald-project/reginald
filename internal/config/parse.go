@@ -124,8 +124,6 @@ func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
 		return nil, err
 	}
 
-	log.Info(ctx, "parsed config", "cfg", cfg)
-
 	if fileErr != nil {
 		return cfg, fileErr
 	}

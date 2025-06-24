@@ -25,6 +25,9 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// enabled tells whether debugging is enabled.
+var enabled = false //nolint:gochecknoglobals // can be set at compile time
+
 // FlagSet returns a flag set with the debugging flags.
 func FlagSet() *flags.FlagSet {
 	flagSet := flags.NewFlagSet("", pflag.ContinueOnError)
@@ -39,18 +42,33 @@ func FlagSet() *flags.FlagSet {
 	return flagSet
 }
 
-// IsDebug reports whether the program should run in debug mode. It should only
-// be called during the bootstrapping of the program, and if the information
-// required later, the fully parsed config should be used instead. The function
-// ignores all errors and return the default value for the debug mode if it
-// fails to parse the value.
-func IsDebug(ctx context.Context) bool {
+// Init initializes the debugging module.
+func Init(ctx context.Context) {
+	// If the debug mode is already set, it is possible that it is done during
+	// the build. That shouldn't be overwritten.
+	if enabled {
+		return
+	}
+
 	flagSet := FlagSet()
 	flagSet.AddFlagSet(configFlagSet())
 	_ = flagSet.Parse(os.Args[1:])       //nolint:errcheck // ignore errors
 	cfg, _ := config.Parse(ctx, flagSet) //nolint:errcheck // ignore errors
+	enabled = cfg.Debug
+}
 
-	return cfg.Debug
+// IsDebug reports whether the program should run in debug mode.
+func IsDebug() bool {
+	return enabled
+}
+
+// SetDebug sets the debugging mode to b if it is not already set.
+func SetDebug(b bool) {
+	// If the debug mode is already set, it is possible that it is done during
+	// the build. That shouldn't be overwritten.
+	if enabled {
+		enabled = b
+	}
 }
 
 // configFlagSet returns the flags that are required for fully determining

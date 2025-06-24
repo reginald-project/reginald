@@ -14,7 +14,7 @@
 
 //go:build !windows
 
-package config
+package logconfig
 
 import (
 	"fmt"
@@ -23,25 +23,25 @@ import (
 	"github.com/reginald-project/reginald/internal/fspath"
 )
 
-func defaultPlatformPluginPaths() ([]fspath.Path, error) {
-	if env := os.Getenv("XDG_DATA_HOME"); env != "" {
-		path, err := fspath.NewAbs(env, defaultPrefix, "plugins")
+func defaultPlatformLogFile() (fspath.Path, error) {
+	if env := os.Getenv("XDG_STATE_HOME"); env != "" {
+		path, err := fspath.NewAbs(env, defaultPrefix, defaultLogFileName)
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert plugins directory to absolute path: %w", err)
+			return "", fmt.Errorf("failed to convert log file to absolute path: %w", err)
 		}
 
-		return []fspath.Path{path}, nil
+		return path, nil
 	}
 
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get the user home directory: %w", err)
+		return "", fmt.Errorf("failed to get the user home directory: %w", err)
 	}
 
-	path, err := fspath.NewAbs(home, ".local", "share", defaultPrefix, "plugins")
+	path, err := fspath.NewAbs(home, ".local", "state", defaultPrefix, defaultLogFileName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert plugins directory to absolute path: %w", err)
+		return "", fmt.Errorf("failed to convert plugins directory to absolute path: %w", err)
 	}
 
-	return []fspath.Path{path}, nil
+	return path, nil
 }

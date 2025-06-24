@@ -16,7 +16,17 @@
 // a separate pckage to avoid import cycles.
 package logconfig
 
-import "github.com/reginald-project/reginald-sdk-go/logs"
+import (
+	"fmt"
+
+	"github.com/reginald-project/reginald-sdk-go/logs"
+	"github.com/reginald-project/reginald/internal/fspath"
+)
+
+const (
+	defaultPrefix      = "reginald"
+	defaultLogFileName = defaultPrefix + ".log"
+)
 
 // Config contains the configuration options for the logger.
 type Config struct {
@@ -24,4 +34,29 @@ type Config struct {
 	Output  string     `mapstructure:"output"`                    // destination of the logs
 	Level   logs.Level `mapstructure:"level"`                     // logging level
 	Enabled bool       `flag:"log,no-log" mapstructure:"enabled"` // whether logging is enabled
+}
+
+// Default returns the default logging configuration.
+func Default() Config {
+	logOutput, err := DefaultLogOutput()
+	if err != nil {
+		panic(fmt.Sprintf("failed to get the default log output: %v", err))
+	}
+
+	return Config{
+		Enabled: true,
+		Format:  "json",
+		Level:   logs.LevelInfo,
+		Output:  string(logOutput),
+	}
+}
+
+// DefaultLogOutput returns the default logging output file to use.
+func DefaultLogOutput() (fspath.Path, error) {
+	path, err := defaultPlatformLogFile()
+	if err != nil {
+		return "", err
+	}
+
+	return path, nil
 }

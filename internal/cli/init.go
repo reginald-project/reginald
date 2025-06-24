@@ -50,7 +50,7 @@ func addFlags(flagSet *flags.FlagSet, cmd *plugin.Command) error {
 // streams, loading the plugin information, and parsing the command-line
 // arguments.
 func initialize(ctx context.Context) (*runInfo, error) {
-	if err := logger.InitBootstrap(ctx); err != nil {
+	if err := logger.InitBootstrap(); err != nil {
 		return nil, fmt.Errorf("failed to init bootstrap logger: %w", err)
 	}
 
@@ -87,6 +87,9 @@ func initialize(ctx context.Context) (*runInfo, error) {
 			err:  err,
 		}
 	}
+
+	// Just to be sure.
+	debugging.SetDebug(cfg.Debug)
 
 	log.Info(ctx, "executing Reginald", "version", version.Version())
 
@@ -299,6 +302,8 @@ func initConfig(ctx context.Context) (*config.Config, error) {
 		}
 	}
 
+	log.Info(ctx, "built-in config values parsed and applied", "cfg", cfg)
+
 	if fileErr != nil {
 		return cfg, fileErr
 	}
@@ -310,7 +315,7 @@ func initConfig(ctx context.Context) (*config.Config, error) {
 func initOut(ctx context.Context, cfg *config.Config) error {
 	terminal.Default().Init(cfg.Quiet, cfg.Verbose, cfg.Interactive, cfg.Color)
 
-	if err := logger.Init(cfg.Logging, cfg.Debug); err != nil {
+	if err := logger.Init(cfg.Logging); err != nil {
 		return fmt.Errorf("failed to initialize logging: %w", err)
 	}
 
@@ -474,7 +479,7 @@ func parseArgs(ctx context.Context, info *runInfo) error {
 	// 	return fmt.Errorf("failed to apply config values: %w", err)
 	// }
 	config.ApplyPlugins(ctx)
-	log.Debug(ctx, "config parsed", "cfg", info.cfg, "args", flagSet.Args())
+	log.Info(ctx, "full config parsed and applied", "cfg", info.cfg, "args", info.args)
 
 	var err error
 

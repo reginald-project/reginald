@@ -32,6 +32,7 @@ import (
 
 	"github.com/chzyer/readline"
 	"github.com/reginald-project/reginald/internal/cli"
+	"github.com/reginald-project/reginald/internal/debugging"
 	"github.com/reginald-project/reginald/internal/panichandler"
 	"github.com/reginald-project/reginald/internal/terminal"
 )
@@ -87,6 +88,8 @@ func run() int {
 
 		cleanupCh <- nil
 	}()
+
+	debugging.Init(ctx)
 
 	exitCode := 0
 

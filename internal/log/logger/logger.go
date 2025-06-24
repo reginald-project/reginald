@@ -17,7 +17,6 @@
 package logger
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -50,12 +49,12 @@ var (
 
 // InitBootstrap initializes the bootstrap logger and sets it as the default
 // logger in [log/slog].
-func InitBootstrap(ctx context.Context) error {
+func InitBootstrap() error {
 	// The logger is set to discard during checking if the debug mode is
 	// enabled.
 	slog.SetDefault(slog.New(slog.DiscardHandler))
 
-	isDebug := debugging.IsDebug(ctx)
+	isDebug := debugging.IsDebug()
 
 	if !isDebug {
 		// TODO: Come up with a reasonable default resolving maybe using
@@ -90,8 +89,8 @@ func InitBootstrap(ctx context.Context) error {
 
 // Init initializes the proper logger of the program and sets it as the default
 // logger in [log/slog].
-func Init(cfg logconfig.Config, debug bool) error {
-	if debug {
+func Init(cfg logconfig.Config) error {
+	if debugging.IsDebug() {
 		slog.SetDefault(slog.New(debugHandler()))
 
 		return nil

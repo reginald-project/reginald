@@ -23,27 +23,6 @@ import (
 	"github.com/reginald-project/reginald/internal/fspath"
 )
 
-func defaultPlatformLogFile() (fspath.Path, error) {
-	if env := os.Getenv("XDG_STATE_HOME"); env != "" {
-		path, err := fspath.NewAbs(env, defaultPrefix, defaultLogFileName)
-		if err != nil {
-			return "", fmt.Errorf("failed to convert log file to absolute path: %w", err)
-		}
-
-		return path, nil
-	}
-
-	path, err := fspath.NewAbs("%LOCALAPPDATA%", defaultPrefix, defaultLogFileName)
-	if err != nil {
-		return "", fmt.Errorf(
-			"failed to convert Windows plugins directory to absolute path: %w",
-			err,
-		)
-	}
-
-	return path, nil
-}
-
 func defaultPlatformPluginPaths() ([]fspath.Path, error) {
 	if env := os.Getenv("XDG_DATA_HOME"); env != "" {
 		path, err := fspath.NewAbs(env, defaultPrefix, "plugins")

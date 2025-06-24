@@ -25,7 +25,6 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/reginald-project/reginald-sdk-go/logs"
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/log"
@@ -123,11 +122,6 @@ func DefaultConfig() *Config {
 		panic(fmt.Sprintf("failed to get current directory: %v", err))
 	}
 
-	logOutput, err := DefaultLogOutput()
-	if err != nil {
-		panic(fmt.Sprintf("failed to get the default log output: %v", err))
-	}
-
 	pluginPaths, err := DefaultPluginPaths()
 	if err != nil {
 		panic(fmt.Sprintf("failed to get default plugin directory: %v", err))
@@ -141,12 +135,7 @@ func DefaultConfig() *Config {
 		Directory:   fspath.Path(wd),
 		Interactive: false,
 		Strict:      false,
-		Logging: logconfig.Config{
-			Enabled: true,
-			Format:  "json",
-			Level:   logs.LevelInfo,
-			Output:  logOutput.String(),
-		},
+		Logging:     logconfig.Default(),
 		PluginPaths: pluginPaths,
 		Quiet:       false,
 		Tasks:       []Task{},
@@ -189,16 +178,6 @@ func DefaultDir() (fspath.Path, error) {
 	path, err := fspath.NewAbs(home, ".dotfiles")
 	if err != nil {
 		return "", fmt.Errorf("failed to convert directory to absolute path: %w", err)
-	}
-
-	return path, nil
-}
-
-// DefaultLogOutput returns the default logging output file to use.
-func DefaultLogOutput() (fspath.Path, error) {
-	path, err := defaultPlatformLogFile()
-	if err != nil {
-		return "", err
 	}
 
 	return path, nil
