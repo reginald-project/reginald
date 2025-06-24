@@ -28,6 +28,7 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/pelletier/go-toml/v2"
+	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/log"
@@ -693,4 +694,184 @@ func unmarshal(value reflect.Value, s string) (reflect.Value, error) {
 	}
 
 	return ptr.Elem(), nil
+}
+
+func boolValue(x bool, opts ApplyOptions, entry *api.ConfigEntry) (bool, error) {
+	var err error
+
+	env := pluginEnvValue(opts.idents, entry)
+
+	if env != "" {
+		x, err = strconv.ParseBool(env)
+		if err != nil {
+			return false, fmt.Errorf("failed to parse %q as a boolean: %w", env, err)
+		}
+	}
+
+	flagName := pluginFlagName(opts.idents, entry)
+
+	if opts.FlagSet.Changed(flagName) {
+		x, err = opts.FlagSet.GetBool(flagName)
+		if err != nil {
+			return false, fmt.Errorf("failed to get value for --%s: %w", flagName, err)
+		}
+	}
+
+	key := configKey(opts.idents)
+
+	// TODO: Add plugin support for inverted flags and remove the plugin  check.
+	if entry == nil && HasInvertedFlagName(key) {
+		inverted := InvertedFlagName(key)
+		if opts.FlagSet.Changed(inverted) {
+			x, err = opts.FlagSet.GetBool(inverted)
+			if err != nil {
+				return false, fmt.Errorf("failed to get value for --%s: %w", inverted, err)
+			}
+
+			x = !x
+		}
+	}
+
+	return x, nil
+}
+
+func intValue(x int, opts ApplyOptions, entry *api.ConfigEntry) (int, error) {
+	var err error
+
+	env := pluginEnvValue(opts.idents, entry)
+
+	if env != "" {
+		var i int64
+
+		i, err = strconv.ParseInt(env, 10, 0)
+		if err != nil {
+			return 0, fmt.Errorf("failed to parse %q as an integer: %w", env, err)
+		}
+
+		x = int(i)
+	}
+
+	flagName := pluginFlagName(opts.idents, entry)
+
+	if opts.FlagSet.Changed(flagName) {
+		x, err = opts.FlagSet.GetInt(flagName)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get value for --%s: %w", flagName, err)
+		}
+	}
+
+	return x, nil
+}
+
+func pathValue(x fspath.Path, opts ApplyOptions, entry *api.ConfigEntry) (fspath.Path, error) {
+	var err error
+
+	env := pluginEnvValue(opts.idents, entry)
+
+	if env != "" {
+		x = fspath.Path(env)
+	}
+
+	flagName := pluginFlagName(opts.idents, entry)
+
+	if opts.FlagSet.Changed(flagName) {
+		x, err = opts.FlagSet.GetPath(flagName)
+		if err != nil {
+			return "", fmt.Errorf("failed to get value for --%s: %w", flagName, err)
+		}
+	}
+
+	if !x.IsAbs() {
+		path, err := fspath.NewAbs(string(opts.Dir), string(x))
+		if err != nil {
+			return "", fmt.Errorf("failed to create absolute path from %q: %w", x, err)
+		}
+
+		x = path.Clean()
+	}
+
+	return x, nil
+}
+
+func pathSliceValue(x []fspath.Path, opts ApplyOptions, entry *api.ConfigEntry) ([]fspath.Path, error) {
+	var err error
+
+	env := pluginEnvValue(opts.idents, entry)
+
+	// TODO: There might be a more robust way to parse the paths, but this is
+	// fine for now.
+	if env != "" {
+		parts := strings.Split(env, ",")
+		x = make([]fspath.Path, len(parts))
+
+		for i, part := range parts {
+			x[i] = fspath.Path(part)
+		}
+	}
+
+	flagName := pluginFlagName(opts.idents, entry)
+
+	if opts.FlagSet.Changed(flagName) {
+		x, err = opts.FlagSet.GetPathSlice(flagName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get value for --%s: %w", flagName, err)
+		}
+	}
+
+	for i, p := range x {
+		if !p.IsAbs() {
+			path, err := fspath.NewAbs(string(opts.Dir), string(p))
+			if err != nil {
+				return nil, fmt.Errorf("failed to create absolute path from %q: %w", x, err)
+			}
+
+			x[i] = path.Clean()
+		}
+	}
+
+	return x, nil
+}
+
+func stringValue(x string, opts ApplyOptions, entry *api.ConfigEntry) (string, error) {
+	env := pluginEnvValue(opts.idents, entry)
+
+	if env != "" {
+		x = env
+	}
+
+	flagName := pluginFlagName(opts.idents, entry)
+
+	if opts.FlagSet.Changed(flagName) {
+		var err error
+
+		x, err = opts.FlagSet.GetString(flagName)
+		if err != nil {
+			return "", fmt.Errorf("failed to get value for --%s: %w", flagName, err)
+		}
+	}
+
+	return x, nil
+}
+
+// pluginEnvValue returns the value of the environment variable for the given
+// config identifiers, applying the environment variable name override from
+// the plugin's config entry it is set.
+func pluginEnvValue(idents []string, entry *api.ConfigEntry) string {
+	if entry == nil || entry.EnvOverride == "" {
+		return envValue(idents)
+	}
+
+	return os.Getenv(strings.ToUpper(defaultPrefix + "_" + entry.EnvOverride))
+}
+
+// pluginFlagName returns the name of the command-line flag for the given config
+// identifiers, applying the flag name from the plugin's config entry it is set.
+func pluginFlagName(idents []string, entry *api.ConfigEntry) string {
+	if entry != nil && entry.Flag != nil && entry.Flag.Name != "" {
+		return entry.Flag.Name
+	}
+
+	key := configKey(idents)
+
+	return FlagName(key)
 }
