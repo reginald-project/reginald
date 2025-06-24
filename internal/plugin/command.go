@@ -133,6 +133,7 @@ func newCommands(plugin Plugin) []*Command {
 		Aliases:     nil,
 		Config:      manifest.Config,
 		Commands:    manifest.Commands,
+		Args:        nil,
 	}
 
 	return []*Command{newCommand(plugin, cmdInfo)}

@@ -30,6 +30,9 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// errInvalidArgs is the error returned when the arguments are invalid.
+var errInvalidArgs = errors.New("invalid arguments")
+
 // addFlags adds the flags from the given command to the flag set.
 func addFlags(flagSet *flags.FlagSet, cmd *plugin.Command) error {
 	for _, cfg := range cmd.Config {
@@ -436,10 +439,10 @@ func parseArgs(ctx context.Context, info *runInfo) error {
 
 	flagSet := newFlagSet()
 	if err := parseCommands(ctx, flagSet, info); err != nil {
-		return nil
+		return err
 	}
 
-	logging.Debug(ctx, "command-line arguments parsed", "cmd", info.cmd, "args", info.args)
+	logging.Debug(ctx, "commands parsed", "cmd", info.cmd, "args", info.args)
 
 	if err := flagSet.Parse(info.args); err != nil {
 		return fmt.Errorf("failed to parse the command-line arguments: %w", err)
@@ -449,6 +452,12 @@ func parseArgs(ctx context.Context, info *runInfo) error {
 
 	if err := flagSet.CheckMutuallyExclusive(); err != nil {
 		return fmt.Errorf("%w", err)
+	}
+
+	logging.Trace(ctx, "flags parsed", "args", info.args)
+
+	if err := validateArgs(info); err != nil {
+		return err
 	}
 
 	if err := config.Validate(info.cfg, info.store); err != nil {
@@ -482,21 +491,29 @@ func parseArgs(ctx context.Context, info *runInfo) error {
 	return nil
 }
 
-// parseCommands finds the subcommand to run from the command tree starting at root command. It returns the names of the commands in order as the first value. The resulting slice of names can be used to get the subcommand from the plugin store. The slice does not include the root command. The rest of the command-line arguments remaining after the parsing are returned as the second return value. If no subcommand is found (i.e. the root command should be run), this function returns nil as the first return value.
-//
-// The function adds the flags from the subcommand to the flag set. The flag set is modified in-place.
+// parseCommands finds the subcommand to run from the command tree starting at
+// root command. It sets the arguments and the command to run in the run info.
+// The function adds the flags from the subcommand to the flag set. The flag set
+// is modified in-place.
 func parseCommands(ctx context.Context, flagSet *flags.FlagSet, info *runInfo) error {
-	if len(info.args) <= 1 {
+	if len(info.args) == 0 {
+		panic("no command-line arguments")
+	}
+
+	if len(info.args) == 1 {
+		info.args = info.args[1:]
+
 		return nil
 	}
 
 	flagsFound := []string{}
+	info.args = info.args[1:]
 
 	for len(info.args) >= 1 {
 		logging.Trace(ctx, "checking args", "cmd", info.cmd, "args", info.args, "flags", flagsFound)
 
 		if len(info.args) > 1 {
-			info.args, flagsFound = collectFlags(flagSet, info.args[1:], flagsFound)
+			info.args, flagsFound = collectFlags(flagSet, info.args, flagsFound)
 
 			logging.Trace(ctx, "collected flags", "args", info.args, "flags", flagsFound)
 		}
@@ -511,6 +528,7 @@ func parseCommands(ctx context.Context, flagSet *flags.FlagSet, info *runInfo) e
 			}
 
 			info.cmd = next
+			info.args = info.args[1:]
 
 			if err := addFlags(flagSet, info.cmd); err != nil {
 				// TODO: This should be handled better.
@@ -522,6 +540,49 @@ func parseCommands(ctx context.Context, flagSet *flags.FlagSet, info *runInfo) e
 	}
 
 	info.args = append(info.args, flagsFound...)
+
+	return nil
+}
+
+// validateArgs validates the command-line arguments according to
+// the specifications given by the plugins.
+func validateArgs(info *runInfo) error {
+	if info.cmd == nil {
+		if len(info.args) > 0 {
+			return fmt.Errorf("%w: unknown command: %q", errInvalidArgs, info.args[0])
+		}
+
+		return nil
+	}
+
+	spec := info.cmd.Args
+	if spec == nil {
+		if len(info.args) > 0 {
+			return fmt.Errorf("%w: unknown argument: %q", errInvalidArgs, info.args[0])
+		}
+
+		return nil
+	}
+
+	if len(info.args) < spec.Min {
+		return fmt.Errorf(
+			"%w: command %q requires at least %d argument(s), got %d",
+			errInvalidArgs,
+			info.cmd.Name,
+			spec.Min,
+			len(info.args),
+		)
+	}
+
+	if spec.Max != -1 && len(info.args) > spec.Max {
+		return fmt.Errorf(
+			"%w: command %q accepts at most %d argument(s), got %d",
+			errInvalidArgs,
+			info.cmd.Name,
+			spec.Max,
+			len(info.args),
+		)
+	}
 
 	return nil
 }
