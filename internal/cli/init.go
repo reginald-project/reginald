@@ -215,65 +215,6 @@ Loop:
 	return rest, collected
 }
 
-// findSubcommand finds the subcommand to run from the command tree starting at
-// root command. It returns the names of the commands in order as the first
-// value. The resulting slice of names can be used to get the subcommand from
-// the plugin store. The slice does not include the root command. The rest of
-// the command-line arguments remaining after the parsing are returned as
-// the second return value. If no subcommand is found (i.e. the root command
-// should be run), this function returns nil as the first return value.
-//
-// The function adds the flags from the subcommand to the flag set. The flag set
-// is modified in-place.
-func findSubcommands(
-	ctx context.Context,
-	flagSet *flags.FlagSet,
-	store *plugin.Store,
-	args []string,
-) (*plugin.Command, []string) {
-	if len(args) <= 1 {
-		return nil, args
-	}
-
-	var cmd *plugin.Command
-
-	flagsFound := []string{}
-
-	for len(args) >= 1 {
-		logging.Trace(ctx, "checking args", "cmd", cmd, "args", args, "flags", flagsFound)
-
-		if len(args) > 1 {
-			args, flagsFound = collectFlags(flagSet, args[1:], flagsFound)
-
-			logging.Trace(ctx, "collected flags", "args", args, "flags", flagsFound)
-		}
-
-		if len(args) >= 1 {
-			next := store.Command(cmd, args[0])
-
-			logging.Trace(ctx, "next command", "cmd", next)
-
-			if next == nil {
-				break
-			}
-
-			cmd = next
-
-			if err := addFlags(flagSet, cmd); err != nil {
-				// TODO: This should be handled better.
-				logging.Error(ctx, "failed to add flags from commands", "err", err)
-				terminal.Errorf("Failed to add flags from commands: %v", err)
-
-				return nil, nil
-			}
-		}
-	}
-
-	args = append(args, flagsFound...)
-
-	return cmd, args
-}
-
 // hasFlag checks whether the given flag s is in fs. The whole flag string must
 // be included. The function checks by looking up the shorthands if the string
 // starts with only one hyphen. If s contains a combination of shorthands, the
@@ -485,20 +426,22 @@ func newFlagSet() *flags.FlagSet {
 func parseArgs(ctx context.Context, info *runInfo) error {
 	// There is no need to remove the first element of the arguments slice as
 	// findSubcommand takes care of that.
-	args := os.Args
+	info.args = os.Args
 
 	// Make sure that `CommandLine` is not used.
 	pflag.CommandLine.VisitAll(func(f *pflag.Flag) {
 		panic(fmt.Sprintf("flag %q is set in the CommandLine flag set", f.Name))
 	})
-	logging.Debug(ctx, "parsing command-line arguments", "args", args)
+	logging.Debug(ctx, "parsing command-line arguments", "args", info.args)
 
 	flagSet := newFlagSet()
-	info.cmd, args = findSubcommands(ctx, flagSet, info.store, args)
+	if err := parseCommands(ctx, flagSet, info); err != nil {
+		return nil
+	}
 
-	logging.Debug(ctx, "command-line arguments parsed", "cmd", info.cmd, "args", args)
+	logging.Debug(ctx, "command-line arguments parsed", "cmd", info.cmd, "args", info.args)
 
-	if err := flagSet.Parse(args); err != nil {
+	if err := flagSet.Parse(info.args); err != nil {
 		return fmt.Errorf("failed to parse the command-line arguments: %w", err)
 	}
 
@@ -535,6 +478,50 @@ func parseArgs(ctx context.Context, info *runInfo) error {
 	if info.cmd != nil && info.cmd.Name == "version" {
 		info.version = true
 	}
+
+	return nil
+}
+
+// parseCommands finds the subcommand to run from the command tree starting at root command. It returns the names of the commands in order as the first value. The resulting slice of names can be used to get the subcommand from the plugin store. The slice does not include the root command. The rest of the command-line arguments remaining after the parsing are returned as the second return value. If no subcommand is found (i.e. the root command should be run), this function returns nil as the first return value.
+//
+// The function adds the flags from the subcommand to the flag set. The flag set is modified in-place.
+func parseCommands(ctx context.Context, flagSet *flags.FlagSet, info *runInfo) error {
+	if len(info.args) <= 1 {
+		return nil
+	}
+
+	flagsFound := []string{}
+
+	for len(info.args) >= 1 {
+		logging.Trace(ctx, "checking args", "cmd", info.cmd, "args", info.args, "flags", flagsFound)
+
+		if len(info.args) > 1 {
+			info.args, flagsFound = collectFlags(flagSet, info.args[1:], flagsFound)
+
+			logging.Trace(ctx, "collected flags", "args", info.args, "flags", flagsFound)
+		}
+
+		if len(info.args) >= 1 {
+			next := info.store.Command(info.cmd, info.args[0])
+
+			logging.Trace(ctx, "next command", "cmd", next)
+
+			if next == nil {
+				break
+			}
+
+			info.cmd = next
+
+			if err := addFlags(flagSet, info.cmd); err != nil {
+				// TODO: This should be handled better.
+				logging.Error(ctx, "failed to add flags from commands", "err", err)
+
+				return err
+			}
+		}
+	}
+
+	info.args = append(info.args, flagsFound...)
 
 	return nil
 }
