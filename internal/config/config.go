@@ -28,7 +28,8 @@ import (
 	"github.com/reginald-project/reginald-sdk-go/logs"
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/fspath"
-	"github.com/reginald-project/reginald/internal/logging"
+	"github.com/reginald-project/reginald/internal/log"
+	"github.com/reginald-project/reginald/internal/log/logconfig"
 	"github.com/reginald-project/reginald/internal/terminal"
 )
 
@@ -68,10 +69,13 @@ type Config struct {
 	Tasks []Task `mapstructure:"tasks"`
 
 	// Logging contains the config values for logging.
-	Logging logging.Config `flag:"log" mapstructure:"logging"`
+	Logging logconfig.Config `flag:"log" mapstructure:"logging"`
 
 	// Color tells whether colors should be enabled in the user output.
 	Color terminal.ColorMode `mapstructure:"color"`
+
+	// Debug tells the program to print debug output.
+	Debug bool `mapstructure:"debug"`
 
 	// Quiet tells the program to suppress all other output than errors.
 	Quiet bool `mapstructure:"quiet"`
@@ -132,11 +136,12 @@ func DefaultConfig() *Config {
 	return &Config{
 		sourceFile:  "",
 		Color:       terminal.ColorAuto,
+		Debug:       false,
 		Defaults:    TaskDefaults{},
 		Directory:   fspath.Path(wd),
 		Interactive: false,
 		Strict:      false,
-		Logging: logging.Config{
+		Logging: logconfig.Config{
 			Enabled: true,
 			Format:  "json",
 			Level:   logs.LevelInfo,
@@ -390,7 +395,7 @@ func resolveFile(
 
 	file := fspath.Path(fileValue)
 
-	logging.Trace(ctx, "checking config file", "file", file)
+	log.Trace(ctx, "checking config file", "file", file)
 
 	if file.IsAbs() {
 		var ok bool
@@ -422,7 +427,7 @@ func resolveFile(
 
 	file = wd.Join(string(file))
 
-	logging.Trace(ctx, "checking config file", "file", file)
+	log.Trace(ctx, "checking config file", "file", file)
 
 	if ok, err := file.IsFile(); err != nil {
 		return "", fmt.Errorf("failed to check if %q is a file: %w", file, err)
@@ -455,7 +460,7 @@ func resolveFile(
 			for _, e := range extensions {
 				file = d.Join(fmt.Sprintf("%s.%s", n, e))
 
-				logging.Trace(ctx, "checking config file", "path", file)
+				log.Trace(ctx, "checking config file", "path", file)
 
 				if ok, err := file.IsFile(); err != nil {
 					return "", fmt.Errorf("failed to check if %q is a file: %w", file, err)

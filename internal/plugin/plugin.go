@@ -32,7 +32,7 @@ import (
 	"github.com/reginald-project/reginald-sdk-go/logs"
 	"github.com/reginald-project/reginald/internal/builtin"
 	"github.com/reginald-project/reginald/internal/fspath"
-	"github.com/reginald-project/reginald/internal/logging"
+	"github.com/reginald-project/reginald/internal/log"
 	"github.com/reginald-project/reginald/internal/panichandler"
 	"golang.org/x/sync/errgroup"
 )
@@ -211,19 +211,19 @@ func Search(ctx context.Context, wd fspath.Path, paths []fspath.Path) ([]*api.Ma
 func checkDuplicates(ctx context.Context, manifest *api.Manifest, manifests []*api.Manifest) error {
 	for _, m := range manifests {
 		if m.Name == manifest.Name {
-			logging.Trace(ctx, "conflicting manifests", "new", manifest, "old", m)
+			log.Trace(ctx, "conflicting manifests", "new", manifest, "old", m)
 
 			return fmt.Errorf("%w: duplicate plugin name %q", errInvalidManifest, m.Name)
 		}
 
 		if m.Domain == manifest.Domain {
-			logging.Trace(ctx, "conflicting manifests", "new", manifest, "old", m)
+			log.Trace(ctx, "conflicting manifests", "new", manifest, "old", m)
 
 			return fmt.Errorf("%w: duplicate plugin domain %q", errInvalidManifest, m.Domain)
 		}
 
 		if m.Executable == manifest.Executable {
-			logging.Trace(ctx, "conflicting manifests", "new", manifest, "old", m)
+			log.Trace(ctx, "conflicting manifests", "new", manifest, "old", m)
 
 			return fmt.Errorf(
 				"%w: duplicate plugin executable path %q",
@@ -239,7 +239,7 @@ func checkDuplicates(ctx context.Context, manifest *api.Manifest, manifests []*a
 // load loads the manifest from the search path for the DirEntry.
 func load(ctx context.Context, path fspath.Path, dirEntry os.DirEntry) (*api.Manifest, error) {
 	if !dirEntry.IsDir() {
-		logging.Trace(ctx, "entry is not directory", "path", path, "name", dirEntry.Name())
+		log.Trace(ctx, "entry is not directory", "path", path, "name", dirEntry.Name())
 
 		return nil, fmt.Errorf("%w: %s is not a directory", errNoManifestFile, path)
 	}
@@ -283,7 +283,7 @@ func logLoadedManifest(ctx context.Context, manifests []*api.Manifest) {
 			domains[i] = m.Domain
 		}
 
-		logging.Trace(ctx, "loaded plugin manifests", "names", names, "domains", domains)
+		log.Trace(ctx, "loaded plugin manifests", "names", names, "domains", domains)
 	}
 }
 
@@ -362,7 +362,7 @@ func searchPath(ctx context.Context, opts searchOptions) error {
 		}
 	}
 
-	logging.Trace(ctx, "checking plugin search path", "path", opts.path)
+	log.Trace(ctx, "checking plugin search path", "path", opts.path)
 
 	var dir []os.DirEntry
 
@@ -401,7 +401,7 @@ func searchPath(ctx context.Context, opts searchOptions) error {
 func searchPathEntry(ctx context.Context, opts pathEntryOptions) error {
 	defer opts.panicHandler()
 
-	logging.Trace(
+	log.Trace(
 		ctx,
 		"checking dir entry",
 		"path",
@@ -413,7 +413,7 @@ func searchPathEntry(ctx context.Context, opts pathEntryOptions) error {
 	manifest, err := load(ctx, opts.path, opts.dir)
 	if err != nil {
 		if errors.Is(err, errNoManifestFile) {
-			logging.Trace(
+			log.Trace(
 				ctx,
 				"no manifest file found",
 				"path",
@@ -428,7 +428,7 @@ func searchPathEntry(ctx context.Context, opts pathEntryOptions) error {
 		return err
 	}
 
-	logging.Trace(ctx, "loaded manifest", "manifest", manifest)
+	log.Trace(ctx, "loaded manifest", "manifest", manifest)
 	opts.mu.Lock()
 	defer opts.mu.Unlock()
 
@@ -436,7 +436,7 @@ func searchPathEntry(ctx context.Context, opts pathEntryOptions) error {
 		return err
 	}
 
-	logging.Trace(
+	log.Trace(
 		ctx,
 		"appending manifest",
 		"manifest",
@@ -447,7 +447,7 @@ func searchPathEntry(ctx context.Context, opts pathEntryOptions) error {
 
 	*opts.manifests = append(*opts.manifests, manifest)
 
-	logging.Trace(ctx, "manifest loaded", "manifest", manifest)
+	log.Trace(ctx, "manifest loaded", "manifest", manifest)
 
 	return nil
 }

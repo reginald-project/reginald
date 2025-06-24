@@ -30,7 +30,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/fspath"
-	"github.com/reginald-project/reginald/internal/logging"
+	"github.com/reginald-project/reginald/internal/log"
 	"github.com/reginald-project/reginald/internal/plugin"
 	"github.com/reginald-project/reginald/internal/terminal"
 )
@@ -89,7 +89,7 @@ func Apply(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 // ApplyPlugins applies the config values for plugins from environment variables
 // and command-line flags to cfg. It modifies the pointed cfg.
 func ApplyPlugins(ctx context.Context) {
-	logging.Debug(ctx, "applying plugins")
+	log.Debug(ctx, "applying plugins")
 }
 
 // Parse parses the configuration according to the configuration given with
@@ -113,7 +113,7 @@ func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
 		}
 	}
 
-	logging.Debug(ctx, "read config file", "cfg", cfg)
+	log.Debug(ctx, "read config file", "cfg", cfg)
 
 	opts := ApplyOptions{
 		idents:  nil,
@@ -124,7 +124,7 @@ func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
 		return nil, err
 	}
 
-	logging.Info(ctx, "parsed config", "cfg", cfg)
+	log.Info(ctx, "parsed config", "cfg", cfg)
 
 	if fileErr != nil {
 		return cfg, fileErr
@@ -419,7 +419,7 @@ func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) erro
 		field := cfg.Type().Field(i)
 		val := cfg.Field(i)
 
-		logging.Trace(
+		log.Trace(
 			ctx,
 			"checking config field",
 			"key",
@@ -431,13 +431,13 @@ func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) erro
 		)
 
 		if !val.CanSet() {
-			logging.Trace(ctx, "skipping config field", "key", field.Name, "value", val)
+			log.Trace(ctx, "skipping config field", "key", field.Name, "value", val)
 
 			continue
 		}
 
 		if slices.Contains(dynamicFields, field.Name) {
-			logging.Trace(ctx, "skipping config field", "key", field.Name, "value", val)
+			log.Trace(ctx, "skipping config field", "key", field.Name, "value", val)
 
 			continue
 		}
@@ -482,7 +482,7 @@ func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) erro
 			return err
 		}
 
-		logging.Trace(ctx, "set config field", "key", field.Name, "value", val)
+		log.Trace(ctx, "set config field", "key", field.Name, "value", val)
 	}
 
 	return nil
@@ -568,7 +568,7 @@ func parseFile(ctx context.Context, dir fspath.Path, flagSet *flags.FlagSet, cfg
 		return nil
 	}
 
-	logging.Trace(ctx, "reading config file", "path", configFile)
+	log.Trace(ctx, "reading config file", "path", configFile)
 
 	data, err := configFile.Clean().ReadFile()
 	if err != nil {
@@ -581,16 +581,16 @@ func parseFile(ctx context.Context, dir fspath.Path, flagSet *flags.FlagSet, cfg
 		return fmt.Errorf("failed to decode the config file: %w", err)
 	}
 
-	logging.Trace(ctx, "unmarshaled config file", "cfg", rawCfg)
+	log.Trace(ctx, "unmarshaled config file", "cfg", rawCfg)
 	normalizeKeys(rawCfg)
-	logging.Trace(ctx, "normalized keys", "cfg", rawCfg)
+	log.Trace(ctx, "normalized keys", "cfg", rawCfg)
 
 	decoderConfig := &mapstructure.DecoderConfig{ //nolint:exhaustruct // use default values
 		DecodeHook: mapstructure.TextUnmarshallerHookFunc(),
 		Result:     cfg,
 	}
 
-	logging.Trace(ctx, "created default config", "cfg", cfg)
+	log.Trace(ctx, "created default config", "cfg", cfg)
 
 	d, err := mapstructure.NewDecoder(decoderConfig)
 	if err != nil {
@@ -643,7 +643,7 @@ func setDir(ctx context.Context, cfg reflect.Value, opts ApplyOptions) (ApplyOpt
 	field := cfg.Type().Field(i)
 	val := cfg.Field(i)
 
-	logging.Trace(
+	log.Trace(
 		ctx,
 		"checking config field",
 		"key",
@@ -670,7 +670,7 @@ func setDir(ctx context.Context, cfg reflect.Value, opts ApplyOptions) (ApplyOpt
 
 	opts.Dir = fspath.Path(val.String())
 
-	logging.Trace(ctx, "set config field", "key", field.Name, "value", val)
+	log.Trace(ctx, "set config field", "key", field.Name, "value", val)
 
 	return opts, nil
 }

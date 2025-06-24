@@ -12,11 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package logging
+// Package logwriter defines and holds the writer for the bootstrap logger. It
+// is a separate package to avoid import cycles.
+package logwriter
 
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 
@@ -28,6 +31,12 @@ const (
 	defaultBufFileWriterPerm    = 0o600
 	defaultBufFileWriterDirPerm = 0o750
 )
+
+// BootstrapWriter is the writer used by the bootstrap logger. It is global so
+// that in case of errors the final handler of the error can check if its type
+// is [BufferedFileWriter] and flush its contents to the given file if that is
+// the case.
+var BootstrapWriter io.Writer //nolint:gochecknoglobals // needed by the panic handler
 
 // A BufferedFileWriter is a writer that is used by the bootstrap logger to
 // write the logging information to a buffer if the logs are not enabled by

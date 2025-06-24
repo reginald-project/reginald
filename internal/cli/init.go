@@ -22,8 +22,10 @@ import (
 	"strings"
 
 	"github.com/reginald-project/reginald/internal/config"
+	"github.com/reginald-project/reginald/internal/debugging"
 	"github.com/reginald-project/reginald/internal/flags"
-	"github.com/reginald-project/reginald/internal/logging"
+	"github.com/reginald-project/reginald/internal/log"
+	"github.com/reginald-project/reginald/internal/log/logger"
 	"github.com/reginald-project/reginald/internal/plugin"
 	"github.com/reginald-project/reginald/internal/terminal"
 	"github.com/reginald-project/reginald/internal/version"
@@ -48,12 +50,12 @@ func addFlags(flagSet *flags.FlagSet, cmd *plugin.Command) error {
 // streams, loading the plugin information, and parsing the command-line
 // arguments.
 func initialize(ctx context.Context) (*runInfo, error) {
-	if err := logging.InitBootstrap(); err != nil {
+	if err := logger.InitBootstrap(ctx); err != nil {
 		return nil, fmt.Errorf("failed to init bootstrap logger: %w", err)
 	}
 
-	logging.Debug(ctx, "bootstrap logger initialized")
-	logging.Info(
+	log.Debug(ctx, "bootstrap logger initialized")
+	log.Info(
 		ctx,
 		"initializing Reginald",
 		"version",
@@ -86,7 +88,7 @@ func initialize(ctx context.Context) (*runInfo, error) {
 		}
 	}
 
-	logging.Info(ctx, "executing Reginald", "version", version.Version())
+	log.Info(ctx, "executing Reginald", "version", version.Version())
 
 	var pathErrs plugin.PathErrors
 
@@ -285,7 +287,7 @@ func initConfig(ctx context.Context) (*config.Config, error) {
 	// first.
 	err := flagSet.Parse(os.Args[1:])
 	if err != nil {
-		logging.Warn(ctx, "initial flag parsing yielded an error", "err", err.Error())
+		log.Warn(ctx, "initial flag parsing yielded an error", "err", err.Error())
 	}
 
 	var fileErr *config.FileError
@@ -308,11 +310,11 @@ func initConfig(ctx context.Context) (*config.Config, error) {
 func initOut(ctx context.Context, cfg *config.Config) error {
 	terminal.Default().Init(cfg.Quiet, cfg.Verbose, cfg.Interactive, cfg.Color)
 
-	if err := logging.Init(cfg.Logging); err != nil {
+	if err := logger.Init(cfg.Logging, cfg.Debug); err != nil {
 		return fmt.Errorf("failed to initialize logging: %w", err)
 	}
 
-	logging.Debug(ctx, "logging initialized")
+	log.Debug(ctx, "logging initialized")
 
 	return nil
 }
@@ -328,12 +330,12 @@ func initPlugins(ctx context.Context, cfg *config.Config) (*plugin.Store, error)
 			return nil, fmt.Errorf("failed to search for plugins: %w", err)
 		}
 
-		logging.Error(ctx, "failed to search for plugins", "err", pathErrs)
+		log.Error(ctx, "failed to search for plugins", "err", pathErrs)
 	}
 
 	store := plugin.NewStore(manifests)
 
-	logging.Debug(ctx, "created plugins", "store", store)
+	log.Debug(ctx, "created plugins", "store", store)
 
 	if len(pathErrs) > 0 {
 		return store, pathErrs
@@ -418,6 +420,10 @@ func newFlagSet() *flags.FlagSet {
 		panic(fmt.Sprintf("failed to mark --%s hidden: %v", hiddenLogFlag, err))
 	}
 
+	debugFlagSet := debugging.FlagSet()
+
+	flagSet.AddFlagSet(debugFlagSet)
+
 	return flagSet
 }
 
@@ -435,14 +441,14 @@ func parseArgs(ctx context.Context, info *runInfo) error {
 	pflag.CommandLine.VisitAll(func(f *pflag.Flag) {
 		panic(fmt.Sprintf("flag %q is set in the CommandLine flag set", f.Name))
 	})
-	logging.Debug(ctx, "parsing command-line arguments", "args", info.args)
+	log.Debug(ctx, "parsing command-line arguments", "args", info.args)
 
 	flagSet := newFlagSet()
 	if err := parseCommands(ctx, flagSet, info); err != nil {
 		return err
 	}
 
-	logging.Debug(ctx, "commands parsed", "cmd", info.cmd, "args", info.args)
+	log.Debug(ctx, "commands parsed", "cmd", info.cmd, "args", info.args)
 
 	if err := flagSet.Parse(info.args); err != nil {
 		return fmt.Errorf("failed to parse the command-line arguments: %w", err)
@@ -454,7 +460,7 @@ func parseArgs(ctx context.Context, info *runInfo) error {
 		return fmt.Errorf("%w", err)
 	}
 
-	logging.Trace(ctx, "flags parsed", "args", info.args)
+	log.Trace(ctx, "flags parsed", "args", info.args)
 
 	if err := validateArgs(info); err != nil {
 		return err
@@ -468,7 +474,7 @@ func parseArgs(ctx context.Context, info *runInfo) error {
 	// 	return fmt.Errorf("failed to apply config values: %w", err)
 	// }
 	config.ApplyPlugins(ctx)
-	logging.Debug(ctx, "config parsed", "cfg", info.cfg, "args", flagSet.Args())
+	log.Debug(ctx, "config parsed", "cfg", info.cfg, "args", flagSet.Args())
 
 	var err error
 
@@ -510,18 +516,18 @@ func parseCommands(ctx context.Context, flagSet *flags.FlagSet, info *runInfo) e
 	info.args = info.args[1:]
 
 	for len(info.args) >= 1 {
-		logging.Trace(ctx, "checking args", "cmd", info.cmd, "args", info.args, "flags", flagsFound)
+		log.Trace(ctx, "checking args", "cmd", info.cmd, "args", info.args, "flags", flagsFound)
 
 		if len(info.args) > 1 {
 			info.args, flagsFound = collectFlags(flagSet, info.args, flagsFound)
 
-			logging.Trace(ctx, "collected flags", "args", info.args, "flags", flagsFound)
+			log.Trace(ctx, "collected flags", "args", info.args, "flags", flagsFound)
 		}
 
 		if len(info.args) >= 1 {
 			next := info.store.Command(info.cmd, info.args[0])
 
-			logging.Trace(ctx, "next command", "cmd", next)
+			log.Trace(ctx, "next command", "cmd", next)
 
 			if next == nil {
 				break
@@ -532,7 +538,7 @@ func parseCommands(ctx context.Context, flagSet *flags.FlagSet, info *runInfo) e
 
 			if err := addFlags(flagSet, info.cmd); err != nil {
 				// TODO: This should be handled better.
-				logging.Error(ctx, "failed to add flags from commands", "err", err)
+				log.Error(ctx, "failed to add flags from commands", "err", err)
 
 				return err
 			}
