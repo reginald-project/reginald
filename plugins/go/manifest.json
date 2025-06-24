@@ -7,7 +7,7 @@
   "commands": [
     {
       "name": "versions",
-      "usage": "version [options]",
+      "usage": "versions [options]",
       "description": "TODO"
     }
   ]

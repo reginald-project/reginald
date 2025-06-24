@@ -41,6 +41,7 @@ func coreManifest() *api.Manifest {
 				Aliases:     []string{"apply", "tend"},
 				Config:      nil,
 				Commands:    nil,
+				Args:        nil,
 			},
 			{
 				Name:  "version",
@@ -52,6 +53,7 @@ func coreManifest() *api.Manifest {
 				Aliases:     nil,
 				Config:      nil,
 				Commands:    nil,
+				Args:        nil,
 			},
 		},
 		Tasks: nil,

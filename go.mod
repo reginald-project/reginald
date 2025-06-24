@@ -7,7 +7,7 @@ require (
 	github.com/chzyer/readline v1.5.1
 	github.com/go-viper/mapstructure/v2 v2.2.1
 	github.com/pelletier/go-toml/v2 v2.2.4
-	github.com/reginald-project/reginald-sdk-go v0.0.0-20250623214613-a7118c73f7bb
+	github.com/reginald-project/reginald-sdk-go v0.0.0-20250624083957-8f4e1837c3bc
 	github.com/spf13/pflag v1.0.6
 	golang.org/x/sync v0.15.0
 	golang.org/x/term v0.32.0
