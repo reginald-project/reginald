@@ -340,6 +340,10 @@ Loop:
 			continue
 		}
 
+		if root == nil {
+			continue
+		}
+
 		if arg == root.Name || slices.Contains(root.Aliases, arg) {
 			found = root
 
