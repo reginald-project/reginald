@@ -21,6 +21,7 @@ package flags
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald/internal/fspath"
@@ -102,16 +103,31 @@ func (f *FlagSet) AddFlagSet(newSet *FlagSet) {
 }
 
 // AddPluginFlag adds a flag to the flag set according to the given ConfigEntry
-// specification from a plugin.
-func (f *FlagSet) AddPluginFlag(cfg *api.ConfigEntry) error {
+// specification from a plugin. If the flag in the config entry does not define
+// a name, the name will be generated from prefix and the key of cfg.
+func (f *FlagSet) AddPluginFlag(cfg *api.ConfigEntry, prefix string) error {
+	if cfg == nil {
+		panic("nil config entry in AddPluginFlag")
+	}
+
 	if cfg.Flag == nil {
 		return nil
 	}
 
 	flag := *cfg.Flag
 
-	if f := f.Lookup(flag.Name); f != nil {
+	name := flag.Name
+	if name == "" {
+		name = prefix + "-" + strings.ToLower(cfg.Key)
+	}
+
+	if f := f.Lookup(name); f != nil {
 		return fmt.Errorf("%w: %s", errDuplicateFlag, f.Name)
+	}
+
+	description := flag.Description
+	if description == "" {
+		description = cfg.Description
 	}
 
 	// TODO: Add inverted flags.
@@ -122,35 +138,23 @@ func (f *FlagSet) AddPluginFlag(cfg *api.ConfigEntry) error {
 			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cfg.Value)
 		}
 
-		f.BoolP(flag.Name, flag.Shorthand, defVal, flag.Description, "")
+		f.BoolP(name, flag.Shorthand, defVal, description, "")
 	case api.IntValue:
-		switch v := cfg.Value.(type) {
-		case int:
-			f.IntP(flag.Name, flag.Shorthand, v, flag.Description, "")
-		case float64:
-			// TODO: This is probably the most unsafe way to do this, but it'll
-			// be fixed later.
-			u := int(v)
-
-			f.IntP(flag.Name, flag.Shorthand, u, flag.Description, "")
-		default:
-			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cfg.Value)
+		defVal, err := cfg.Int()
+		if err != nil {
+			return fmt.Errorf("failed to convert default value of %q: %w", cfg.Key, err)
 		}
+
+		f.IntP(name, flag.Shorthand, defVal, description, "")
 	case api.StringValue:
 		defVal, ok := cfg.Value.(string)
 		if !ok {
 			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cfg.Value)
 		}
 
-		f.StringP(flag.Name, flag.Shorthand, defVal, flag.Description, "")
+		f.StringP(name, flag.Shorthand, defVal, description, "")
 	default:
-		return fmt.Errorf(
-			"%w: flag %q: %v (%T)",
-			errInvalidFlagType,
-			flag.Name,
-			cfg.Type,
-			cfg.Value,
-		)
+		return fmt.Errorf("%w: flag %q: %v (%T)", errInvalidFlagType, name, cfg.Type, cfg.Value)
 	}
 
 	return nil

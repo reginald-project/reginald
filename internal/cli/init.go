@@ -37,8 +37,8 @@ var errInvalidArgs = errors.New("invalid arguments")
 
 // addFlags adds the flags from the given command to the flag set.
 func addFlags(flagSet *flags.FlagSet, cmd *plugin.Command) error {
-	for _, cfg := range cmd.Config {
-		if err := flagSet.AddPluginFlag(&cfg); err != nil {
+	for i := range cmd.Config {
+		if err := flagSet.AddPluginFlag(&cmd.Config[i], cmd.Plugin.Manifest().Domain); err != nil {
 			return fmt.Errorf("%w", err)
 		}
 	}
