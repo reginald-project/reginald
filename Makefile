@@ -72,7 +72,7 @@ tidy: addlicense gci gofumpt golines
 	addlicense -v -c "$(COPYRIGHT_HOLDER)" -l "$(LICENSE)" $(ADDLICENSE_PATTERNS)
 	"$(GO)" mod tidy -v
 	gci write .
-	golines --no-chain-split-dots --no-reformat-tags -w .
+	golines -m 120 -t 4 --no-reformat-tags -w .
 	gofumpt -extra -l -w .
 
 reginald: FORCE buildtask

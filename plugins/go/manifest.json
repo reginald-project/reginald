@@ -4,6 +4,14 @@
   "domain": "go",
   "executable": "reginald-go",
   "description": "A plugin for running Go commands.",
+  "config": [
+    {
+      "key": "version",
+      "value": "1.23",
+      "type": "string",
+      "flag": {}
+    }
+  ],
   "commands": [
     {
       "name": "versions",

@@ -20,6 +20,13 @@ import (
 	"github.com/reginald-project/reginald/internal/fspath"
 )
 
+// Errors returned when a plugin is invalid.
+var (
+	ErrInvalidConfig   = errors.New("invalid plugin config")
+	errInvalidManifest = errors.New("invalid plugin manifest")
+	errNoManifestFile  = errors.New("no manifest file found")
+)
+
 // A PathError is returned when a plugin search path is not found.
 type PathError struct {
 	Path fspath.Path

@@ -23,6 +23,7 @@ import (
 	"slices"
 
 	"github.com/reginald-project/reginald/internal/config"
+	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/plugin"
 	"github.com/reginald-project/reginald/internal/terminal"
 	"github.com/reginald-project/reginald/internal/version"
@@ -40,6 +41,7 @@ type runInfo struct {
 	cmd     *plugin.Command // the command that was run
 	cfg     *config.Config  // config for the run
 	store   *plugin.Store   // loaded plugins
+	flagSet *flags.FlagSet  // flag set for the run
 	args    []string        // positional arguments
 	help    bool            // whether the help flag was set
 	version bool            // whether the version flag was set

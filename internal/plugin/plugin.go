@@ -37,12 +37,6 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// Errors returned by the plugin functions.
-var (
-	errInvalidManifest = errors.New("invalid plugin manifest")
-	errNoManifestFile  = errors.New("no manifest file found")
-)
-
 // A Plugin is a plugin that Reginald recognizes.
 type Plugin interface {
 	// Manifest returns the loaded manifest for the plugin.

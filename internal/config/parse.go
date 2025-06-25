@@ -62,6 +62,10 @@ type ApplyOptions struct {
 	Dir     fspath.Path    // base directory for the program operations
 	FlagSet *flags.FlagSet // flag set for the apply operation
 
+	// Store contains the discovered plugin. It should not be set when applying
+	// the built-in config values
+	Store *plugin.Store
+
 	// idents is the list of the config identifiers that form the "path" to
 	// the config value that is currently being parsed. It must always start
 	// with the global prefix for the environment variables.
@@ -71,26 +75,169 @@ type ApplyOptions struct {
 // Apply applies the values of the config values from environment variables and
 // command-line flags to cfg. It modifies the pointed cfg.
 func Apply(ctx context.Context, cfg *Config, opts ApplyOptions) error {
-	if len(opts.idents) == 0 {
-		opts.idents = []string{defaultPrefix}
-	}
-
-	if opts.idents[0] != defaultPrefix {
-		panic(
-			fmt.Sprintf(
-				"Apply must be called with no config identifiers or with the global prefix for the environment variables as the first identifier: %q", //nolint:lll
-				defaultPrefix,
-			),
-		)
-	}
-
-	return applyStruct(ctx, reflect.ValueOf(cfg).Elem(), opts)
+	return applyStruct(ctx, reflect.ValueOf(cfg).Elem(), initIdents(opts))
 }
 
 // ApplyPlugins applies the config values for plugins from environment variables
 // and command-line flags to cfg. It modifies the pointed cfg.
-func ApplyPlugins(ctx context.Context) {
+func ApplyPlugins(ctx context.Context, cfg *Config, opts ApplyOptions) error {
+	opts = initIdents(opts)
+
 	log.Debug(ctx, "applying plugins")
+
+	if opts.Store == nil {
+		panic("nil plugin store")
+	}
+
+	plugins := opts.Store.Plugins
+	if len(plugins) == 0 {
+		log.Trace(ctx, "no plugins found")
+
+		return nil
+	}
+
+	pluginsMap := cfg.Plugins
+
+	for _, p := range plugins {
+		domain := p.Manifest().Domain
+
+		a, ok := pluginsMap[domain]
+		if !ok {
+			log.Trace(ctx, "no map for plugin found", "domain", domain)
+
+			a = make(map[string]any)
+		}
+
+		cfgMap, ok := a.(map[string]any)
+		if !ok {
+			return fmt.Errorf(
+				"%w: config for plugin %q with config key %q is not a map",
+				ErrInvalidConfig,
+				p.Manifest().Name,
+				domain,
+			)
+		}
+
+		log.Trace(ctx, "initial config map resolved", "domain", domain, "map", cfgMap)
+
+		newOpts := ApplyOptions{
+			Dir:     opts.Dir,
+			FlagSet: opts.FlagSet,
+			Store:   opts.Store,
+			idents:  append(opts.idents, domain),
+		}
+
+		applyPluginMap(ctx, cfgMap, p.Manifest().Config, newOpts)
+
+		log.Trace(ctx, "values applied to map", "domain", domain, "map", cfgMap)
+
+		pluginsMap[domain] = cfgMap
+	}
+
+	cfg.Plugins = pluginsMap
+
+	return nil
+}
+
+func applyPluginMap(ctx context.Context, cfg map[string]any, entries []api.ConfigEntry, opts ApplyOptions) error {
+	log.Trace(ctx, "applying plugin map", "idents", opts.idents)
+
+	parent := opts.idents[len(opts.idents)-1]
+
+	for _, entry := range entries {
+		raw, ok := cfg[entry.Key]
+		if ok && entry.FlagOnly {
+			return fmt.Errorf(
+				"%w: unknown entry %q in config file for %q (config setting can only be set via a command-line flag)",
+				ErrInvalidConfig,
+				entry.Key,
+				parent,
+			)
+		}
+
+		var err error
+
+		if !ok {
+			if entry.Type == api.IntValue {
+				raw, err = entry.Int()
+				if err != nil {
+					return fmt.Errorf("failed to convert value for %q in %q to int: %w", entry.Key, parent, err)
+				}
+			} else {
+				raw = entry.Value
+			}
+		}
+
+		newOpts := ApplyOptions{
+			Dir:     opts.Dir,
+			FlagSet: opts.FlagSet,
+			Store:   opts.Store,
+			idents:  append(opts.idents, entry.Key),
+		}
+
+		switch entry.Type {
+		case api.BoolValue:
+			x, ok := raw.(bool)
+			if !ok {
+				err = fmt.Errorf(
+					"%w: value %[2]v for %q in %q (wanted bool, got %[2]T)",
+					errInvalidCast,
+					raw,
+					entry.Key,
+					parent,
+				)
+
+				break
+			}
+
+			x, err = boolValue(x, newOpts, &entry)
+			raw = x
+		case api.IntValue:
+			var x int
+
+			x, err = configInt(raw)
+			if err != nil {
+				err = fmt.Errorf("failed to convert value %v for %q in %q to int: %w", raw, entry.Key, parent, err)
+
+				break
+			}
+
+			x, err = intValue(x, newOpts, &entry)
+			raw = x
+		case api.StringValue:
+			x, ok := raw.(string)
+			if !ok {
+				err = fmt.Errorf(
+					"%w: value %[2]v for %q in %q (wanted string, got %[2]T)",
+					errInvalidCast,
+					raw,
+					entry.Key,
+					parent,
+				)
+
+				break
+			}
+
+			x, err = stringValue(x, newOpts, &entry)
+			raw = x
+		default:
+			return fmt.Errorf(
+				"%w: config entry %q in %q has invalid type: %s",
+				plugin.ErrInvalidConfig,
+				entry.Key,
+				parent,
+				entry.Type,
+			)
+		}
+
+		if err != nil {
+			return err
+		}
+
+		cfg[entry.Key] = raw
+	}
+
+	return nil
 }
 
 // Parse parses the configuration according to the configuration given with
@@ -120,6 +267,7 @@ func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
 		idents:  nil,
 		Dir:     dir, // this is the working dir by default so no extra work is needed
 		FlagSet: flagSet,
+		Store:   nil,
 	}
 	if err := Apply(ctx, cfg, opts); err != nil {
 		return nil, err
@@ -175,38 +323,9 @@ func Validate(cfg *Config, store *plugin.Store) error {
 }
 
 func applyBool(value reflect.Value, opts ApplyOptions) error {
-	var err error
-
-	x := value.Bool()
-	env := envValue(opts.idents)
-
-	if env != "" {
-		x, err = strconv.ParseBool(env)
-		if err != nil {
-			return fmt.Errorf("failed to parse %q as a boolean: %w", env, err)
-		}
-	}
-
-	key := configKey(opts.idents)
-	flagName := FlagName(key)
-
-	if opts.FlagSet.Changed(flagName) {
-		x, err = opts.FlagSet.GetBool(flagName)
-		if err != nil {
-			return fmt.Errorf("failed to get value for --%s: %w", flagName, err)
-		}
-	}
-
-	if HasInvertedFlagName(key) {
-		inverted := InvertedFlagName(key)
-		if opts.FlagSet.Changed(inverted) {
-			x, err = opts.FlagSet.GetBool(inverted)
-			if err != nil {
-				return fmt.Errorf("failed to get value for --%s: %w", inverted, err)
-			}
-
-			x = !x
-		}
+	x, err := boolValue(value.Bool(), opts, nil)
+	if err != nil {
+		return err
 	}
 
 	value.SetBool(x)
@@ -297,32 +416,9 @@ func applyInt(value reflect.Value, opts ApplyOptions) error {
 }
 
 func applyPath(value reflect.Value, opts ApplyOptions) error {
-	var err error
-
-	x := fspath.Path(value.String())
-	env := envValue(opts.idents)
-
-	if env != "" {
-		x = fspath.Path(env)
-	}
-
-	key := configKey(opts.idents)
-	flagName := FlagName(key)
-
-	if opts.FlagSet.Changed(flagName) {
-		x, err = opts.FlagSet.GetPath(flagName)
-		if err != nil {
-			return fmt.Errorf("failed to get value for --%s: %w", flagName, err)
-		}
-	}
-
-	if !x.IsAbs() {
-		path, err := fspath.NewAbs(string(opts.Dir), string(x))
-		if err != nil {
-			return fmt.Errorf("failed to create absolute path from %q: %w", x, err)
-		}
-
-		x = path.Clean()
+	x, err := pathValue(fspath.Path(value.String()), opts, nil)
+	if err != nil {
+		return err
 	}
 
 	value.Set(reflect.ValueOf(x))
@@ -331,8 +427,6 @@ func applyPath(value reflect.Value, opts ApplyOptions) error {
 }
 
 func applyPathSlice(value reflect.Value, opts ApplyOptions) error {
-	var err error
-
 	i := value.Interface()
 
 	x, ok := i.([]fspath.Path)
@@ -340,38 +434,11 @@ func applyPathSlice(value reflect.Value, opts ApplyOptions) error {
 		panic(fmt.Sprintf("failed to convert value to slice of paths: %[1]v (%[1]T)", i))
 	}
 
-	env := envValue(opts.idents)
+	var err error
 
-	// TODO: There might be a more robust way to parse the paths, but this is
-	// fine for now.
-	if env != "" {
-		parts := strings.Split(env, ",")
-		x = make([]fspath.Path, len(parts))
-
-		for i, part := range parts {
-			x[i] = fspath.Path(part)
-		}
-	}
-
-	key := configKey(opts.idents)
-	flagName := FlagName(key)
-
-	if opts.FlagSet.Changed(flagName) {
-		x, err = opts.FlagSet.GetPathSlice(flagName)
-		if err != nil {
-			return fmt.Errorf("failed to get value for --%s: %w", flagName, err)
-		}
-	}
-
-	for i, p := range x {
-		if !p.IsAbs() {
-			path, err := fspath.NewAbs(string(opts.Dir), string(p))
-			if err != nil {
-				return fmt.Errorf("failed to create absolute path from %q: %w", x, err)
-			}
-
-			x[i] = path.Clean()
-		}
+	x, err = pathSliceValue(x, opts, nil)
+	if err != nil {
+		return err
 	}
 
 	value.Set(reflect.ValueOf(x))
@@ -380,23 +447,9 @@ func applyPathSlice(value reflect.Value, opts ApplyOptions) error {
 }
 
 func applyString(value reflect.Value, opts ApplyOptions) error {
-	x := value.String()
-	env := envValue(opts.idents)
-
-	if env != "" {
-		x = env
-	}
-
-	key := configKey(opts.idents)
-	flagName := FlagName(key)
-
-	if opts.FlagSet.Changed(flagName) {
-		var err error
-
-		x, err = opts.FlagSet.GetString(flagName)
-		if err != nil {
-			return fmt.Errorf("failed to get value for --%s: %w", flagName, err)
-		}
+	x, err := stringValue(value.String(), opts, nil)
+	if err != nil {
+		return err
 	}
 
 	value.SetString(x)
@@ -445,6 +498,7 @@ func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) erro
 			idents:  append(opts.idents, field.Name),
 			Dir:     opts.Dir,
 			FlagSet: opts.FlagSet,
+			Store:   opts.Store,
 		}
 
 		switch val.Kind() { //nolint:exhaustive // TODO: implemented as needed
@@ -493,6 +547,25 @@ func canUnmarshal(value reflect.Value) bool {
 	return reflect.PointerTo(value.Type()).Implements(textUnmarshalerType)
 }
 
+// configInt converts the value decoded from the configuration to an int. It is
+// especially useful with the plugin configs as they are decoded from different
+// file formats and some of the decoders default to using float64 for number
+// values.
+func configInt(x any) (int, error) {
+	switch v := x.(type) {
+	case int:
+		return v, nil
+	case int64:
+		// TODO: Unsafe conversion.
+		return int(v), nil
+	case float64:
+		// TODO: Unsafe conversion.
+		return int(v), nil
+	default:
+		return 0, fmt.Errorf("%w: invalid type %T", errInvalidCast, v)
+	}
+}
+
 // configKey returns the key for the given config identifiers.
 func configKey(idents []string) string {
 	return strings.Join(idents[1:], ".")
@@ -518,6 +591,25 @@ func envValue(idents []string) string {
 	}
 
 	return os.Getenv(strings.ToUpper(key))
+}
+
+// initIdents sets the correct initial identifiers to the ApplyOptions and
+// checks that the initial identifiers are valid. It panics on errors.
+func initIdents(opts ApplyOptions) ApplyOptions {
+	if len(opts.idents) == 0 {
+		opts.idents = []string{defaultPrefix}
+	}
+
+	if opts.idents[0] != defaultPrefix {
+		panic(
+			fmt.Sprintf(
+				"Apply must be called with no config identifiers or with the global prefix for the environment variables as the first identifier: %q", //nolint:lll
+				defaultPrefix,
+			),
+		)
+	}
+
+	return opts
 }
 
 // normalizeKeys checks the config value keys in the given raw config map and
@@ -661,6 +753,7 @@ func setDir(ctx context.Context, cfg reflect.Value, opts ApplyOptions) (ApplyOpt
 		idents:  append(opts.idents, field.Name),
 		Dir:     opts.Dir,
 		FlagSet: opts.FlagSet,
+		Store:   opts.Store,
 	}
 
 	if err := applyPath(val, newOpts); err != nil {
@@ -701,7 +794,7 @@ func boolValue(x bool, opts ApplyOptions, entry *api.ConfigEntry) (bool, error) 
 
 	env := pluginEnvValue(opts.idents, entry)
 
-	if env != "" {
+	if env != "" && (entry == nil || !entry.FlagOnly) {
 		x, err = strconv.ParseBool(env)
 		if err != nil {
 			return false, fmt.Errorf("failed to parse %q as a boolean: %w", env, err)
@@ -740,7 +833,7 @@ func intValue(x int, opts ApplyOptions, entry *api.ConfigEntry) (int, error) {
 
 	env := pluginEnvValue(opts.idents, entry)
 
-	if env != "" {
+	if env != "" && (entry == nil || !entry.FlagOnly) {
 		var i int64
 
 		i, err = strconv.ParseInt(env, 10, 0)
@@ -768,7 +861,7 @@ func pathValue(x fspath.Path, opts ApplyOptions, entry *api.ConfigEntry) (fspath
 
 	env := pluginEnvValue(opts.idents, entry)
 
-	if env != "" {
+	if env != "" && (entry == nil || !entry.FlagOnly) {
 		x = fspath.Path(env)
 	}
 
@@ -800,7 +893,7 @@ func pathSliceValue(x []fspath.Path, opts ApplyOptions, entry *api.ConfigEntry) 
 
 	// TODO: There might be a more robust way to parse the paths, but this is
 	// fine for now.
-	if env != "" {
+	if env != "" && (entry == nil || !entry.FlagOnly) {
 		parts := strings.Split(env, ",")
 		x = make([]fspath.Path, len(parts))
 
@@ -835,7 +928,7 @@ func pathSliceValue(x []fspath.Path, opts ApplyOptions, entry *api.ConfigEntry) 
 func stringValue(x string, opts ApplyOptions, entry *api.ConfigEntry) (string, error) {
 	env := pluginEnvValue(opts.idents, entry)
 
-	if env != "" {
+	if env != "" && (entry == nil || !entry.FlagOnly) {
 		x = env
 	}
 
@@ -867,7 +960,15 @@ func pluginEnvValue(idents []string, entry *api.ConfigEntry) string {
 // pluginFlagName returns the name of the command-line flag for the given config
 // identifiers, applying the flag name from the plugin's config entry it is set.
 func pluginFlagName(idents []string, entry *api.ConfigEntry) string {
-	if entry != nil && entry.Flag != nil && entry.Flag.Name != "" {
+	if entry != nil {
+		if entry.Flag == nil {
+			return ""
+		}
+
+		if entry.Flag.Name == "" {
+			return strings.ToLower(strings.ReplaceAll(configKey(idents), ".", "-"))
+		}
+
 		return entry.Flag.Name
 	}
 

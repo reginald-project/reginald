@@ -118,6 +118,7 @@ func initialize(ctx context.Context) (*runInfo, error) {
 		cmd:     nil,
 		cfg:     cfg,
 		store:   store,
+		flagSet: nil,
 		args:    nil,
 		help:    false,
 		version: false,
@@ -152,6 +153,18 @@ func initialize(ctx context.Context) (*runInfo, error) {
 	case !terminal.Confirm(ctx, "Plugin directory not found. Continue?", true):
 		return nil, &SuccessError{}
 	}
+
+	// if err := config.ApplyPlugins(ctx); err != nil {
+	// 	return fmt.Errorf("failed to apply config values: %w", err)
+	// }
+	opts := config.ApplyOptions{
+		Dir:     info.cfg.Directory,
+		FlagSet: info.flagSet,
+		Store:   info.store,
+	}
+	config.ApplyPlugins(ctx, info.cfg, opts)
+
+	log.Info(ctx, "full config parsed and applied", "cfg", info.cfg, "args", info.args)
 
 	return info, nil
 }
@@ -467,6 +480,8 @@ func parseArgs(ctx context.Context, info *runInfo) error {
 
 	log.Trace(ctx, "flags parsed", "args", info.args)
 
+	info.flagSet = flagSet
+
 	if err := validateArgs(info); err != nil {
 		return err
 	}
@@ -474,12 +489,6 @@ func parseArgs(ctx context.Context, info *runInfo) error {
 	if err := config.Validate(info.cfg, info.store); err != nil {
 		return fmt.Errorf("%w", err)
 	}
-
-	// if err := config.ApplyPlugins(ctx); err != nil {
-	// 	return fmt.Errorf("failed to apply config values: %w", err)
-	// }
-	config.ApplyPlugins(ctx)
-	log.Info(ctx, "full config parsed and applied", "cfg", info.cfg, "args", info.args)
 
 	var err error
 

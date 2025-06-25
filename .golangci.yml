@@ -85,6 +85,9 @@ linters:
         - github.com/reginald-project/reginald/internal/logging.Info
         - github.com/reginald-project/reginald/internal/logging.Warn
         - github.com/reginald-project/reginald/internal/logging.Error
+    lll:
+      line-length: 120
+      tab-width: 4
     maintidx:
       under: 25
     misspell:
@@ -206,4 +209,6 @@ formatters:
     - golines
   settings:
     golines:
+      max-len: 120
       reformat-tags: false
+      tab-len: 4
