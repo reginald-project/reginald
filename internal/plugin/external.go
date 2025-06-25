@@ -14,7 +14,15 @@
 
 package plugin
 
-import "github.com/reginald-project/reginald-sdk-go/api"
+import (
+	"errors"
+	"fmt"
+
+	"github.com/reginald-project/reginald-sdk-go/api"
+)
+
+// errRestart is returned if the program tries to start a plugin again.
+var errRestart = errors.New("plugin already running")
 
 // An External is an external plugin that is not provided by the program itself.
 // It implements the plugin client in Reginald for calling methods from
@@ -31,6 +39,14 @@ type External struct {
 // Manifest returns the loaded manifest for the plugin.
 func (e *External) Manifest() *api.Manifest {
 	return e.manifest
+}
+
+// Start starts the external plugin process.
+func (e *External) Start() error {
+	if e.loaded {
+		return fmt.Errorf("failed to start %q: %w", e.Manifest().Name, errRestart)
+	}
+	return nil
 }
 
 // newExternal returns a new external plugin for the given manifest.
