@@ -113,8 +113,7 @@ func run() int {
 
 	err = <-cleanupCh
 	if err != nil {
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, io.EOF) &&
-			!errors.Is(err, readline.ErrInterrupt) {
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, io.EOF) && !errors.Is(err, readline.ErrInterrupt) {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		}
 

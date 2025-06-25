@@ -209,6 +209,7 @@ formatters:
     - golines
   settings:
     golines:
+      chain-split-dots: false
       max-len: 120
       reformat-tags: false
       tab-len: 4

@@ -250,9 +250,7 @@ func (s *Terminal) ConfirmE(ctx context.Context, prompt string, defaultChoice bo
 		case "n", "no":
 			return false, nil
 		default:
-			s.PrintErrf(
-				"Invalid input. Please enter \"y\", \"yes\", \"n\", or \"no\".\n",
-			)
+			s.PrintErrf("Invalid input. Please enter \"y\", \"yes\", \"n\", or \"no\".\n")
 		}
 	}
 }

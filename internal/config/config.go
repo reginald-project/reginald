@@ -347,11 +347,7 @@ func genFlagName(s string, invert bool) string {
 // returns the first one that contains a file with a valid name. The returned
 // path is absolute. If no configuration file is found, the function returns an
 // empty string and an error.
-func resolveFile(
-	ctx context.Context,
-	dir fspath.Path,
-	flagSet *flags.FlagSet,
-) (fspath.Path, error) {
+func resolveFile(ctx context.Context, dir fspath.Path, flagSet *flags.FlagSet) (fspath.Path, error) {
 	var (
 		err       error
 		fileValue string
@@ -364,11 +360,7 @@ func resolveFile(
 	if flagSet.Changed("config") {
 		fileValue, err = flagSet.GetString("config")
 		if err != nil {
-			return "", fmt.Errorf(
-				"failed to get the value for command-line option --%s: %w",
-				"config",
-				err,
-			)
+			return "", fmt.Errorf("failed to get the value for command-line option --%s: %w", "config", err)
 		}
 	}
 

@@ -181,12 +181,7 @@ func (f *FlagSet) CheckMutuallyExclusive() error {
 
 			if f.Changed {
 				if set != "" {
-					return fmt.Errorf(
-						"%w: --%s and --%s (or their shorthands)",
-						errMutuallyExclusive,
-						set,
-						s,
-					)
+					return fmt.Errorf("%w: --%s and --%s (or their shorthands)", errMutuallyExclusive, set, s)
 				}
 
 				set = s
@@ -316,11 +311,7 @@ func (f *FlagSet) PathSlice(name string, value []fspath.Path, usage, doc string)
 
 // PathSliceP is like Path, but accepts a shorthand letter that can be used
 // after a single dash.
-func (f *FlagSet) PathSliceP(
-	name, shorthand string,
-	value []fspath.Path,
-	usage, doc string,
-) *[]string {
+func (f *FlagSet) PathSliceP(name, shorthand string, value []fspath.Path, usage, doc string) *[]string {
 	s := make([]string, 0, len(value))
 
 	for _, p := range value {

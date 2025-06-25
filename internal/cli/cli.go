@@ -81,13 +81,7 @@ func Run(ctx context.Context) error {
 // printVersion prints the program's version or, if the user specified
 // the "--version" flag for a command from a plugin, the version of the plugin.
 func printVersion(cmd *plugin.Command) {
-	terminal.Printf(
-		"%s version %s (%s/%s)\n",
-		Name,
-		version.Version(),
-		runtime.GOOS,
-		runtime.GOARCH,
-	)
+	terminal.Printf("%s version %s (%s/%s)\n", Name, version.Version(), runtime.GOOS, runtime.GOARCH)
 
 	if cmd != nil && cmd.Plugin.Manifest().Name != "builtin" {
 		manifest := cmd.Plugin.Manifest()
@@ -98,7 +92,7 @@ func printVersion(cmd *plugin.Command) {
 			ProgramName,
 		)
 	} else {
-		terminal.Println("Licensed under the Apache License, Version 2.0: <https://www.apache.org/licenses/LICENSE-2.0>")
+		terminal.Println("Licensed under the Apache License, Version 2.0: <https://www.apache.org/licenses/LICENSE-2.0>") //nolint:lll
 	}
 
 	terminal.Flush()

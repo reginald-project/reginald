@@ -55,14 +55,7 @@ func initialize(ctx context.Context) (*runInfo, error) {
 	}
 
 	log.Debug(ctx, "bootstrap logger initialized")
-	log.Info(
-		ctx,
-		"initializing Reginald",
-		"version",
-		version.Version(),
-		"commit",
-		version.Revision(),
-	)
+	log.Info(ctx, "initializing Reginald", "version", version.Version(), "commit", version.Revision())
 
 	strictErr := &strictError{
 		errs: nil,
@@ -396,29 +389,11 @@ func newFlagSet() *flags.FlagSet {
 	verboseName := config.FlagName("Verbose")
 	quietName := config.FlagName("Quiet")
 
-	flagSet.BoolP(
-		verboseName,
-		"v",
-		defaults.Verbose,
-		"make "+ProgramName+" print more output during the run",
-		"",
-	)
-	flagSet.BoolP(
-		quietName,
-		"q",
-		defaults.Quiet,
-		"make "+ProgramName+" print only error messages during the run",
-		"",
-	)
+	flagSet.BoolP(verboseName, "v", defaults.Verbose, "make "+ProgramName+" print more output during the run", "")
+	flagSet.BoolP(quietName, "q", defaults.Quiet, "make "+ProgramName+" print only error messages during the run", "")
 	flagSet.MarkMutuallyExclusive(quietName, verboseName)
 
-	flagSet.BoolP(
-		config.FlagName("Interactive"),
-		"i",
-		defaults.Interactive,
-		"run in interactive mode",
-		"",
-	)
+	flagSet.BoolP(config.FlagName("Interactive"), "i", defaults.Interactive, "run in interactive mode", "")
 	flagSet.Bool("strict", defaults.Strict, "enable strict mode", "")
 	flagSet.MarkMutuallyExclusive("interactive", "strict")
 

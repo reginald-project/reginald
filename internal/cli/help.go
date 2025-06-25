@@ -410,14 +410,7 @@ func wrap(i, w int, s string) string {
 		var t string
 
 		t, s = wrapN(wrap, slop, s)
-		r = r + "\n" + strings.Repeat(
-			" ",
-			i,
-		) + strings.ReplaceAll(
-			t,
-			"\n",
-			"\n"+strings.Repeat(" ", i),
-		)
+		r = r + "\n" + strings.Repeat(" ", i) + strings.ReplaceAll(t, "\n", "\n"+strings.Repeat(" ", i))
 	}
 
 	return r

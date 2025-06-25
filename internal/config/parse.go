@@ -471,16 +471,7 @@ func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) erro
 		field := cfg.Type().Field(i)
 		val := cfg.Field(i)
 
-		log.Trace(
-			ctx,
-			"checking config field",
-			"key",
-			field.Name,
-			"value",
-			val,
-			"opts",
-			opts,
-		)
+		log.Trace(ctx, "checking config field", "key", field.Name, "value", val, "opts", opts)
 
 		if !val.CanSet() {
 			log.Trace(ctx, "skipping config field", "key", field.Name, "value", val)
@@ -775,11 +766,7 @@ func unmarshal(value reflect.Value, s string) (reflect.Value, error) {
 
 	unmarshaler, ok := ptr.Interface().(encoding.TextUnmarshaler)
 	if !ok {
-		return reflect.Value{}, fmt.Errorf(
-			"%w: type of %q to TextUnmarshaler",
-			errInvalidCast,
-			value,
-		)
+		return reflect.Value{}, fmt.Errorf("%w: type of %q to TextUnmarshaler", errInvalidCast, value)
 	}
 
 	if err := unmarshaler.UnmarshalText([]byte(s)); err != nil {

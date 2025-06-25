@@ -286,11 +286,7 @@ func logLoadedManifest(ctx context.Context, manifests []*api.Manifest) {
 // one. It modifies the given manifest in place.
 func revise(manifest *api.Manifest, path fspath.Path) error {
 	if manifest.Name == "" {
-		return fmt.Errorf(
-			"%w: manifest at %q did not specify a name",
-			errInvalidManifest,
-			path,
-		)
+		return fmt.Errorf("%w: manifest at %q did not specify a name", errInvalidManifest, path)
 	}
 
 	if manifest.Domain == "" {
@@ -298,11 +294,7 @@ func revise(manifest *api.Manifest, path fspath.Path) error {
 	}
 
 	if manifest.Executable == "" {
-		return fmt.Errorf(
-			"%w: manifest at %q did not specify executable",
-			errInvalidManifest,
-			path,
-		)
+		return fmt.Errorf("%w: manifest at %q did not specify executable", errInvalidManifest, path)
 	}
 
 	execPath, err := fspath.NewAbs(string(path.Dir()), manifest.Executable)
@@ -395,26 +387,12 @@ func searchPath(ctx context.Context, opts searchOptions) error {
 func searchPathEntry(ctx context.Context, opts pathEntryOptions) error {
 	defer opts.panicHandler()
 
-	log.Trace(
-		ctx,
-		"checking dir entry",
-		"path",
-		opts.path,
-		"name",
-		opts.dir.Name(),
-	)
+	log.Trace(ctx, "checking dir entry", "path", opts.path, "name", opts.dir.Name())
 
 	manifest, err := load(ctx, opts.path, opts.dir)
 	if err != nil {
 		if errors.Is(err, errNoManifestFile) {
-			log.Trace(
-				ctx,
-				"no manifest file found",
-				"path",
-				opts.path,
-				"name",
-				opts.dir.Name(),
-			)
+			log.Trace(ctx, "no manifest file found", "path", opts.path, "name", opts.dir.Name())
 
 			return nil
 		}
@@ -430,14 +408,7 @@ func searchPathEntry(ctx context.Context, opts pathEntryOptions) error {
 		return err
 	}
 
-	log.Trace(
-		ctx,
-		"appending manifest",
-		"manifest",
-		manifest,
-		"path",
-		opts.path,
-	)
+	log.Trace(ctx, "appending manifest", "manifest", manifest, "path", opts.path)
 
 	*opts.manifests = append(*opts.manifests, manifest)
 
