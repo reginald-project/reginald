@@ -18,6 +18,7 @@ package debugging
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/reginald-project/reginald/internal/config"
@@ -52,6 +53,7 @@ func Init(ctx context.Context) {
 
 	flagSet := FlagSet()
 	flagSet.AddFlagSet(configFlagSet())
+	flagSet.SetOutput(io.Discard)
 	_ = flagSet.Parse(os.Args[1:])       //nolint:errcheck // ignore errors
 	cfg, _ := config.Parse(ctx, flagSet) //nolint:errcheck // ignore errors
 	enabled = cfg.Debug
@@ -79,6 +81,7 @@ func configFlagSet() *flags.FlagSet {
 	flagSet := flags.NewFlagSet("", pflag.ContinueOnError)
 	defaults := config.DefaultConfig()
 
+	flagSet.BoolP("help", "h", false, "", "")
 	flagSet.StringP(
 		"config",
 		"c",
