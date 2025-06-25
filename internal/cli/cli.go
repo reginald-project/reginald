@@ -22,6 +22,7 @@ import (
 	"runtime"
 	"slices"
 
+	"github.com/reginald-project/reginald/internal/builtin"
 	"github.com/reginald-project/reginald/internal/config"
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/plugin"
@@ -83,7 +84,7 @@ func Run(ctx context.Context) error {
 func printVersion(cmd *plugin.Command) {
 	terminal.Printf("%s version %s (%s/%s)\n", Name, version.Version(), runtime.GOOS, runtime.GOARCH)
 
-	if cmd != nil && cmd.Plugin.Manifest().Name != "builtin" {
+	if cmd != nil && cmd.Plugin.Manifest().Name != builtin.Name {
 		manifest := cmd.Plugin.Manifest()
 		terminal.Printf("Plugin %q version %s\n", manifest.Name, manifest.Version)
 		terminal.Println()

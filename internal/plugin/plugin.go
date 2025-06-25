@@ -79,7 +79,7 @@ func NewStore(manifests []*api.Manifest) *Store {
 		var plugin Plugin
 
 		// Built-in plugins don't require any complex setups.
-		if m.Name == "builtin" {
+		if m.Name == builtin.Name {
 			plugin = newBuiltin(m)
 		} else {
 			plugin = newExternal(m)
