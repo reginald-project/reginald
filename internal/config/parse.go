@@ -127,7 +127,9 @@ func ApplyPlugins(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 			idents:  append(opts.idents, domain),
 		}
 
-		applyPluginMap(ctx, cfgMap, p.Manifest().Config, newOpts)
+		if err := applyPluginMap(ctx, cfgMap, p.Manifest().Config, newOpts); err != nil {
+			return err
+		}
 
 		log.Trace(ctx, "values applied to map", "domain", domain, "map", cfgMap)
 

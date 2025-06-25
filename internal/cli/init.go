@@ -155,7 +155,9 @@ func initialize(ctx context.Context) (*runInfo, error) {
 		FlagSet: info.flagSet,
 		Store:   info.store,
 	}
-	config.ApplyPlugins(ctx, info.cfg, opts)
+	if err = config.ApplyPlugins(ctx, info.cfg, opts); err != nil {
+		return nil, fmt.Errorf("failed to parse config: %w", err)
+	}
 
 	log.Info(ctx, "full config parsed and applied", "cfg", info.cfg, "args", info.args)
 
