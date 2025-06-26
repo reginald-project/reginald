@@ -147,9 +147,6 @@ func initialize(ctx context.Context) (*runInfo, error) {
 		return nil, &SuccessError{}
 	}
 
-	// if err := config.ApplyPlugins(ctx); err != nil {
-	// 	return fmt.Errorf("failed to apply config values: %w", err)
-	// }
 	opts := config.ApplyOptions{
 		Dir:     info.cfg.Directory,
 		FlagSet: info.flagSet,

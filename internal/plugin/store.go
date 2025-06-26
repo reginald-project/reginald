@@ -97,9 +97,31 @@ func NewStore(manifests []*api.Manifest) *Store {
 // Init loads the required plugins and performs a handshake with them.
 // The function uses the command that was run to determine which plugins should
 // be loaded.
-func (s *Store) Init(cmd *Command) {
+func (*Store) Init(ctx context.Context, cmd *Command) error {
 	// TODO: If the command uses tasks or there is some other reason for it,
 	// load more plugins.
+	plugins := []Plugin{cmd.Plugin}
+	eg, _ := errgroup.WithContext(ctx)
+
+	for _, plugin := range plugins {
+		handlePanic := panichandler.WithStackTrace()
+
+		eg.Go(func() error {
+			defer handlePanic()
+
+			if err := plugin.Start(ctx); err != nil {
+				return err
+			}
+
+			return nil
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return fmt.Errorf("failed to init plugins: %w", err)
+	}
+
+	return nil
 }
 
 // Len returns the number of plugins in the store.
