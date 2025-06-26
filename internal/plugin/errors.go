@@ -23,7 +23,12 @@ import (
 // Errors returned when a plugin is invalid.
 var (
 	ErrInvalidConfig   = errors.New("invalid plugin config")
+	errHandshake       = errors.New("plugin provided incompatible response")
 	errInvalidManifest = errors.New("invalid plugin manifest")
+	errNoResponse      = errors.New("no response")
+	errRestart         = errors.New("plugin already running")
+	errWrongLength     = errors.New("number of bytes read does not match")
+	errZeroLength      = errors.New("Content-Length is zero")
 )
 
 // A PathError is returned when a plugin search path is not found.

@@ -75,6 +75,13 @@ func Run(ctx context.Context) error {
 		return nil
 	}
 
+	if err = info.store.Init(ctx, info.cmd); err != nil {
+		return &ExitError{
+			Code: 1,
+			err:  err,
+		}
+	}
+
 	return nil
 }
 

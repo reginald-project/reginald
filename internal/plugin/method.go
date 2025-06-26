@@ -14,7 +14,44 @@
 
 package plugin
 
-// handshake performs the "handshake"
-// func handshake(_ context.Context, _ Plugin) error {
-// 	return nil
-// }
+import (
+	"context"
+	"fmt"
+
+	"github.com/reginald-project/reginald-sdk-go/api"
+	"github.com/reginald-project/reginald/internal/log"
+)
+
+// handshake performs the "handshake" method call with the given plugin.
+func handshake(ctx context.Context, plugin Plugin) error {
+	params := api.DefaultHandshakeParams()
+
+	var result api.HandshakeResult
+
+	if err := plugin.call(ctx, api.MethodHandshake, params, &result); err != nil {
+		return fmt.Errorf("call %q to plugin %q failed: %w", api.MethodHandshake, plugin.Manifest().Name, err)
+	}
+
+	switch {
+	case params.Protocol != result.Protocol:
+		return fmt.Errorf("%w: wrong protocol, want %q, got %q", errHandshake, params.Protocol, result.Protocol)
+	case params.ProtocolVersion != result.ProtocolVersion:
+		return fmt.Errorf(
+			"%w: wrong protocol version, want %q, got %q",
+			errHandshake,
+			params.ProtocolVersion,
+			result.ProtocolVersion,
+		)
+	case plugin.Manifest().Name != result.Name:
+		return fmt.Errorf(
+			"%w: mismatching plugin name, want %q, got %q",
+			errHandshake,
+			plugin.Manifest().Name,
+			result.Name,
+		)
+	}
+
+	log.Trace(ctx, "handshake successful", "plugin", plugin.Manifest().Name)
+
+	return nil
+}

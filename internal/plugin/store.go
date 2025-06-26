@@ -24,6 +24,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald-sdk-go/logs"
@@ -121,6 +122,10 @@ func (*Store) Init(ctx context.Context, cmd *Command) error {
 
 			if err := plugin.start(ctx); err != nil {
 				return fmt.Errorf("failed to start %q: %w", plugin.Manifest().Name, err)
+			}
+
+			if err := handshake(ctx, plugin); err != nil {
+				return fmt.Errorf("handshake with %q failed: %w", plugin.Manifest().Name, err)
 			}
 
 			return nil
@@ -375,10 +380,16 @@ func readExternalPlugin(ctx context.Context, path fspath.Path) (*externalPlugin,
 	log.Trace(ctx, "manifest for external plugin loaded", "path", path, "manifest", manifest)
 
 	return &externalPlugin{
-		manifest: manifest,
 		conn:     nil,
 		cmd:      nil,
+		doneCh:   make(chan error),
+		lastID:   atomic.Int64{},
 		loaded:   false,
+		manifest: manifest,
+		queue: &responseQueue{
+			q:  make(map[string]chan api.Response),
+			mu: sync.Mutex{},
+		},
 	}, nil
 }
 

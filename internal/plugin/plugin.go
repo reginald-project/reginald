@@ -16,19 +16,23 @@
 package plugin
 
 import (
+	"bufio"
+	"bytes"
 	"context"
-	"errors"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os/exec"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/log"
+	"github.com/reginald-project/reginald/internal/panichandler"
 )
-
-// errRestart is returned if the program tries to start a plugin again.
-var errRestart = errors.New("plugin already running")
 
 // A Plugin is a plugin that Reginald recognizes.
 type Plugin interface {
@@ -61,6 +65,7 @@ type connection struct {
 	stdout io.ReadCloser  // stdout of the process //nolint:unused // TODO: Used soon.
 	//nolint:unused // TODO: Used soon.
 	stderr io.ReadCloser // stderr of the process
+	mu     sync.Mutex    // serializes writing
 }
 
 // An externalPlugin is an externalPlugin plugin that is not provided by
@@ -71,14 +76,47 @@ type externalPlugin struct {
 	manifest *api.Manifest
 
 	// conn holds the connection to cmd via the standard streams.
-	conn io.ReadWriteCloser //nolint:unused // TODO: Used soon.
+	conn io.ReadWriteCloser
 
 	// cmd is the underlying command running the plugin process.
 	cmd *exec.Cmd
 
+	// queue transfers the responses from the read loop to the call function.
+	queue *responseQueue
+
+	// doneCh is closed when the plugin is done running.
+	doneCh chan error
+
+	// lastID is the ID that was last used in a method call. Even though
+	// the protocol supports both strings and ints as the ID, we just default to
+	// ints to make the client more reasonable.
+	lastID atomic.Int64
+
 	// loaded tells whether the executable for this plugin is loaded and started
 	// up.
 	loaded bool
+}
+
+// A responseQueue holds channels that transfer responses sent from the plugins
+// and read by the plugin's reading loop to the plugin's call function. While
+// not technically a queue, the name feels natural.
+type responseQueue struct {
+	// q holds channels waiting for responses from the plugins.
+	q map[string]chan api.Response
+
+	// mu locks the queue.
+	mu sync.Mutex
+}
+
+// An rpcMessage is a helper that decodes an incoming message before the read
+// loop determines its type.
+type rpcMessage struct {
+	JSONRCP string          `json:"jsonrpc"`
+	Method  string          `json:"method,omitempty"`
+	ID      *api.ID         `json:"id,omitempty"`
+	Error   *api.Error      `json:"error,omitempty"`
+	Params  json.RawMessage `json:"params,omitempty"`
+	Result  json.RawMessage `json:"result,omitempty"`
 }
 
 // External reports whether the plugin is not built-in.
@@ -111,6 +149,9 @@ func (c *connection) Read(p []byte) (int, error) {
 // Write writes len(p) bytes from p to the standard input attached to
 // the connection.
 func (c *connection) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	n, err := c.stdin.Write(p)
 	if err != nil {
 		return n, fmt.Errorf("write to connection failed: %w", err)
@@ -146,7 +187,68 @@ func (b *builtinPlugin) start(ctx context.Context) error {
 // Call calls a method in the plugin. It unmarshals the result into result if
 // the method call is successful. Otherwise, it returns any error that occurred
 // or was returned in response.
-func (*externalPlugin) call(_ context.Context, _ string, _, _ any) error {
+func (e *externalPlugin) call(ctx context.Context, method string, params, result any) error {
+	id := e.lastID.Add(1) //nolint:varnamelen
+
+	rpcID, err := api.NewID(id)
+	if err != nil {
+		return fmt.Errorf("failed to create ID: %w", err)
+	}
+
+	rawParams, err := json.Marshal(params)
+	if err != nil {
+		return fmt.Errorf("failed to marshal params: %w", err)
+	}
+
+	req := api.Request{
+		JSONRPC: api.JSONRPCVersion,
+		ID:      rpcID,
+		Method:  method,
+		Params:  rawParams,
+	}
+
+	log.Trace(
+		ctx,
+		"calling method",
+		"plugin",
+		e.manifest.Name,
+		"method",
+		method,
+		"id",
+		id,
+		"rpcId",
+		*rpcID,
+		"params",
+		params,
+	)
+	e.queue.add(rpcID)
+	defer e.queue.close(rpcID)
+
+	if err = write(e.conn, req); err != nil {
+		return fmt.Errorf("failed write request: %w", err)
+	}
+
+	select {
+	case res, ok := <-e.queue.channel(rpcID):
+		if !ok {
+			return fmt.Errorf("%w: plugin %q (method %s)", errNoResponse, e.manifest.Name, method)
+		}
+
+		log.Trace(ctx, "received response", "plugin", e.manifest.Name, "res", res)
+
+		if res.Error != nil {
+			return fmt.Errorf("plugin returned an error: %w", res.Error)
+		}
+
+		if err := json.Unmarshal(res.Result, result); err != nil {
+			return fmt.Errorf("failed to unmarshal result: %w", err)
+		}
+
+		log.Trace(ctx, "method call successful", "plugin", e.manifest.Name, "method", method, "id", id)
+	case <-ctx.Done():
+		return fmt.Errorf("method call halted: %w", ctx.Err())
+	}
+
 	return nil
 }
 
@@ -186,9 +288,10 @@ func (e *externalPlugin) start(ctx context.Context) error {
 	}
 
 	conn := &connection{
+		mu:     sync.Mutex{},
+		stderr: stderr,
 		stdin:  stdin,
 		stdout: stdout,
-		stderr: stderr,
 	}
 	e.conn = conn
 	e.cmd = c
@@ -197,7 +300,241 @@ func (e *externalPlugin) start(ctx context.Context) error {
 		return fmt.Errorf("execution of %q (%s) failed: %w", m.Name, e.cmd.Path, err)
 	}
 
+	handlePanic := panichandler.WithStackTrace()
+
 	// TODO: Add read loops.
+	go e.read(ctx, handlePanic)
+
+	go func() {
+		defer handlePanic()
+		e.doneCh <- e.cmd.Wait()
+		close(e.doneCh)
+	}()
+
+	return nil
+}
+
+// read runs the reading loop of the plugin. It listens to the connection with
+// the plugin process for data through the standard output pipe and passes
+// the messages either to the method callers or to the notification handler.
+func (e *externalPlugin) read(ctx context.Context, handlePanic func()) {
+	defer handlePanic()
+	defer e.queue.closeAll()
+
+	reader := bufio.NewReader(e.conn)
+
+	for {
+		msg, err := read(reader)
+		if err != nil {
+			log.Error(ctx, "error when reading from plugin", "plugin", e.manifest.Name, "err", err)
+
+			return
+		}
+
+		if msg.JSONRCP != api.JSONRPCVersion {
+			log.Error(
+				ctx,
+				"invalid JSON-RPC version",
+				"plugin",
+				e.manifest.Name,
+				"want",
+				api.JSONRPCVersion,
+				"got",
+				msg.JSONRCP,
+			)
+
+			return
+		}
+
+		if msg.ID == nil || msg.ID.Null {
+			switch {
+			case msg.Method == "":
+				log.Error(ctx, "no method in notification", "plugin", e.manifest.Name, "msg", msg)
+
+				return
+			case msg.Error != nil:
+				log.Error(ctx, "error in notification", "plugin", e.manifest.Name, "msg", msg)
+
+				return
+			case len(msg.Result) > 0:
+				log.Error(ctx, "result in notification", "plugin", e.manifest.Name, "msg", msg)
+
+				return
+			}
+
+			req := api.Request{
+				JSONRPC: msg.JSONRCP,
+				ID:      nil,
+				Method:  msg.Method,
+				Params:  msg.Params,
+			}
+
+			log.Trace(ctx, "received notification", "plugin", e.manifest.Name, "req", req)
+
+			// TODO: Handle the notification.
+
+			continue
+		}
+
+		switch {
+		case msg.Method != "":
+			log.Error(ctx, "method in response", "plugin", e.manifest.Name, "msg", msg)
+
+			return
+		case msg.Params != nil:
+			log.Error(ctx, "params in response", "plugin", e.manifest.Name, "msg", msg)
+
+			return
+		}
+
+		ch := e.queue.channel(msg.ID)
+		if ch == nil {
+			log.Error(ctx, "response with ID that is not waiting", "plugin", e.manifest.Name, "msg", msg)
+
+			return
+		}
+
+		res := api.Response{
+			JSONRPC: msg.JSONRCP,
+			ID:      *msg.ID,
+			Error:   msg.Error,
+			Result:  msg.Result,
+		}
+
+		ch <- res
+		close(ch)
+	}
+}
+
+func (q *responseQueue) add(id *api.ID) {
+	if q.q == nil {
+		panic("adding to nil responseQueue")
+	}
+
+	ch := make(chan api.Response, 1)
+
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	q.q[idToKey(id)] = ch
+}
+
+func (q *responseQueue) channel(id *api.ID) chan api.Response {
+	key := idToKey(id)
+
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	ch, ok := q.q[key]
+	if !ok {
+		return nil
+	}
+
+	delete(q.q, key)
+
+	return ch
+}
+
+// close closes the channel matching the given ID and deletes the entry from
+// the queue.
+func (q *responseQueue) close(id *api.ID) {
+	key := idToKey(id)
+
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	ch, ok := q.q[key]
+	if !ok {
+		return
+	}
+
+	close(ch)
+	delete(q.q, key)
+}
+
+// closeAll closes all of the channels from the queue.
+func (q *responseQueue) closeAll() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	for id, ch := range q.q {
+		close(ch)
+		delete(q.q, id)
+	}
+}
+
+// idToKey is a helper function that converts id into a string that can be used
+// as a key in pending channels map of the plugin client.
+func idToKey(id *api.ID) string {
+	b, err := json.Marshal(id)
+	if err != nil {
+		panic(fmt.Sprintf("failed to convert ID %v to JSON-encoded value: %v", id, err))
+	}
+
+	return string(b)
+}
+
+// read reads a message from the plugin using the given reader.
+func read(r *bufio.Reader) (*rpcMessage, error) {
+	var l int
+
+	for {
+		line, err := r.ReadString('\n')
+		if err != nil {
+			return nil, fmt.Errorf("failed to read line: %w", err)
+		}
+
+		line = strings.TrimRight(line, "\r\n")
+		if line == "" {
+			break
+		}
+
+		// TODO: Consider disallowing other headers.
+		if strings.HasPrefix(strings.ToLower(line), "content-length:") {
+			v := strings.TrimSpace(line[strings.IndexByte(line, ':')+1:])
+
+			if l, err = strconv.Atoi(v); err != nil {
+				return nil, fmt.Errorf("bad Content-Length %q: %w", v, err)
+			}
+		}
+	}
+
+	if l <= 0 {
+		return nil, fmt.Errorf("bad Content-Length %d: %w", l, errZeroLength)
+	}
+
+	buf := make([]byte, l)
+	if n, err := io.ReadFull(r, buf); err != nil {
+		return nil, fmt.Errorf("failed to read RPC message: %w", err)
+	} else if n != l {
+		return nil, fmt.Errorf("failed to read RPC message: %w, want %d, got %d", errWrongLength, l, n)
+	}
+
+	d := json.NewDecoder(bytes.NewReader(buf))
+	d.DisallowUnknownFields()
+
+	var msg *rpcMessage
+	if err := d.Decode(&msg); err != nil {
+		return nil, fmt.Errorf("failed to decode message from JSON: %w", err)
+	}
+
+	return msg, nil
+}
+
+func write(w io.Writer, req api.Request) error {
+	data, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	header := fmt.Sprintf("Content-Length: %d\r\n\r\n", len(data))
+	if _, err = w.Write([]byte(header)); err != nil {
+		return fmt.Errorf("failed to write request header: %w", err)
+	}
+
+	if _, err = w.Write(data); err != nil {
+		return fmt.Errorf("failed to write request data: %w", err)
+	}
 
 	return nil
 }
