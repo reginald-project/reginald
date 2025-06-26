@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build unix && !linux
+//go:build linux
 
 package fsutil
 
@@ -23,7 +23,7 @@ import (
 )
 
 type fileID struct {
-	dev int32  //nolint:unused // field is used for comparison and hashing
+	dev uint64 //nolint:unused // field is used for comparison and hashing
 	ino uint64 //nolint:unused // field is used for comparison and hashing
 }
 
