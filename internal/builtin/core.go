@@ -22,7 +22,7 @@ import (
 // coreManifest returns the manifest for the core plugin.
 func coreManifest() *api.Manifest {
 	return &api.Manifest{
-		Name:    Name,
+		Name:    "reginald-core",
 		Version: version.Version().String(),
 		Domain:  "core",
 		// TODO : Add a description.

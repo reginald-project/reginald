@@ -137,6 +137,20 @@ func (p Path) IsAbs() bool {
 	return filepath.IsAbs(string(p))
 }
 
+// IsFile reports whether the file name exists and is a directory.
+func (p Path) IsDir() (bool, error) {
+	info, err := os.Stat(string(p))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("%w", err)
+	}
+
+	return info.IsDir(), nil
+}
+
 // IsFile reports whether the file name exists and is a file.
 func (p Path) IsFile() (bool, error) {
 	info, err := os.Stat(string(p))

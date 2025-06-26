@@ -18,9 +18,6 @@ package builtin
 
 import "github.com/reginald-project/reginald-sdk-go/api"
 
-// Name is the name of the built-in plugins.
-const Name = "builtin"
-
 // Manifests returns the plugin manifests for the built-in plugins.
 func Manifests() []*api.Manifest {
 	manifests := make([]*api.Manifest, 0, 1)

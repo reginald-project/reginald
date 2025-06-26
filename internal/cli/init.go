@@ -334,7 +334,7 @@ func initOut(ctx context.Context, cfg *config.Config) error {
 func initPlugins(ctx context.Context, cfg *config.Config) (*plugin.Store, error) {
 	var pathErrs plugin.PathErrors
 
-	manifests, err := plugin.Search(ctx, cfg.Directory, cfg.PluginPaths)
+	store, err := plugin.NewStore(ctx, cfg.Directory, cfg.PluginPaths)
 	if err != nil {
 		if !errors.As(err, &pathErrs) {
 			return nil, fmt.Errorf("failed to search for plugins: %w", err)
@@ -342,8 +342,6 @@ func initPlugins(ctx context.Context, cfg *config.Config) (*plugin.Store, error)
 
 		log.Error(ctx, "failed to search for plugins", "err", pathErrs)
 	}
-
-	store := plugin.NewStore(manifests)
 
 	log.Debug(ctx, "created plugins", "store", store)
 

@@ -29,7 +29,6 @@ import (
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/reginald-project/reginald-sdk-go/api"
-	"github.com/reginald-project/reginald/internal/builtin"
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/log"
@@ -105,8 +104,7 @@ func ApplyPlugins(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 		name := manifest.Name
 		domain := manifest.Domain
 
-		if name == builtin.Name {
-			name = "builtin:" + cmd.Name
+		if !cmd.Plugin.External() {
 			domain = cmd.Name
 		}
 

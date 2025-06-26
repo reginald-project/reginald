@@ -37,6 +37,9 @@ type Plugin interface {
 	// occured or was returned in response.
 	Call(ctx context.Context, method string, params any, result any) error
 
+	// External reports whether the plugin is not built-in.
+	External() bool
+
 	// Manifest returns the loaded manifest for the plugin.
 	Manifest() *api.Manifest
 
@@ -77,16 +80,21 @@ type externalPlugin struct {
 	loaded bool
 }
 
-// Manifest returns the loaded manifest for the plugin.
-func (b *builtinPlugin) Manifest() *api.Manifest {
-	return b.manifest
-}
-
 // Call calls a method in the plugin. It unmarshals the result into result if
 // the method call is successful. Otherwise, it returns any error that occured
 // or was returned in response.
-func (b *builtinPlugin) Call(ctx context.Context, method string, params any, result any) error {
+func (*builtinPlugin) Call(ctx context.Context, method string, params any, result any) error {
 	return nil
+}
+
+// External reports whether the plugin is not built-in.
+func (*builtinPlugin) External() bool {
+	return false
+}
+
+// Manifest returns the loaded manifest for the plugin.
+func (b *builtinPlugin) Manifest() *api.Manifest {
+	return b.manifest
 }
 
 // Start starts the execution of the plugin process.
@@ -116,8 +124,13 @@ func (c *connection) Write(p []byte) (int, error) {
 // Call calls a method in the plugin. It unmarshals the result into result if
 // the method call is successful. Otherwise, it returns any error that occured
 // or was returned in response.
-func (e *externalPlugin) Call(ctx context.Context, method string, params any, result any) error {
+func (*externalPlugin) Call(ctx context.Context, method string, params any, result any) error {
 	return nil
+}
+
+// External reports whether the plugin is not built-in.
+func (*externalPlugin) External() bool {
+	return true
 }
 
 // Manifest returns the loaded manifest for the plugin.
@@ -175,20 +188,4 @@ func (e *externalPlugin) Start(ctx context.Context) error {
 	// TODO: Add read loops.
 
 	return nil
-}
-
-// newBuiltin returns a new built-in plugin for the given manifest.
-func newBuiltin(m *api.Manifest) *builtinPlugin {
-	return &builtinPlugin{
-		manifest: m,
-	}
-}
-
-// newExternal returns a new external plugin for the given manifest.
-func newExternal(m *api.Manifest) *externalPlugin {
-	return &externalPlugin{
-		manifest: m,
-		conn:     nil,
-		loaded:   false,
-	}
 }

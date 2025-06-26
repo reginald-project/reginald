@@ -20,9 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
-	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -46,52 +44,58 @@ type Store struct {
 	Commands []*Command
 }
 
-type searchOptions struct {
-	mu           *sync.Mutex
-	manifests    *[]*api.Manifest
-	panicHandler func()
-	path         fspath.Path
-	wd           fspath.Path
-}
-
-type pathEntryOptions struct {
-	mu           *sync.Mutex
-	manifests    *[]*api.Manifest
-	panicHandler func()
-	dir          os.DirEntry
-	path         fspath.Path
-}
-
-// NewStore creates a new Store that contains the plugins from the given
-// manifests.
-func NewStore(manifests []*api.Manifest) *Store {
+// Search finds the available plugins by their "manifest.json" files and loads
+// the manifest information.
+func NewStore(ctx context.Context, wd fspath.Path, paths []fspath.Path) (*Store, error) {
+	// The built-in plugins should be added first as they are already included
+	// with the program. The external plugins are validated while they are being
+	// loaded so by loading the built-in plugins first, we can make sure that no
+	// external plugin collides with them.
+	manifests := slices.Clone(builtin.Manifests())
 	plugins := make([]Plugin, 0, len(manifests))
-	commands := make([]*Command, 0, len(manifests))
 
 	for _, m := range manifests {
-		var plugin Plugin
-
-		// Built-in plugins don't require any complex setups.
-		if m.Name == builtin.Name {
-			plugin = newBuiltin(m)
-		} else {
-			plugin = newExternal(m)
-		}
-
-		pluginCmds := newCommands(plugin)
-		if pluginCmds != nil {
-			commands = append(commands, pluginCmds...)
-		}
-
-		plugins = append(plugins, plugin)
+		plugins = append(plugins, &builtinPlugin{
+			manifest: m,
+		})
 	}
+
+	var pathErrs PathErrors
+
+	external, err := readAllSearchPaths(ctx, wd, paths)
+	if err != nil && !errors.As(err, &pathErrs) {
+		return nil, err
+	}
+
+	plugins = append(plugins, external...)
+
+	if slog.Default().Enabled(ctx, slog.Level(logs.LevelTrace)) {
+		for _, p := range plugins {
+			log.Trace(ctx, "loaded name-domain pair", "name", p.Manifest().Name, "domain", p.Manifest().Domain)
+		}
+	}
+
+	var commands []*Command
+
+	for _, p := range plugins {
+		cmds := newCommands(p)
+		if cmds != nil {
+			commands = append(commands, cmds...)
+		}
+	}
+
+	log.Debug(ctx, "created plugin commands", "cmds", logCmds(commands))
 
 	store := &Store{
 		Plugins:  plugins,
 		Commands: commands,
 	}
 
-	return store
+	if len(pathErrs) > 0 {
+		return store, pathErrs
+	}
+
+	return store, nil
 }
 
 // Init loads the required plugins and performs a handshake with them.
@@ -165,112 +169,167 @@ func (s *Store) Command(prev *Command, name string) *Command {
 	return nil
 }
 
-// Search finds the available plugins by their "manifest.json" files and loads
-// the manifest information.
-func Search(ctx context.Context, wd fspath.Path, paths []fspath.Path) ([]*api.Manifest, error) {
-	var (
-		mu       sync.Mutex
-		errMu    sync.Mutex
-		pathErrs PathErrors
-	)
+// validatePlugins checks the created plugins for conflicts. Specifically,
+// the plugins may not have duplicate names, domains, or executables.
+func validatePlugins(plugins []Plugin) error {
+	for _, p1 := range plugins {
+		m1 := p1.Manifest()
 
-	// The built-in plugins should be added first as they are already included
-	// with the program. The external plugins are validated while they are being
-	// loaded so by loading the built-in plugins first, we can make sure that no
-	// external plugin collides with them.
-	manifests := slices.Clone(builtin.Manifests())
-	eg, gctx := errgroup.WithContext(ctx)
-
-	for _, path := range paths {
-		opts := searchOptions{
-			path:         path,
-			wd:           wd,
-			mu:           &mu,
-			manifests:    &manifests,
-			panicHandler: panichandler.WithStackTrace(),
-		}
-
-		eg.Go(func() error {
-			err := searchPath(gctx, opts)
-			if err != nil {
-				var pathErr *PathError
-				if !errors.As(err, &pathErr) {
-					return err
-				}
-
-				errMu.Lock()
-				defer errMu.Unlock()
-
-				pathErrs = append(pathErrs, pathErr)
+		for _, p2 := range plugins {
+			if p1 == p2 {
+				continue
 			}
 
-			return nil
-		})
-	}
+			m2 := p2.Manifest()
 
-	if err := eg.Wait(); err != nil {
-		return nil, fmt.Errorf("failed to load manifests: %w", err)
-	}
+			if m1.Name == m2.Name {
+				return fmt.Errorf("%w: duplicate plugin name %q", errInvalidManifest, m1.Name)
+			}
 
-	logLoadedManifest(ctx, manifests)
+			if m1.Domain == m2.Domain {
+				return fmt.Errorf("%w: duplicate plugin domain %q", errInvalidManifest, m1.Domain)
+			}
 
-	if len(pathErrs) > 0 {
-		return manifests, pathErrs
-	}
-
-	return manifests, nil
-}
-
-// checkDuplicates checks if the manifest has duplicate fields with manifests
-// that are already defined. A manifest may not have the same name, domain, or
-// executable as some other manifest. As the function reads the manifests slice,
-// the lock protecting the slice should be locked before calling this function.
-func checkDuplicates(ctx context.Context, manifest *api.Manifest, manifests []*api.Manifest) error {
-	for _, m := range manifests {
-		if m.Name == manifest.Name {
-			log.Trace(ctx, "conflicting manifests", "new", manifest, "old", m)
-
-			return fmt.Errorf("%w: duplicate plugin name %q", errInvalidManifest, m.Name)
-		}
-
-		if m.Domain == manifest.Domain {
-			log.Trace(ctx, "conflicting manifests", "new", manifest, "old", m)
-
-			return fmt.Errorf("%w: duplicate plugin domain %q", errInvalidManifest, m.Domain)
-		}
-
-		if m.Executable == manifest.Executable {
-			log.Trace(ctx, "conflicting manifests", "new", manifest, "old", m)
-
-			return fmt.Errorf(
-				"%w: duplicate plugin executable path %q",
-				errInvalidManifest,
-				m.Executable,
-			)
+			if m1.Executable == m2.Executable {
+				return fmt.Errorf("%w: duplicate plugin executable path %q", errInvalidManifest, m1.Executable)
+			}
 		}
 	}
 
 	return nil
 }
 
-// load loads the manifest from the search path for the DirEntry.
-func load(ctx context.Context, path fspath.Path, dirEntry os.DirEntry) (*api.Manifest, error) {
-	if !dirEntry.IsDir() {
-		log.Trace(ctx, "entry is not directory", "path", path, "name", dirEntry.Name())
+// readAllSearchPaths loads plugins from all of the given search paths.
+func readAllSearchPaths(ctx context.Context, wd fspath.Path, paths []fspath.Path) ([]Plugin, error) {
+	var (
+		mu       sync.Mutex
+		errMu    sync.Mutex
+		pathErrs PathErrors
+		plugins  []Plugin
+	)
 
-		return nil, fmt.Errorf("%w: %s is not a directory", errNoManifestFile, path)
+	g, ctx := errgroup.WithContext(ctx)
+
+	for _, path := range paths {
+		handlePanic := panichandler.WithStackTrace()
+
+		g.Go(func() error {
+			defer handlePanic()
+
+			var err error
+
+			if !path.IsAbs() {
+				// TODO: Is this sufficient?
+				if strings.HasPrefix(path.String(), "~") {
+					path, err = path.Abs()
+				} else {
+					path, err = fspath.NewAbs(string(wd), string(path))
+				}
+
+				if err != nil {
+					return fmt.Errorf("failed to create absolute path from %q: %w", path, err)
+				}
+			}
+
+			path := path.Clean()
+
+			log.Trace(ctx, "checking plugin search path", "path", path)
+
+			if ok, err := path.IsDir(); err != nil {
+				return fmt.Errorf("cannot check if %q is a directory: %w", path, err)
+			} else if !ok {
+				errMu.Lock()
+				defer errMu.Unlock()
+				pathErrs = append(pathErrs, &PathError{Path: path})
+				return nil
+			}
+
+			result, err := readSearchPath(ctx, path)
+			if err != nil {
+				return err
+			}
+
+			mu.Lock()
+			defer mu.Unlock()
+
+			plugins = append(plugins, result...)
+
+			return nil
+		})
 	}
 
-	manifestPath := path.Join(dirEntry.Name(), "manifest.json")
-	if ok, err := manifestPath.IsFile(); err != nil {
-		return nil, fmt.Errorf("failed to check if %q is a file: %w", manifestPath, err)
-	} else if !ok {
-		return nil, fmt.Errorf("%w: %s is not a file", errNoManifestFile, manifestPath)
+	if err := g.Wait(); err != nil {
+		return nil, fmt.Errorf("failed to read plugin search paths: %w", err)
 	}
 
-	data, err := manifestPath.Clean().ReadFile()
+	if pathErrs != nil {
+		return plugins, pathErrs
+	}
+
+	return plugins, nil
+}
+
+// readSearchPath reads one search path, checks all of the directories in it and
+// creates plugins for all of the found manifests.
+func readSearchPath(ctx context.Context, path fspath.Path) ([]Plugin, error) {
+	var (
+		mu      sync.Mutex
+		plugins []Plugin
+	)
+
+	dir, err := path.Clean().ReadDir()
 	if err != nil {
-		return nil, fmt.Errorf("failed to read %q: %w", manifestPath, err)
+		return nil, fmt.Errorf("failed to read directory %q: %w", path, err)
+	}
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	for _, dirEntry := range dir {
+		handlePanic := panichandler.WithStackTrace()
+
+		g.Go(func() error {
+			defer handlePanic()
+
+			log.Trace(ctx, "checking dir entry", "path", path, "name", dirEntry.Name())
+
+			if !dirEntry.IsDir() {
+				log.Warn(ctx, "dir entry in the plugins directory is not directory", "path", path, "name", dirEntry.Name())
+
+				return nil
+			}
+
+			// TODO: Possibly allow using other file formats.
+			manifestPath := path.Join(dirEntry.Name(), "manifest.json").Clean()
+
+			plugin, err := readExternalPlugin(ctx, manifestPath)
+			if err != nil {
+				return err
+			}
+
+			mu.Lock()
+			defer mu.Unlock()
+
+			plugins = append(plugins, plugin)
+
+			log.Trace(ctx, "loaded external plugin", "plugin", plugin, "manifest", plugin.Manifest())
+
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, fmt.Errorf("searching plugins from %q failed: %w", path, err)
+	}
+
+	return plugins, nil
+}
+
+// readExternalPlugin reads a plugin's manifest from path, decodes and validates
+// it, and returns an external plugin created from it.
+func readExternalPlugin(ctx context.Context, path fspath.Path) (*externalPlugin, error) {
+	data, err := path.ReadFile()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read %q: %w", path, err)
 	}
 
 	d := json.NewDecoder(bytes.NewReader(data))
@@ -278,38 +337,13 @@ func load(ctx context.Context, path fspath.Path, dirEntry os.DirEntry) (*api.Man
 
 	var manifest *api.Manifest
 	if err = d.Decode(&manifest); err != nil {
-		return nil, fmt.Errorf("failed to decode the manifest at %q: %w", manifestPath, err)
+		return nil, fmt.Errorf("failed to decode the manifest at %q: %w", path, err)
 	}
 
-	if err := revise(manifest, manifestPath); err != nil {
-		return nil, err
-	}
+	log.Trace(ctx, "manifest file decoded", "path", path, "manifest", manifest)
 
-	return manifest, nil
-}
-
-func logLoadedManifest(ctx context.Context, manifests []*api.Manifest) {
-	// Maybe not necessary, but it's nice to create the log values only if
-	// they're used.
-	if slog.Default().Enabled(ctx, slog.Level(logs.LevelTrace)) {
-		names := make([]string, len(manifests))
-		domains := make([]string, len(manifests))
-
-		for i, m := range manifests {
-			names[i] = m.Name
-			domains[i] = m.Domain
-		}
-
-		log.Trace(ctx, "loaded plugin manifests", "names", names, "domains", domains)
-	}
-}
-
-// revise validates the given Manifest and normalizes its values, for example
-// setting the name of the plugin as its domain if the plugin doesn't provide
-// one. It modifies the given manifest in place.
-func revise(manifest *api.Manifest, path fspath.Path) error {
 	if manifest.Name == "" {
-		return fmt.Errorf("%w: manifest at %q did not specify a name", errInvalidManifest, path)
+		return nil, fmt.Errorf("%w: manifest at %q did not specify a name", errInvalidManifest, path)
 	}
 
 	if manifest.Domain == "" {
@@ -317,12 +351,12 @@ func revise(manifest *api.Manifest, path fspath.Path) error {
 	}
 
 	if manifest.Executable == "" {
-		return fmt.Errorf("%w: manifest at %q did not specify executable", errInvalidManifest, path)
+		return nil, fmt.Errorf("%w: manifest at %q did not specify executable", errInvalidManifest, path)
 	}
 
 	execPath, err := fspath.NewAbs(string(path.Dir()), manifest.Executable)
 	if err != nil {
-		return fmt.Errorf(
+		return nil, fmt.Errorf(
 			"failed to create absolute executable path from %q for plugin %q: %w",
 			manifest.Executable,
 			manifest.Name,
@@ -331,111 +365,31 @@ func revise(manifest *api.Manifest, path fspath.Path) error {
 	}
 
 	if ok, err := execPath.IsFile(); err != nil {
-		return fmt.Errorf("failed to check if %q is a file: %w", execPath, err)
+		return nil, fmt.Errorf("failed to check if %q is a file: %w", execPath, err)
 	} else if !ok {
-		return fmt.Errorf("%w: executable at %q is not a file", errInvalidManifest, execPath)
+		return nil, fmt.Errorf("%w: executable at %q is not a file", errInvalidManifest, execPath)
 	}
 
 	manifest.Executable = string(execPath)
 
 	// We need to make sure that there are no nil commands as we decided to
-	// panic later on nil commands.
-	j := 0
+	// panic later if we find them.
+	i := 0
 
 	for _, cmd := range manifest.Commands {
 		if cmd != nil {
-			manifest.Commands[j] = cmd
-			j++
+			manifest.Commands[i] = cmd
+			i++
 		}
 	}
 
-	manifest.Commands = manifest.Commands[:j]
+	manifest.Commands = manifest.Commands[:i]
 
-	return nil
-}
+	log.Trace(ctx, "manifest for external plugin loaded", "path", path, "manifest", manifest)
 
-func searchPath(ctx context.Context, opts searchOptions) error {
-	defer opts.panicHandler()
-
-	var err error
-
-	if !opts.path.IsAbs() {
-		if strings.HasPrefix(opts.path.String(), "~") {
-			opts.path, err = opts.path.Abs()
-		} else {
-			opts.path, err = fspath.NewAbs(string(opts.wd), string(opts.path))
-		}
-
-		if err != nil {
-			return fmt.Errorf("failed to create absolute path from %q: %w", opts.path, err)
-		}
-	}
-
-	log.Trace(ctx, "checking plugin search path", "path", opts.path)
-
-	var dir []os.DirEntry
-
-	dir, err = opts.path.Clean().ReadDir()
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return &PathError{Path: opts.path}
-		}
-
-		return fmt.Errorf("failed to read directory %q: %w", opts.path, err)
-	}
-
-	eg, gctx := errgroup.WithContext(ctx)
-
-	for _, entry := range dir {
-		entryOpts := pathEntryOptions{
-			path:         opts.path,
-			dir:          entry,
-			mu:           opts.mu,
-			manifests:    opts.manifests,
-			panicHandler: panichandler.WithStackTrace(),
-		}
-
-		eg.Go(func() error {
-			return searchPathEntry(gctx, entryOpts)
-		})
-	}
-
-	if err = eg.Wait(); err != nil {
-		return fmt.Errorf("failed to search for plugins: %w", err)
-	}
-
-	return nil
-}
-
-func searchPathEntry(ctx context.Context, opts pathEntryOptions) error {
-	defer opts.panicHandler()
-
-	log.Trace(ctx, "checking dir entry", "path", opts.path, "name", opts.dir.Name())
-
-	manifest, err := load(ctx, opts.path, opts.dir)
-	if err != nil {
-		if errors.Is(err, errNoManifestFile) {
-			log.Trace(ctx, "no manifest file found", "path", opts.path, "name", opts.dir.Name())
-
-			return nil
-		}
-
-		return err
-	}
-
-	log.Trace(ctx, "loaded manifest", "manifest", manifest)
-	opts.mu.Lock()
-	defer opts.mu.Unlock()
-
-	if err := checkDuplicates(ctx, manifest, *opts.manifests); err != nil {
-		return err
-	}
-
-	log.Trace(ctx, "appending manifest", "manifest", manifest, "path", opts.path)
-
-	*opts.manifests = append(*opts.manifests, manifest)
-
-	log.Trace(ctx, "manifest loaded", "manifest", manifest)
-
-	return nil
+	return &externalPlugin{
+		manifest: manifest,
+		conn:     nil,
+		loaded:   false,
+	}, nil
 }

@@ -24,7 +24,6 @@ import (
 var (
 	ErrInvalidConfig   = errors.New("invalid plugin config")
 	errInvalidManifest = errors.New("invalid plugin manifest")
-	errNoManifestFile  = errors.New("no manifest file found")
 )
 
 // A PathError is returned when a plugin search path is not found.

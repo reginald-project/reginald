@@ -114,7 +114,7 @@ func newCommands(plugin Plugin) []*Command {
 		return nil
 	}
 
-	if manifest.Domain == "core" {
+	if !plugin.External() {
 		cmds := make([]*Command, len(manifest.Commands))
 
 		for i, cmd := range manifest.Commands {
