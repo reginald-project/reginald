@@ -29,6 +29,7 @@ import (
 	"github.com/reginald-project/reginald-sdk-go/logs"
 	"github.com/reginald-project/reginald/internal/builtin"
 	"github.com/reginald-project/reginald/internal/fspath"
+	"github.com/reginald-project/reginald/internal/fsutil"
 	"github.com/reginald-project/reginald/internal/log"
 	"github.com/reginald-project/reginald/internal/panichandler"
 	"golang.org/x/sync/errgroup"
@@ -44,8 +45,9 @@ type Store struct {
 	Commands []*Command
 }
 
-// Search finds the available plugins by their "manifest.json" files and loads
-// the manifest information.
+// NewStore finds the available built-in and external plugin manifests from
+// the given search paths, loads and decodes them, and returns a new Store with
+// the plugins created from them.
 func NewStore(ctx context.Context, wd fspath.Path, paths []fspath.Path) (*Store, error) {
 	// The built-in plugins should be added first as they are already included
 	// with the program. The external plugins are validated while they are being
@@ -73,6 +75,10 @@ func NewStore(ctx context.Context, wd fspath.Path, paths []fspath.Path) (*Store,
 		for _, p := range plugins {
 			log.Trace(ctx, "loaded name-domain pair", "name", p.Manifest().Name, "domain", p.Manifest().Domain)
 		}
+	}
+
+	if err := validate(plugins); err != nil {
+		return nil, err
 	}
 
 	var commands []*Command
@@ -113,8 +119,8 @@ func (*Store) Init(ctx context.Context, cmd *Command) error {
 		eg.Go(func() error {
 			defer handlePanic()
 
-			if err := plugin.Start(ctx); err != nil {
-				return err
+			if err := plugin.start(ctx); err != nil {
+				return fmt.Errorf("failed to start %q: %w", plugin.Manifest().Name, err)
 			}
 
 			return nil
@@ -169,36 +175,6 @@ func (s *Store) Command(prev *Command, name string) *Command {
 	return nil
 }
 
-// validatePlugins checks the created plugins for conflicts. Specifically,
-// the plugins may not have duplicate names, domains, or executables.
-func validatePlugins(plugins []Plugin) error {
-	for _, p1 := range plugins {
-		m1 := p1.Manifest()
-
-		for _, p2 := range plugins {
-			if p1 == p2 {
-				continue
-			}
-
-			m2 := p2.Manifest()
-
-			if m1.Name == m2.Name {
-				return fmt.Errorf("%w: duplicate plugin name %q", errInvalidManifest, m1.Name)
-			}
-
-			if m1.Domain == m2.Domain {
-				return fmt.Errorf("%w: duplicate plugin domain %q", errInvalidManifest, m1.Domain)
-			}
-
-			if m1.Executable == m2.Executable {
-				return fmt.Errorf("%w: duplicate plugin executable path %q", errInvalidManifest, m1.Executable)
-			}
-		}
-	}
-
-	return nil
-}
-
 // readAllSearchPaths loads plugins from all of the given search paths.
 func readAllSearchPaths(ctx context.Context, wd fspath.Path, paths []fspath.Path) ([]Plugin, error) {
 	var (
@@ -231,16 +207,20 @@ func readAllSearchPaths(ctx context.Context, wd fspath.Path, paths []fspath.Path
 				}
 			}
 
-			path := path.Clean()
+			path = path.Clean()
 
 			log.Trace(ctx, "checking plugin search path", "path", path)
 
-			if ok, err := path.IsDir(); err != nil {
+			var ok bool
+
+			if ok, err = path.IsDir(); err != nil {
 				return fmt.Errorf("cannot check if %q is a directory: %w", path, err)
 			} else if !ok {
 				errMu.Lock()
 				defer errMu.Unlock()
+
 				pathErrs = append(pathErrs, &PathError{Path: path})
+
 				return nil
 			}
 
@@ -293,7 +273,14 @@ func readSearchPath(ctx context.Context, path fspath.Path) ([]Plugin, error) {
 			log.Trace(ctx, "checking dir entry", "path", path, "name", dirEntry.Name())
 
 			if !dirEntry.IsDir() {
-				log.Warn(ctx, "dir entry in the plugins directory is not directory", "path", path, "name", dirEntry.Name())
+				log.Warn(
+					ctx,
+					"dir entry in the plugins directory is not directory",
+					"path",
+					path,
+					"name",
+					dirEntry.Name(),
+				)
 
 				return nil
 			}
@@ -390,6 +377,54 @@ func readExternalPlugin(ctx context.Context, path fspath.Path) (*externalPlugin,
 	return &externalPlugin{
 		manifest: manifest,
 		conn:     nil,
+		cmd:      nil,
 		loaded:   false,
 	}, nil
+}
+
+// validate checks the created plugins for conflicts. Specifically, the plugins
+// may not have duplicate names, domains, or executables.
+func validate(plugins []Plugin) error {
+	seenNames := make(map[string]struct{})
+	seenDomains := make(map[string]struct{})
+	seenExecutables := make(map[fsutil.FileID]string)
+
+	for _, p := range plugins {
+		m := p.Manifest()
+
+		if _, ok := seenNames[m.Name]; ok {
+			return fmt.Errorf("%w: duplicate plugin name %q", errInvalidManifest, m.Name)
+		}
+
+		seenNames[m.Name] = struct{}{}
+
+		if _, ok := seenDomains[m.Domain]; ok {
+			return fmt.Errorf("%w: duplicate plugin domain %q", errInvalidManifest, m.Domain)
+		}
+
+		seenDomains[m.Domain] = struct{}{}
+
+		if !p.External() {
+			continue
+		}
+
+		id, err := fsutil.ID(m.Executable)
+		if err != nil {
+			return fmt.Errorf("failed create file ID: %w", err)
+		}
+
+		if firstPath, ok := seenExecutables[id]; ok {
+			return fmt.Errorf(
+				"%w: executable for plugin %q (%s) is the same as the executable for another plugin (%q)",
+				errInvalidManifest,
+				m.Name,
+				m.Executable,
+				firstPath,
+			)
+		}
+
+		seenExecutables[id] = m.Executable
+	}
+
+	return nil
 }

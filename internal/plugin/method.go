@@ -14,9 +14,7 @@
 
 package plugin
 
-import "context"
-
 // handshake performs the "handshake"
-func handshake(ctx context.Context, plugin Plugin) error {
-	return nil
-}
+// func handshake(_ context.Context, _ Plugin) error {
+// 	return nil
+// }

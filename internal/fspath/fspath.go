@@ -14,8 +14,7 @@
 
 // Package fspath implements utility routines for manipulating filename paths in
 // a way compatible with the target operating system-defined file paths through
-// the [Path] type. It also implements basic utility routines for interacting
-// with the files and file system through [Path].
+// the [Path] type.
 package fspath
 
 import (
@@ -137,7 +136,7 @@ func (p Path) IsAbs() bool {
 	return filepath.IsAbs(string(p))
 }
 
-// IsFile reports whether the file name exists and is a directory.
+// IsDir reports whether the file name exists and is a directory.
 func (p Path) IsDir() (bool, error) {
 	info, err := os.Stat(string(p))
 	if err != nil {

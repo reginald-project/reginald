@@ -76,7 +76,7 @@ linters:
     importas:
       no-extra-aliases: true
     interfacebloat:
-      max: 3 # TODO: Adjust as needed to find a good value.
+      max: 5
     loggercheck:
       slog: true
       rules:
