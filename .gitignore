@@ -1,4 +1,7 @@
+bin/
 *.log
+/buildtask
+/installtool
 /reginald
 /reginald-*
 reginald.toml

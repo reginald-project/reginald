@@ -1,4 +1,4 @@
-// Copyright 2025 Antti Kivi
+// Copyright 2025 The Reginald Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,21 +20,21 @@ package panichandler
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"runtime/debug"
 	"strings"
 	"sync"
 
-	"github.com/reginald-project/reginald/internal/iostreams"
-	"github.com/reginald-project/reginald/internal/logging"
-	"github.com/reginald-project/reginald/pkg/version"
-	"golang.org/x/term"
+	"github.com/reginald-project/reginald/internal/log/logwriter"
+	"github.com/reginald-project/reginald/internal/terminal"
+	"github.com/reginald-project/reginald/internal/text"
+	"github.com/reginald-project/reginald/internal/version"
 )
 
 const (
-	defaultPrintWidth = 80
-	header            = "!!! REGINALD CRASHED !%s"
+	header = "!!! REGINALD CRASHED !%s"
 	//nolint:lll
 	panicInfo = `
 Reginald has encountered an unexpected error. This is most likely a bug in the program. In your bug report, please include the Reginald version and stack trace shown below and any additional information that may help with resolving the bug or replicating the issue.
@@ -53,6 +53,13 @@ Thank you for helping Reginald!
 // message, and exits the program.
 var panicMu sync.Mutex //nolint:gochecknoglobals // used be multiple goroutines
 
+// cancel is the cancel function for the program context. It should be set at
+// the beginning of the program. It must be run before exiting the program.
+var cancel context.CancelFunc //nolint:gochecknoglobals // global cancel for the context
+
+// cancelOnce is used to ensure that cancel is only set once.
+var cancelOnce sync.Once //nolint:gochecknoglobals // global cancel for the context
+
 // Handle recovers the panics of the program and prints the information included
 // with them with the stack trace and a helpful message that guides the user to
 // report the bug using the issue tracker.
@@ -63,7 +70,7 @@ func Handle() {
 	//revive:disable-next-line:defer This is a deferred function.
 	r := recover()
 
-	panicHandler(r, nil)
+	handlePanic(r, nil)
 }
 
 // WithStackTrace returns a function that is similar to Handle but it captures
@@ -80,24 +87,37 @@ func WithStackTrace() func() {
 		//revive:disable-next-line:defer This is a deferred function.
 		r := recover()
 
-		panicHandler(r, trace)
+		handlePanic(r, trace)
 	}
 }
 
-func panicHandler(r any, t []byte) {
+// SetCancel sets the cancel function for the program context.
+func SetCancel(c context.CancelFunc) {
+	cancelOnce.Do(func() {
+		cancel = c
+	})
+}
+
+func handlePanic(r any, t []byte) {
 	if r == nil {
 		return
 	}
+
+	if cancel == nil {
+		panic("cancel function not set")
+	}
+
+	cancel()
 
 	var buf bytes.Buffer
 
 	buf.WriteByte('\n')
 
-	width := termWidth()
+	width := terminal.Width()
 
 	buf.WriteString(fmt.Sprintf(header, strings.Repeat("!", width-len(header)+1)))
 	buf.WriteString("\n\n")
-	buf.WriteString(wrap(panicInfo, width))
+	buf.WriteString(text.Wrap(panicInfo, width))
 	buf.WriteByte('\n')
 	buf.WriteString(fmt.Sprintf("Version: %s\n", version.Version()))
 	buf.WriteString(fmt.Sprintf("Panic: %v\n\n", r))
@@ -109,84 +129,24 @@ func panicHandler(r any, t []byte) {
 		buf.Write(t)
 	}
 
-	if w, ok := logging.BootstrapWriter.(*logging.BufferedFileWriter); ok {
-		// TODO: See if this should use the actual file system in use instead of
-		// defaulting to the OS file system.
+	if w, ok := logwriter.BootstrapWriter.(*logwriter.BufferedFileWriter); ok {
 		if err := w.Flush(); err != nil {
 			buf.WriteString(fmt.Sprintf("\nFailed to write the boostrap log to file: %v\n\n", err))
 			buf.WriteString("The bootstrap logs:\n")
 			buf.Write(w.Bytes())
 		} else {
-			buf.WriteString(fmt.Sprintf("\nBootstrap logs are written to %s\n", w.File()))
-			buf.WriteString("Consider including them when opening an issue.")
+			buf.WriteString(fmt.Sprintf("\nBootstrap log is written to %s\n", w.File()))
+			buf.WriteString("Consider including it when opening an issue.")
 		}
 	}
 
 	buf.WriteString("\n" + footer)
-
-	iostreams.StdioMu.Lock()
 
 	if _, err := os.Stderr.Write(buf.Bytes()); err != nil {
 		// This is absolutely stupid but, if we get here, all is lost anyway.
 		buf.WriteString(fmt.Sprintf("FAILED TO WRITE BYTES TO STDERR: %v\n", err))
 	}
 
-	iostreams.StdioMu.Unlock()
 	//revive:disable-next-line:deep-exit Panic handler has to exit with error.
 	os.Exit(1)
-}
-
-func wrap(s string, width int) string {
-	var sb strings.Builder
-
-	for p := range strings.SplitSeq(s, "\n\n") {
-		words := strings.Fields(p)
-		l := 0
-
-		for i, w := range words {
-			addForSpace := 0
-
-			if l > 0 {
-				addForSpace = 1
-			}
-
-			if l+len(w)+addForSpace > width {
-				sb.WriteByte('\n')
-
-				l = 0
-			}
-
-			if l > 0 {
-				sb.WriteByte(' ')
-
-				l++
-			}
-
-			sb.WriteString(w)
-
-			l += len(w)
-
-			if i == len(words)-1 {
-				sb.WriteString("\n\n")
-			}
-		}
-	}
-
-	result := sb.String()
-
-	if strings.HasSuffix(result, "\n\n") {
-		result = result[:len(result)-1]
-	}
-
-	return result
-}
-
-// termWidth returns the current terminal width (in characters) or a default of
-// 80 if it cannot be determined.
-func termWidth() int {
-	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
-		return w
-	}
-
-	return defaultPrintWidth
 }

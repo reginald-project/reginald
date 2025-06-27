@@ -1,4 +1,4 @@
-// Copyright 2025 Antti Kivi
+// Copyright 2025 The Reginald Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"reflect"
@@ -26,19 +27,14 @@ import (
 
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/fspath"
-	"github.com/reginald-project/reginald/internal/iostreams"
-	"github.com/reginald-project/reginald/internal/logging"
-	"github.com/reginald-project/reginald/internal/taskcfg"
-	"github.com/reginald-project/reginald/pkg/logs"
+	"github.com/reginald-project/reginald/internal/log"
+	"github.com/reginald-project/reginald/internal/log/logconfig"
+	"github.com/reginald-project/reginald/internal/terminal"
 )
 
-// EnvPrefix is the prefix added to the names of the config values when reading
-// them from environment variables.
-const EnvPrefix = "REGINALD" // prefix used for the environment variables.
-
 const (
-	defaultFileName    = "reginald"
-	defaultLogFileName = defaultFileName + ".log"
+	defaultPrefix      = "reginald"
+	defaultLogFileName = defaultPrefix + ".log"
 )
 
 // Config is the parsed configuration of the program run. There should be only
@@ -48,17 +44,20 @@ const (
 // After the parsing, Config should not be written to and, thus, the lock should
 // no longer be used.
 type Config struct {
+	// sourceFile is path to the config file that was found and parsed.
+	sourceFile fspath.Path
+
 	// Directory is the "dotfiles" directory option. If it is set, Reginald
 	// looks for all of the relative filenames from this directory. Most
 	// absolute paths are still resolved relative to actual current working
 	// directory of the program.
 	Directory fspath.Path `mapstructure:"directory"`
 
-	// PluginDir is the directory where Reginald looks for the plugins.
-	PluginDir fspath.Path `mapstructure:"plugin-dir"`
+	// PluginPaths is the directory where Reginald looks for the plugins.
+	PluginPaths []fspath.Path `mapstructure:"plugin-paths"`
 
 	// Defaults contains the default options set for tasks.
-	Defaults taskcfg.Defaults `mapstructure:"defaults"`
+	Defaults TaskDefaults `mapstructure:"defaults"`
 
 	// Plugins contains the rest of the config options which should only be
 	// plugin-defined options.
@@ -66,55 +65,107 @@ type Config struct {
 
 	// Tasks contains tasks and the configs for them as given in the config
 	// file.
-	Tasks []taskcfg.Config `mapstructure:"tasks"`
+	Tasks []Task `mapstructure:"tasks"`
 
 	// Logging contains the config values for logging.
-	Logging logging.Config `flag:"log" mapstructure:"logging"`
+	Logging logconfig.Config `flag:"log" mapstructure:"logging"`
 
 	// Color tells whether colors should be enabled in the user output.
-	Color iostreams.ColorMode `mapstructure:"color"`
+	Color terminal.ColorMode `mapstructure:"color"`
+
+	// Debug tells the program to print debug output.
+	Debug bool `mapstructure:"debug"`
 
 	// Quiet tells the program to suppress all other output than errors.
 	Quiet bool `mapstructure:"quiet"`
 
 	// Verbose tells the program to print more verbose output.
 	Verbose bool `mapstructure:"verbose"`
+
+	// Interactive tells the program to run in interactive mode.
+	Interactive bool `mapstructure:"interactive"`
+
+	// Strict tells the program to enable strict mode. If the strict mode is
+	// enabled, the program will exit if the config file or the plugins
+	// directory is not found.
+	Strict bool `mapstructure:"strict"`
 }
+
+// A Task is the configuration of a task instance.
+type Task struct {
+	// Type is the type of this task. It defines which task implementation is
+	// called when this task is executed.
+	Type string `mapstructure:"type"`
+
+	// ID is the unique ID for this task. It must be unique. The ID must also be
+	// different from the provided task types.
+	ID string `mapstructure:"id,omitempty"`
+
+	// Options contains the rest of the config options for the task.
+	Options TaskOptions `mapstructure:",remain"` //nolint:tagliatelle // linter doesn't know about "remain"
+
+	// Dependencies are the task IDs or types that this task depends on.
+	Dependencies []string `mapstructure:"dependencies"`
+}
+
+// TaskDefaults is the type for the default config values set for the tasks.
+type TaskDefaults map[string]any
+
+// TaskOptions is the type for the config options in a task config entry.
+type TaskOptions map[string]any
 
 // DefaultConfig returns the default values for configuration. The function
 // panics on errors.
 func DefaultConfig() *Config {
-	dir, err := DefaultDir()
+	wd, err := os.Getwd()
 	if err != nil {
-		panic(fmt.Sprintf("failed to get default directory: %v", err))
+		panic(fmt.Sprintf("failed to get current directory: %v", err))
 	}
 
-	logOutput, err := DefaultLogOutput()
-	if err != nil {
-		panic(fmt.Sprintf("failed to get the default log output: %v", err))
-	}
-
-	pluginDir, err := DefaultPluginsDir()
+	pluginPaths, err := DefaultPluginPaths()
 	if err != nil {
 		panic(fmt.Sprintf("failed to get default plugin directory: %v", err))
 	}
 
 	return &Config{
-		Color:     iostreams.ColorAuto,
-		Defaults:  taskcfg.Defaults{},
-		Directory: dir,
-		Logging: logging.Config{
-			Enabled: true,
-			Format:  "json",
-			Level:   logs.LevelInfo,
-			Output:  logOutput.String(),
-		},
-		PluginDir: pluginDir,
-		Quiet:     false,
-		Tasks:     []taskcfg.Config{},
-		Verbose:   false,
-		Plugins:   map[string]any{},
+		sourceFile:  "",
+		Color:       terminal.ColorAuto,
+		Debug:       false,
+		Defaults:    TaskDefaults{},
+		Directory:   fspath.Path(wd),
+		Interactive: false,
+		Strict:      false,
+		Logging:     logconfig.Default(),
+		PluginPaths: pluginPaths,
+		Quiet:       false,
+		Tasks:       []Task{},
+		Verbose:     false,
+		Plugins:     map[string]any{},
 	}
+}
+
+// File returns path to the config file that was used to parse the config.
+func (c *Config) File() fspath.Path {
+	return c.sourceFile
+}
+
+// HasFile reports whether the config was parsed from a file.
+func (c *Config) HasFile() bool {
+	return c.sourceFile != ""
+}
+
+// IsBool reports whether o has an entry with the given key that is a bool.
+func (o TaskOptions) IsBool(key string) bool {
+	v, ok := o[key]
+	if !ok {
+		return false
+	}
+
+	if _, ok := v.(bool); !ok {
+		return false
+	}
+
+	return true
 }
 
 // DefaultDir returns the default working directory for Reginald.
@@ -132,24 +183,18 @@ func DefaultDir() (fspath.Path, error) {
 	return path, nil
 }
 
-// DefaultLogOutput returns the default logging output file to use.
-func DefaultLogOutput() (fspath.Path, error) {
-	path, err := defaultPlatformLogFile()
+// DefaultPluginPaths returns the default plugins directory to use.
+func DefaultPluginPaths() ([]fspath.Path, error) {
+	paths, err := defaultPlatformPluginPaths()
 	if err != nil {
-		return "", fmt.Errorf("%w", err)
+		return nil, fmt.Errorf("%w", err)
 	}
 
-	return path, nil
-}
-
-// DefaultPluginsDir returns the default plugins directory to use.
-func DefaultPluginsDir() (fspath.Path, error) {
-	path, err := defaultPlatformPluginsDir()
-	if err != nil {
-		return "", fmt.Errorf("%w", err)
+	for i, p := range paths {
+		paths[i] = p.Clean()
 	}
 
-	return path.Clean(), nil
+	return paths, nil
 }
 
 // FlagName returns the command-line flag name for the given Config field s.
@@ -302,41 +347,42 @@ func genFlagName(s string, invert bool) string {
 // returns the first one that contains a file with a valid name. The returned
 // path is absolute. If no configuration file is found, the function returns an
 // empty string and an error.
-func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
+func resolveFile(ctx context.Context, dir fspath.Path, flagSet *flags.FlagSet) (fspath.Path, error) {
 	var (
 		err       error
 		fileValue string
 	)
 
-	if env := os.Getenv(EnvPrefix + "_CONFIG_FILE"); env != "" {
+	if env := os.Getenv(strings.ToUpper(defaultPrefix + "_CONFIG_FILE")); env != "" {
 		fileValue = env
 	}
 
 	if flagSet.Changed("config") {
 		fileValue, err = flagSet.GetString("config")
 		if err != nil {
-			return "", fmt.Errorf(
-				"failed to get the value for command-line option --%s: %w",
-				"config",
-				err,
-			)
+			return "", fmt.Errorf("failed to get the value for command-line option --%s: %w", "config", err)
 		}
 	}
 
 	file := fspath.Path(fileValue)
 
-	// Use the fileValue if it is an absolute path.
+	log.Trace(ctx, "checking config file", "file", file)
+
 	if file.IsAbs() {
 		var ok bool
 
 		if ok, err = file.IsFile(); err != nil {
-			return "", fmt.Errorf("%w", err)
+			return "", fmt.Errorf("failed to check if %q is a file: %w", file, err)
 		} else if ok {
 			return file.Clean(), nil
 		}
 	}
 
-	var wd fspath.Path
+	wd := dir
+
+	if env := os.Getenv(strings.ToUpper(defaultPrefix + "_DIRECTORY")); env != "" {
+		wd = fspath.Path(env)
+	}
 
 	flagName := FlagName("Directory")
 	if flagSet.Changed(flagName) {
@@ -348,20 +394,14 @@ func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
 				err,
 			)
 		}
-	} else {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return "", fmt.Errorf("%w", err)
-		}
-
-		wd = fspath.Path(cwd)
 	}
 
-	// Check if the config file f matches a file in the working directory.
 	file = wd.Join(string(file))
 
+	log.Trace(ctx, "checking config file", "file", file)
+
 	if ok, err := file.IsFile(); err != nil {
-		return "", fmt.Errorf("%w", err)
+		return "", fmt.Errorf("failed to check if %q is a file: %w", file, err)
 	} else if ok {
 		return file, nil
 	}
@@ -369,7 +409,7 @@ func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
 	// If the config file flag is set but it didn't resolve, fail so that the
 	// program doesn't use a config file from some other location by surprise.
 	if fileValue != "" {
-		return "", fmt.Errorf("%w: tried to resolve file with %q", errConfigFileNotFound, fileValue)
+		return "", &FileError{file: file}
 	}
 
 	// TODO: Add more locations, at least the default location in the user home
@@ -378,8 +418,8 @@ func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
 		wd,
 	}
 	configNames := []string{
-		strings.ToLower(defaultFileName),
-		"." + strings.ToLower(defaultFileName),
+		strings.ToLower(defaultPrefix),
+		"." + strings.ToLower(defaultPrefix),
 	}
 	extensions := []string{
 		"toml",
@@ -390,8 +430,11 @@ func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
 		for _, n := range configNames {
 			for _, e := range extensions {
 				file = d.Join(fmt.Sprintf("%s.%s", n, e))
+
+				log.Trace(ctx, "checking config file", "path", file)
+
 				if ok, err := file.IsFile(); err != nil {
-					return "", fmt.Errorf("%w", err)
+					return "", fmt.Errorf("failed to check if %q is a file: %w", file, err)
 				} else if ok {
 					return file, nil
 				}
@@ -399,5 +442,5 @@ func resolveFile(flagSet *flags.FlagSet) (fspath.Path, error) {
 		}
 	}
 
-	return "", fmt.Errorf("%w", errConfigFileNotFound)
+	return "", &FileError{""}
 }

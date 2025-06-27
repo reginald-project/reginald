@@ -1,4 +1,4 @@
-// Copyright 2025 Antti Kivi
+// Copyright 2025 The Reginald Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,48 +23,25 @@ import (
 	"github.com/reginald-project/reginald/internal/fspath"
 )
 
-func defaultPlatformLogFile() (fspath.Path, error) {
-	if env := os.Getenv("XDG_STATE_HOME"); env != "" {
-		path, err := fspath.NewAbs(env, defaultFileName, defaultLogFileName)
-		if err != nil {
-			return "", fmt.Errorf("failed to convert log file to absolute path: %w", err)
-		}
-
-		return path, nil
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to get the user home directory: %w", err)
-	}
-
-	path, err := fspath.NewAbs(home, ".local", "state", defaultFileName, defaultLogFileName)
-	if err != nil {
-		return "", fmt.Errorf("failed to convert plugins directory to absolute path: %w", err)
-	}
-
-	return path, nil
-}
-
-func defaultPlatformPluginsDir() (fspath.Path, error) {
+func defaultPlatformPluginPaths() ([]fspath.Path, error) {
 	if env := os.Getenv("XDG_DATA_HOME"); env != "" {
-		path, err := fspath.NewAbs(env, defaultFileName, "plugins")
+		path, err := fspath.NewAbs(env, defaultPrefix, "plugins")
 		if err != nil {
-			return "", fmt.Errorf("failed to convert plugins directory to absolute path: %w", err)
+			return nil, fmt.Errorf("failed to convert plugins directory to absolute path: %w", err)
 		}
 
-		return path, nil
+		return []fspath.Path{path}, nil
 	}
 
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("failed to get the user home directory: %w", err)
+		return nil, fmt.Errorf("failed to get the user home directory: %w", err)
 	}
 
-	path, err := fspath.NewAbs(home, ".local", "share", defaultFileName, "plugins")
+	path, err := fspath.NewAbs(home, ".local", "share", defaultPrefix, "plugins")
 	if err != nil {
-		return "", fmt.Errorf("failed to convert plugins directory to absolute path: %w", err)
+		return nil, fmt.Errorf("failed to convert plugins directory to absolute path: %w", err)
 	}
 
-	return path, nil
+	return []fspath.Path{path}, nil
 }

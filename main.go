@@ -1,4 +1,4 @@
-// Copyright 2025 Antti Kivi
+// Copyright 2025 The Reginald Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,24 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package main is the entry point for Reginald, the personal workstation valet.
-// TODO: Add a comment describing the actual command when there is something to
-// describe.
+/*
+Reginald is the personal workstation valet.
+
+TODO: Add a comment describing the actual command when there is something to
+describe.
+*/
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
+	"github.com/chzyer/readline"
 	"github.com/reginald-project/reginald/internal/cli"
-	"github.com/reginald-project/reginald/internal/iostreams"
-	"github.com/reginald-project/reginald/internal/logging"
+	"github.com/reginald-project/reginald/internal/debugging"
 	"github.com/reginald-project/reginald/internal/panichandler"
-	"github.com/reginald-project/reginald/internal/plugins"
-	"github.com/reginald-project/reginald/pkg/version"
+	"github.com/reginald-project/reginald/internal/terminal"
 )
 
 func main() {
@@ -39,11 +44,14 @@ func main() {
 	}
 }
 
+// run runs the CLI and returns the exit code.
 func run() int {
-	defer panichandler.Handle()
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	panichandler.SetCancel(cancel)
+
+	defer panichandler.Handle()
 
 	// Set up canceling the context on certain signals so the plugins are
 	// killed.
@@ -58,66 +66,59 @@ func run() int {
 		cancel()
 	}()
 
-	if err := logging.InitBootstrap(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	terminal.Set(terminal.New(ctx))
 
-		return 1
-	}
+	var wg sync.WaitGroup
 
-	logging.DebugContext(ctx, "bootstrap logger initialized")
-	logging.InfoContext(
-		ctx,
-		"bootstrapping Reginald",
-		"version",
-		version.Version(),
-		"commit",
-		version.Revision(),
-	)
+	cleanupCh := make(chan error, 1)
+	handleCleanupPanic := panichandler.WithStackTrace()
 
-	if err := runCLI(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	wg.Add(1)
 
-		return 1
-	}
+	go func() {
+		defer wg.Done()
+		defer handleCleanupPanic()
+		<-ctx.Done()
 
-	return 0
-}
+		if err := terminal.Default().Close(); err != nil {
+			cleanupCh <- err
 
-func runCLI(ctx context.Context) error {
-	c := cli.New()
-	if ok, err := c.Initialize(ctx); err != nil {
-		return fmt.Errorf("%w", err)
-	} else if !ok {
-		return nil
-	}
-
-	iostreams.Streams = iostreams.New(c.Cfg.Quiet, c.Cfg.Verbose, c.Cfg.Color)
-
-	if err := logging.Init(c.Cfg.Logging); err != nil {
-		return fmt.Errorf("failed to initialize logging: %w", err)
-	}
-
-	logging.DebugContext(ctx, "logging initialized")
-	logging.InfoContext(ctx, "executing Reginald", "version", version.Version())
-
-	if err := c.LoadPlugins(ctx); err != nil {
-		return fmt.Errorf("failed to resolve plugins: %w", err)
-	}
-
-	// We want to aim for a clean plugin shutdown in all cases, so the shut down
-	// should be run in all cases where the plugins have been initialized.
-	defer func() {
-		timeoutCtx, cancel := context.WithTimeout(ctx, plugins.DefaultShutdownTimeout)
-		defer cancel()
-
-		if err := plugins.ShutdownAll(timeoutCtx, c.Plugins); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: failed to shut down plugins: %v\n", err)
+			return
 		}
+
+		cleanupCh <- nil
 	}()
 
-	if err := c.Execute(ctx); err != nil {
-		return fmt.Errorf("%w", err)
+	debugging.Init(ctx)
+
+	exitCode := 0
+
+	err := cli.Run(ctx)
+	if err != nil {
+		var successErr *cli.SuccessError
+		if !errors.As(err, &successErr) {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+
+			var exitErr *cli.ExitError
+			if errors.As(err, &exitErr) {
+				exitCode = exitErr.Code
+			} else {
+				exitCode = 1
+			}
+		}
 	}
 
-	return nil
+	cancel()
+	wg.Wait()
+
+	err = <-cleanupCh
+	if err != nil {
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, io.EOF) && !errors.Is(err, readline.ErrInterrupt) {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		}
+
+		exitCode = 1
+	}
+
+	return exitCode
 }

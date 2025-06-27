@@ -1,4 +1,4 @@
-// Copyright 2025 Antti Kivi
+// Copyright 2025 The Reginald Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,28 +19,28 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/pelletier/go-toml/v2"
+	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/fspath"
-	"github.com/reginald-project/reginald/internal/iostreams"
-	"github.com/reginald-project/reginald/internal/logging"
-	"github.com/reginald-project/reginald/internal/plugins"
-	"github.com/reginald-project/reginald/pkg/rpp"
+	"github.com/reginald-project/reginald/internal/log"
+	"github.com/reginald-project/reginald/internal/plugin"
+	"github.com/reginald-project/reginald/internal/terminal"
 )
 
 // Errors returned from the configuration parser.
 var (
-	ErrInvalidConfig      = errors.New("invalid config")
-	errConfigFileNotFound = errors.New("config file not found")
-	errInvalidCast        = errors.New("cannot convert type")
+	ErrInvalidConfig = errors.New("invalid config")
+	errInvalidCast   = errors.New("cannot convert type")
+	errNilFlag       = errors.New("no flag found")
 )
 
 // textUnmarshalerType is a helper variable for checking if types of fields in
@@ -49,117 +49,103 @@ var (
 //nolint:gochecknoglobals // used like constant
 var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
 
-// A ValueParser is a helper type that holds the current values for the config
-// value that is currently being parsed.
-type ValueParser struct {
-	// FullName is the name of the field including the names of the parent
-	// fields before it separated by dots.
-	FullName string
+// dynamicFields are the fields that are not statically defined in the Config
+// but depend on the plugins. They will not be set by the regular applying of
+// the config values but separately after the plugins manifests have been
+// loaded.
+//
+//nolint:gochecknoglobals // used like constant
+var dynamicFields = []string{"Defaults", "Directory", "Plugins", "Tasks"}
 
-	// EnvName is the name of the environment variable for checking the value
-	// for the current field.
-	EnvName string
+// ApplyOptions is the type for the options for the Apply function.
+type ApplyOptions struct {
+	Dir     fspath.Path    // base directory for the program operations
+	FlagSet *flags.FlagSet // flag set for the apply operation
 
-	// EnvValue is the value of the environment variable for the current field.
-	EnvValue string
+	// Store contains the discovered plugin. It should not be set when applying
+	// the built-in config values
+	Store *plugin.Store
 
-	// FlagName is the name of the command-line flag for checking the value for
-	// the current field.
-	FlagName string
-
-	// Cfg is the Config that is currently being parsed.
-	Cfg *Config
-
-	// FlagSet is the flag set used for checking the values.
-	FlagSet *flags.FlagSet
-
-	// Plugin is the plugin currently being parsed if the parser has moved to
-	// parsing plugin configs. Otherwise, it should be nil.
-	Plugin *plugins.Plugin
-
-	// Plugins are the loaded Plugins.
-	Plugins []*plugins.Plugin
-
-	// Value is the Value of the currently parsed field.
-	Value reflect.Value
-
-	// Field is the currently parsed struct Field.
-	Field reflect.StructField
+	// idents is the list of the config identifiers that form the "path" to
+	// the config value that is currently being parsed. It must always start
+	// with the global prefix for the environment variables.
+	idents []string
 }
 
-// A pluginParser is a helper type that holds the current values for the config
-// value from a plugin that is currently being parsed.
-type pluginParser struct {
-	// envName is the name of the environment variable for checking the value
-	// for the current field.
-	envName string
-
-	// envValue is the value of the environment variable for the current field.
-	envValue string
-
-	// flagName is the name of the command-line flag for checking the value for
-	// the current field.
-	flagName string
-
-	// FlagSet is the flag set used for checking the values.
-	flagSet *flags.FlagSet
-
-	// m is the config map that is currently being modified.
-	m map[string]any
-
-	// c is the [rpp.ConfigEntry] that is currently being checked.
-	c rpp.ConfigEntry
+// Apply applies the values of the config values from environment variables and
+// command-line flags to cfg. It modifies the pointed cfg.
+func Apply(ctx context.Context, cfg *Config, opts ApplyOptions) error {
+	return applyStruct(ctx, reflect.ValueOf(cfg).Elem(), initIdents(opts))
 }
 
-// LogValue implements [slog.LogValuer] for [valueParser]. It returns a group
-// containing the fields of the parser that are relevant for logging.
-func (p *ValueParser) LogValue() slog.Value {
-	var attrs []slog.Attr
+// ApplyPlugins applies the config values for plugins from environment variables
+// and command-line flags to cfg. It modifies the pointed cfg.
+func ApplyPlugins(ctx context.Context, cfg *Config, opts ApplyOptions) error {
+	opts = initIdents(opts)
 
-	attrs = append(attrs, slog.Any("cfg", p.Cfg))
+	log.Debug(ctx, "applying plugins")
 
-	if p.FlagSet == nil {
-		attrs = append(attrs, slog.String("flagSet", "nil"))
-	} else {
-		attrs = append(attrs, slog.String("flagSet", "set"))
+	if opts.Store == nil {
+		panic("nil plugin store")
 	}
 
-	pluginNames := make([]string, 0, len(p.Plugins))
+	plugins := opts.Store.Plugins
+	if len(plugins) == 0 {
+		log.Trace(ctx, "no plugins found")
 
-	for _, plugin := range p.Plugins {
-		pluginNames = append(pluginNames, plugin.Name)
+		return nil
 	}
 
-	attrs = append(
-		attrs,
-		slog.Any("Plugins", pluginNames),
-		slog.Group(
-			"Value",
-			slog.String("type", p.Value.Type().Name()),
-			slog.Any("value", p.Value.Interface()),
-		),
-		slog.Group(
-			"field",
-			slog.String("name", p.Field.Name),
-			slog.String("type", p.Field.Type.Name()),
-		),
-	)
+	pluginsMap := cfg.Plugins
 
-	if p.Plugin == nil {
-		attrs = append(attrs, slog.String("Plugin", "<nil>"))
-	} else {
-		attrs = append(attrs, slog.String("Plugin", p.Plugin.Name))
+	// At this point, all of the plugins have been converted to commands.
+	for _, cmd := range opts.Store.Commands {
+		manifest := cmd.Plugin.Manifest()
+		name := manifest.Name
+		domain := manifest.Domain
+
+		if !cmd.Plugin.External() {
+			domain = cmd.Name
+		}
+
+		a, ok := pluginsMap[domain]
+		if !ok {
+			log.Trace(ctx, "no map for plugin found", "name", name, "domain", domain)
+
+			a = make(map[string]any)
+		}
+
+		cfgMap, ok := a.(map[string]any)
+		if !ok {
+			return fmt.Errorf(
+				"%w: config for plugin %q with config key %q is not a map",
+				ErrInvalidConfig,
+				name,
+				domain,
+			)
+		}
+
+		log.Trace(ctx, "initial config map resolved", "name", name, "domain", domain, "map", cfgMap)
+
+		newOpts := ApplyOptions{
+			Dir:     opts.Dir,
+			FlagSet: opts.FlagSet,
+			Store:   opts.Store,
+			idents:  append(opts.idents, domain),
+		}
+
+		if err := applyPluginMap(ctx, cfgMap, manifest.Config, cmd.Commands, newOpts); err != nil {
+			return err
+		}
+
+		log.Trace(ctx, "values applied to map", "domain", domain, "map", cfgMap)
+
+		pluginsMap[domain] = cfgMap
 	}
 
-	attrs = append(
-		attrs,
-		slog.String("FullName", p.FullName),
-		slog.String("EnvName", p.EnvName),
-		slog.String("EnvValue", p.EnvValue),
-		slog.String("FlagName", p.FlagName),
-	)
+	cfg.Plugins = pluginsMap
 
-	return slog.GroupValue(attrs...)
+	return nil
 }
 
 // Parse parses the configuration according to the configuration given with
@@ -172,64 +158,599 @@ func (p *ValueParser) LogValue() slog.Value {
 // paths for the file or according the flags. The relevant flags are
 // `--directory` and `--config`.
 func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
-	configFile, err := resolveFile(flagSet)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve config file: %w", err)
-	}
-
-	logging.TraceContext(ctx, "reading config file", "path", configFile)
-
-	data, err := configFile.Clean().ReadFile()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
-	}
-
-	rawCfg := make(map[string]any)
-
-	if err = toml.Unmarshal(data, &rawCfg); err != nil {
-		return nil, fmt.Errorf("failed to decode the config file: %w", err)
-	}
-
-	logging.TraceContext(ctx, "unmarshaled config file", "cfg", rawCfg)
-	normalizeKeys(rawCfg)
-	logging.TraceContext(ctx, "normalized keys", "cfg", rawCfg)
-
 	cfg := DefaultConfig()
-	decoderConfig := &mapstructure.DecoderConfig{ //nolint:exhaustruct // use default values
-		DecodeHook: mapstructure.TextUnmarshallerHookFunc(),
-		Result:     cfg,
+	dir := cfg.Directory
+
+	var fileErr *FileError
+
+	if err := parseFile(ctx, dir, flagSet, cfg); err != nil {
+		if !errors.As(err, &fileErr) {
+			return nil, err
+		}
 	}
 
-	d, err := mapstructure.NewDecoder(decoderConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create mapstructure decoder: %w", err)
+	log.Debug(ctx, "read config file", "cfg", cfg)
+
+	opts := ApplyOptions{
+		idents:  nil,
+		Dir:     dir, // this is the working dir by default so no extra work is needed
+		FlagSet: flagSet,
+		Store:   nil,
+	}
+	if err := Apply(ctx, cfg, opts); err != nil {
+		return nil, err
 	}
 
-	if err := d.Decode(rawCfg); err != nil {
-		return nil, fmt.Errorf("failed to read environment variables for config: %w", err)
+	if fileErr != nil {
+		return cfg, fileErr
 	}
-
-	logging.DebugContext(ctx, "read raw config", "cfg", cfg)
-
-	parser := &ValueParser{
-		Cfg:      cfg,
-		FlagSet:  flagSet,
-		Plugins:  nil,
-		Value:    reflect.ValueOf(cfg).Elem(),
-		Field:    reflect.StructField{}, //nolint:exhaustruct // zero value wanted
-		Plugin:   nil,
-		FullName: "",
-		EnvName:  EnvPrefix,
-		EnvValue: "",
-		FlagName: "",
-	}
-	if err := parser.ApplyOverrides(ctx); err != nil {
-		return nil, fmt.Errorf("%w", err)
-	}
-
-	logging.InfoContext(ctx, "parsed config", "cfg", cfg)
 
 	return cfg, nil
+}
+
+// Validate checks if all of the config values that were left after unmarshaling
+// the config are valid plugin or plugin command names.
+//
+// TODO: This should have a better implementation.
+func Validate(cfg *Config, store *plugin.Store) error {
+	if cfg.Quiet && cfg.Verbose {
+		return fmt.Errorf("%w: cannot be both quiet and verbose", ErrInvalidConfig)
+	}
+
+	if cfg.Interactive && cfg.Strict {
+		return fmt.Errorf("%w: cannot be both interactive and strict", ErrInvalidConfig)
+	}
+
+	for k := range cfg.Plugins {
+		ok := false
+	PluginLoop:
+		for _, p := range store.Plugins {
+			manifest := p.Manifest()
+
+			if manifest.Domain == k && manifest.Config != nil {
+				ok = true
+
+				break PluginLoop
+			}
+
+			for _, c := range manifest.Commands {
+				if c.Name == k && c.Config != nil {
+					ok = true
+
+					break PluginLoop
+				}
+			}
+		}
+
+		if !ok {
+			return fmt.Errorf("%w: invalid config key %q", ErrInvalidConfig, k)
+		}
+	}
+
+	return nil
+}
+
+// applyBool sets a boolean value from the environment variables and
+// command-line flags to the config struct.
+func applyBool(value reflect.Value, opts ApplyOptions) error {
+	x, err := boolValue(value.Bool(), opts, nil)
+	if err != nil {
+		return err
+	}
+
+	value.SetBool(x)
+
+	return nil
+}
+
+// applyColorMode sets a color mode value from the environment variables and
+// command-line flags to the config struct.
+func applyColorMode(value reflect.Value, opts ApplyOptions) error {
+	if !canUnmarshal(value) {
+		panic(fmt.Sprintf("failed to cast value to encoding.TextUnmarshaler: %[1]v (%[1]T)", value))
+	}
+
+	var err error
+
+	// TODO: Unsafe conversion.
+	x := terminal.ColorMode(value.Int())
+	env := envValue(opts.idents)
+
+	if env != "" {
+		var v reflect.Value
+
+		v, err = unmarshal(value, env)
+		if err != nil {
+			return err
+		}
+
+		// TODO: Unsafe conversion.
+		x = terminal.ColorMode(v.Int())
+	}
+
+	key := configKey(opts.idents)
+	flagName := FlagName(key)
+
+	if opts.FlagSet.Changed(flagName) {
+		f := opts.FlagSet.Lookup(flagName)
+		if f == nil {
+			return fmt.Errorf("%w: %s", errNilFlag, flagName)
+		}
+
+		var v reflect.Value
+
+		v, err = unmarshal(value, f.Value.String())
+		if err != nil {
+			return err
+		}
+
+		// TODO: Unsafe conversion.
+		x = terminal.ColorMode(v.Int())
+	}
+
+	value.SetInt(int64(x))
+
+	return nil
+}
+
+// applyInt sets an integer value from the environment variables and
+// command-line flags to the config struct.
+func applyInt(value reflect.Value, opts ApplyOptions) error {
+	var err error
+
+	x := value.Int()
+	env := envValue(opts.idents)
+
+	if env != "" {
+		x, err = parseInt(env, value)
+		if err != nil {
+			return err
+		}
+	}
+
+	key := configKey(opts.idents)
+	flagName := FlagName(key)
+
+	if opts.FlagSet.Changed(flagName) {
+		var i int
+
+		// TODO: Allow the use of unmarshalling here, probably using
+		// f.Value.String().
+		i, err = opts.FlagSet.GetInt(flagName)
+		if err != nil {
+			return fmt.Errorf("failed to get value for --%s: %w", flagName, err)
+		}
+
+		x = int64(i)
+	}
+
+	value.SetInt(x)
+
+	return nil
+}
+
+// applyPath sets a filesystem path value from the environment variables and
+// command-line flags to the config struct.
+func applyPath(value reflect.Value, opts ApplyOptions) error {
+	x, err := pathValue(fspath.Path(value.String()), opts, nil)
+	if err != nil {
+		return err
+	}
+
+	value.Set(reflect.ValueOf(x))
+
+	return nil
+}
+
+// applyPathSlice sets a slice of filesystem paths from the environment
+// variables and command-line flags to the config struct.
+func applyPathSlice(value reflect.Value, opts ApplyOptions) error {
+	i := value.Interface()
+
+	x, ok := i.([]fspath.Path)
+	if !ok {
+		panic(fmt.Sprintf("failed to convert value to slice of paths: %[1]v (%[1]T)", i))
+	}
+
+	var err error
+
+	x, err = pathSliceValue(x, opts, nil)
+	if err != nil {
+		return err
+	}
+
+	value.Set(reflect.ValueOf(x))
+
+	return nil
+}
+
+// applyPluginCommands applies the config values for the given subcommands from
+// the environment variables and the command-line flags to the plugin configs
+// map.
+func applyPluginCommands(ctx context.Context, cfg map[string]any, cmds []*plugin.Command, opts ApplyOptions) error {
+	parent := opts.idents[len(opts.idents)-1]
+
+	log.Trace(ctx, "applying plugin commands", "parent", parent)
+
+	for _, cmd := range cmds {
+		name := cmd.Name
+
+		a, ok := cfg[name]
+		if !ok {
+			log.Trace(ctx, "no map for command found", "cmd", name)
+
+			a = make(map[string]any)
+		}
+
+		cfgMap, ok := a.(map[string]any)
+		if !ok {
+			return fmt.Errorf("%w: config for command %[2]q with config key %[2]q is not a map", ErrInvalidConfig, name)
+		}
+
+		log.Trace(ctx, "initial config map resolved", "parent", parent, "cmd", name, "map", cfgMap)
+
+		newOpts := ApplyOptions{
+			Dir:     opts.Dir,
+			FlagSet: opts.FlagSet,
+			Store:   opts.Store,
+			idents:  append(opts.idents, name),
+		}
+
+		if err := applyPluginMap(ctx, cfgMap, cmd.Config, cmd.Commands, newOpts); err != nil {
+			return err
+		}
+
+		cfg[name] = cfgMap
+	}
+
+	return nil
+}
+
+// applyPluginMap applies the config values from the environment variables and
+// the command-line flags to the given plugin configs map.
+func applyPluginMap(
+	ctx context.Context,
+	cfg map[string]any,
+	entries []api.ConfigEntry,
+	cmds []*plugin.Command,
+	opts ApplyOptions,
+) error {
+	log.Trace(ctx, "applying plugin map", "idents", opts.idents)
+
+	parent := opts.idents[len(opts.idents)-1]
+
+	if err := applyPluginCommands(ctx, cfg, cmds, opts); err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		raw, ok := cfg[entry.Key]
+		if ok && entry.FlagOnly {
+			return fmt.Errorf(
+				"%w: unknown entry %q in config file for %q (config setting can only be set via a command-line flag)",
+				ErrInvalidConfig,
+				entry.Key,
+				parent,
+			)
+		}
+
+		var err error
+
+		if !ok {
+			if entry.Type == api.IntValue {
+				raw, err = entry.Int()
+				if err != nil {
+					return fmt.Errorf("failed to convert value for %q in %q to int: %w", entry.Key, parent, err)
+				}
+			} else {
+				raw = entry.Value
+			}
+		}
+
+		newOpts := ApplyOptions{
+			Dir:     opts.Dir,
+			FlagSet: opts.FlagSet,
+			Store:   opts.Store,
+			idents:  append(opts.idents, entry.Key),
+		}
+
+		switch entry.Type {
+		case api.BoolValue:
+			x, ok := raw.(bool)
+			if !ok {
+				err = fmt.Errorf(
+					"%w: value %[2]v for %q in %q (wanted bool, got %[2]T)",
+					errInvalidCast,
+					raw,
+					entry.Key,
+					parent,
+				)
+
+				break
+			}
+
+			x, err = boolValue(x, newOpts, &entry)
+			raw = x
+		case api.IntValue:
+			var x int
+
+			x, err = configInt(raw)
+			if err != nil {
+				err = fmt.Errorf("failed to convert value %v for %q in %q to int: %w", raw, entry.Key, parent, err)
+
+				break
+			}
+
+			x, err = intValue(x, newOpts, &entry)
+			raw = x
+		case api.StringValue:
+			x, ok := raw.(string)
+			if !ok {
+				err = fmt.Errorf(
+					"%w: value %[2]v for %q in %q (wanted string, got %[2]T)",
+					errInvalidCast,
+					raw,
+					entry.Key,
+					parent,
+				)
+
+				break
+			}
+
+			x, err = stringValue(x, newOpts, &entry)
+			raw = x
+		default:
+			return fmt.Errorf(
+				"%w: config entry %q in %q has invalid type: %s",
+				plugin.ErrInvalidConfig,
+				entry.Key,
+				parent,
+				entry.Type,
+			)
+		}
+
+		if err != nil {
+			return err
+		}
+
+		cfg[entry.Key] = raw
+	}
+
+	log.Trace(ctx, "map applied", "key", parent, "cfg", cfg)
+
+	return nil
+}
+
+// applyString sets a string value from the environment variables and
+// command-line flags to the config struct.
+func applyString(value reflect.Value, opts ApplyOptions) error {
+	x, err := stringValue(value.String(), opts, nil)
+	if err != nil {
+		return err
+	}
+
+	value.SetString(x)
+
+	return nil
+}
+
+// applyStruct recursively sets the config values to cfg from the environment
+// variables and command-line flags.
+func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) error {
+	var err error
+
+	if len(opts.idents) == 1 {
+		opts, err = setDir(ctx, cfg, opts)
+		if err != nil {
+			return err
+		}
+	}
+
+	for i := range cfg.NumField() {
+		field := cfg.Type().Field(i)
+		val := cfg.Field(i)
+
+		log.Trace(ctx, "checking config field", "key", field.Name, "value", val, "opts", opts)
+
+		if !val.CanSet() {
+			log.Trace(ctx, "skipping config field", "key", field.Name, "value", val)
+
+			continue
+		}
+
+		if slices.Contains(dynamicFields, field.Name) {
+			log.Trace(ctx, "skipping config field", "key", field.Name, "value", val)
+
+			continue
+		}
+
+		newOpts := ApplyOptions{
+			idents:  append(opts.idents, field.Name),
+			Dir:     opts.Dir,
+			FlagSet: opts.FlagSet,
+			Store:   opts.Store,
+		}
+
+		switch val.Kind() { //nolint:exhaustive // TODO: implemented as needed
+		case reflect.Bool:
+			err = applyBool(val, newOpts)
+		case reflect.Int:
+			if val.Type().Name() == "ColorMode" {
+				err = applyColorMode(val, newOpts)
+			} else {
+				err = applyInt(val, newOpts)
+			}
+		case reflect.Slice:
+			e := val.Type().Elem()
+			if e.Kind() != reflect.String || e.Name() != "Path" {
+				panic(
+					fmt.Sprintf("unsupported config field type for %s: %s", field.Name, val.Kind()),
+				)
+			}
+
+			err = applyPathSlice(val, newOpts)
+		case reflect.String:
+			if val.Type().Name() == "Path" {
+				err = applyPath(val, newOpts)
+			} else {
+				err = applyString(val, newOpts)
+			}
+		case reflect.Struct:
+			err = applyStruct(ctx, val, newOpts)
+		default:
+			panic(fmt.Sprintf("unsupported config field type for %s: %s", field.Name, val.Kind()))
+		}
+
+		if err != nil {
+			return err
+		}
+
+		log.Trace(ctx, "set config field", "key", field.Name, "value", val)
+	}
+
+	return nil
+}
+
+// boolValue resolves a boolean value from the environment variables and
+// the command-line flags to be used in the config.
+func boolValue(x bool, opts ApplyOptions, entry *api.ConfigEntry) (bool, error) {
+	var err error
+
+	env := pluginEnvValue(opts.idents, entry)
+
+	if env != "" && (entry == nil || !entry.FlagOnly) {
+		x, err = strconv.ParseBool(env)
+		if err != nil {
+			return false, fmt.Errorf("failed to parse %q as a boolean: %w", env, err)
+		}
+	}
+
+	flagName := pluginFlagName(opts.idents, entry)
+
+	if opts.FlagSet.Changed(flagName) {
+		x, err = opts.FlagSet.GetBool(flagName)
+		if err != nil {
+			return false, fmt.Errorf("failed to get value for --%s: %w", flagName, err)
+		}
+	}
+
+	key := configKey(opts.idents)
+
+	// TODO: Add plugin support for inverted flags and remove the plugin  check.
+	if entry == nil && HasInvertedFlagName(key) {
+		inverted := InvertedFlagName(key)
+		if opts.FlagSet.Changed(inverted) {
+			x, err = opts.FlagSet.GetBool(inverted)
+			if err != nil {
+				return false, fmt.Errorf("failed to get value for --%s: %w", inverted, err)
+			}
+
+			x = !x
+		}
+	}
+
+	return x, nil
+}
+
+// canUnmarshal reports whether value can be cast to [encoding.TextUnmarshaler]
+// and unmarshaled using it.
+func canUnmarshal(value reflect.Value) bool {
+	return reflect.PointerTo(value.Type()).Implements(textUnmarshalerType)
+}
+
+// configInt converts the value decoded from the configuration to an int. It is
+// especially useful with the plugin configs as they are decoded from different
+// file formats and some of the decoders default to using float64 for number
+// values.
+func configInt(x any) (int, error) {
+	switch v := x.(type) {
+	case int:
+		return v, nil
+	case int64:
+		// TODO: Unsafe conversion.
+		return int(v), nil
+	case float64:
+		// TODO: Unsafe conversion.
+		return int(v), nil
+	default:
+		return 0, fmt.Errorf("%w: invalid type %T", errInvalidCast, v)
+	}
+}
+
+// configKey returns the key for the given config identifiers.
+func configKey(idents []string) string {
+	return strings.Join(idents[1:], ".")
+}
+
+// envValue returns the value of the environment variable for the given config
+// identifiers.
+func envValue(idents []string) string {
+	key := ""
+
+	for i, ident := range idents {
+		if i > 0 {
+			key += "_"
+		}
+
+		for j, c := range ident {
+			if j > 0 && 'A' <= c && c <= 'Z' {
+				key += "_"
+			}
+
+			key += string(c)
+		}
+	}
+
+	return os.Getenv(strings.ToUpper(key))
+}
+
+// initIdents sets the correct initial identifiers to the ApplyOptions and
+// checks that the initial identifiers are valid. It panics on errors.
+func initIdents(opts ApplyOptions) ApplyOptions {
+	if len(opts.idents) == 0 {
+		opts.idents = []string{defaultPrefix}
+	}
+
+	if opts.idents[0] != defaultPrefix {
+		panic(
+			fmt.Sprintf(
+				"Apply must be called with no config identifiers or with the global prefix for the environment variables as the first identifier: %q", //nolint:lll
+				defaultPrefix,
+			),
+		)
+	}
+
+	return opts
+}
+
+// intValue resolves an integer value from the environment variables and
+// the command-line flags to be used in the config.
+func intValue(x int, opts ApplyOptions, entry *api.ConfigEntry) (int, error) {
+	var err error
+
+	env := pluginEnvValue(opts.idents, entry)
+
+	if env != "" && (entry == nil || !entry.FlagOnly) {
+		var i int64
+
+		i, err = strconv.ParseInt(env, 10, 0)
+		if err != nil {
+			return 0, fmt.Errorf("failed to parse %q as an integer: %w", env, err)
+		}
+
+		x = int(i)
+	}
+
+	flagName := pluginFlagName(opts.idents, entry)
+
+	if opts.FlagSet.Changed(flagName) {
+		x, err = opts.FlagSet.GetInt(flagName)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get value for --%s: %w", flagName, err)
+		}
+	}
+
+	return x, nil
 }
 
 // normalizeKeys checks the config value keys in the given raw config map and
@@ -246,14 +767,8 @@ func normalizeKeys(cfg map[string]any) {
 		key := ""
 
 		for i, r := range k {
-			if r == '-' {
-				key += "_"
-
-				continue
-			}
-
-			if i > 0 && unicode.IsUpper(r) && !strings.HasPrefix(key, "_") {
-				key += "_"
+			if i > 0 && unicode.IsUpper(r) {
+				key += "-"
 			}
 
 			key += strings.ToLower(string(r))
@@ -271,636 +786,266 @@ func normalizeKeys(cfg map[string]any) {
 	}
 }
 
-// Validate checks if all of the config values that were left after unmarshaling
-// the config are valid plugin or plugin command names.
-func Validate(cfg *Config, p []*plugins.Plugin) error {
-	for k := range cfg.Plugins {
-		ok := false
-	PluginLoop:
-		for _, plugin := range p {
-			if plugin.Name == k {
-				ok = true
-
-				break PluginLoop
-			}
-
-			for _, c := range plugin.Commands {
-				if c.Name == k {
-					ok = true
-
-					break PluginLoop
-				}
-			}
-		}
-
-		if !ok {
-			return fmt.Errorf("%w: invalid config key %q", ErrInvalidConfig, k)
-		}
+// parseFile finds and parses the config file and sets the values to cfg. It
+// modifies the pointed cfg in place.
+func parseFile(ctx context.Context, dir fspath.Path, flagSet *flags.FlagSet, cfg *Config) error {
+	configFile, err := resolveFile(ctx, dir, flagSet)
+	if err != nil {
+		return err
 	}
 
-	return nil
-}
+	cfg.sourceFile = configFile
 
-// ApplyOverrides applies the overrides of the config values from environment
-// variables and command-line flags to cfg. It modifies the pointed cfg.
-func (p *ValueParser) ApplyOverrides(ctx context.Context) error {
-	if err := p.applyStructOverrides(ctx); err != nil {
-		return fmt.Errorf("%w", err)
-	}
-
-	if len(p.Plugins) == 0 {
+	if configFile == "" {
 		return nil
 	}
 
-	for _, plugin := range p.Plugins {
-		p.Plugin = plugin
-		pluginMap := make(map[string]any)
-		rawVal := p.Cfg.Plugins[plugin.Name]
+	log.Trace(ctx, "reading config file", "path", configFile)
 
-		m, ok := rawVal.(map[string]any)
-		if ok {
-			pluginMap = m
-		} else if rawVal != nil {
-			return fmt.Errorf("%w: config for plugin %q is not a map", ErrInvalidConfig, plugin.Name)
-		}
+	data, err := configFile.Clean().ReadFile()
+	if err != nil {
+		return fmt.Errorf("failed to read config file: %w", err)
+	}
 
-		// Use the name of the plugin as the prefix for the environment
-		// variable.
-		p.EnvName = p.Plugin.Name
+	rawCfg := make(map[string]any)
 
-		if err := p.applyPluginOverrides(ctx, pluginMap, plugin.PluginConfigs); err != nil {
-			return fmt.Errorf("failed to apply configs for plugins: %w", err)
-		}
+	if err = toml.Unmarshal(data, &rawCfg); err != nil {
+		return fmt.Errorf("failed to decode the config file: %w", err)
+	}
 
-		p.Cfg.Plugins[plugin.Name] = pluginMap
+	log.Trace(ctx, "unmarshaled config file", "cfg", rawCfg)
+	normalizeKeys(rawCfg)
+	log.Trace(ctx, "normalized keys", "cfg", rawCfg)
 
-		for _, cmd := range plugin.Commands {
-			// Plugin configs take precedence.
-			if cmd.Name == plugin.Name && len(plugin.PluginConfigs) > 0 {
-				continue
-			}
+	decoderConfig := &mapstructure.DecoderConfig{ //nolint:exhaustruct // use default values
+		DecodeHook: mapstructure.TextUnmarshallerHookFunc(),
+		Result:     cfg,
+	}
 
-			cmdMap := make(map[string]any)
-			// All of the tables for the plugins and commands should be in
-			// the root of the config.
-			rawVal := p.Cfg.Plugins[cmd.Name]
+	log.Trace(ctx, "created default config", "cfg", cfg)
 
-			m, ok := rawVal.(map[string]any)
-			if ok {
-				cmdMap = m
-			} else if rawVal != nil {
-				return fmt.Errorf("%w: config for plugin command %q is not a map", ErrInvalidConfig, cmd.Name)
-			}
+	d, err := mapstructure.NewDecoder(decoderConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create mapstructure decoder: %w", err)
+	}
 
-			// Use the name of the command as the prefix for the environment
-			// variable.
-			p.EnvName = cmd.Name
-
-			if err := p.applyPluginOverrides(ctx, cmdMap, cmd.Configs); err != nil {
-				return fmt.Errorf("failed to apply configs for plugin commands: %w", err)
-			}
-
-			p.Cfg.Plugins[cmd.Name] = cmdMap
-		}
+	if err := d.Decode(rawCfg); err != nil {
+		return fmt.Errorf("failed to decode the config file: %w", err)
 	}
 
 	return nil
 }
 
-func (p *ValueParser) applyStructOverrides(ctx context.Context) error {
-	for i := range p.Value.NumField() {
+// parseInt parses the given string value into an int64. If the value can be
+// resolved using a TextUnmarshaler, the function uses the given value's type to
+// unmarshal the value.
+func parseInt(s string, value reflect.Value) (int64, error) {
+	if canUnmarshal(value) {
+		v, err := unmarshal(value, s)
+		if err != nil {
+			return 0, err
+		}
+
+		return v.Int(), nil
+	}
+
+	x, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse %q as an integer: %w", s, err)
+	}
+
+	return x, nil
+}
+
+// pathSliceValue resolves a slice of filesystem paths from the environment
+// variables and the command-line flags to be used in the config.
+func pathSliceValue(x []fspath.Path, opts ApplyOptions, entry *api.ConfigEntry) ([]fspath.Path, error) {
+	var err error
+
+	env := pluginEnvValue(opts.idents, entry)
+
+	// TODO: There might be a more robust way to parse the paths, but this is
+	// fine for now.
+	if env != "" && (entry == nil || !entry.FlagOnly) {
+		parts := strings.Split(env, ",")
+		x = make([]fspath.Path, len(parts))
+
+		for i, part := range parts {
+			x[i] = fspath.Path(part)
+		}
+	}
+
+	flagName := pluginFlagName(opts.idents, entry)
+
+	if opts.FlagSet.Changed(flagName) {
+		x, err = opts.FlagSet.GetPathSlice(flagName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get value for --%s: %w", flagName, err)
+		}
+	}
+
+	for i, p := range x {
+		if !p.IsAbs() {
+			path, err := fspath.NewAbs(string(opts.Dir), string(p))
+			if err != nil {
+				return nil, fmt.Errorf("failed to create absolute path from %q: %w", x, err)
+			}
+
+			x[i] = path.Clean()
+		}
+	}
+
+	return x, nil
+}
+
+// pathValue resolves filesystem path from the environment variables and
+// the command-line flags to be used in the config.
+func pathValue(x fspath.Path, opts ApplyOptions, entry *api.ConfigEntry) (fspath.Path, error) {
+	var err error
+
+	env := pluginEnvValue(opts.idents, entry)
+
+	if env != "" && (entry == nil || !entry.FlagOnly) {
+		x = fspath.Path(env)
+	}
+
+	flagName := pluginFlagName(opts.idents, entry)
+
+	if opts.FlagSet.Changed(flagName) {
+		x, err = opts.FlagSet.GetPath(flagName)
+		if err != nil {
+			return "", fmt.Errorf("failed to get value for --%s: %w", flagName, err)
+		}
+	}
+
+	if !x.IsAbs() {
+		path, err := fspath.NewAbs(string(opts.Dir), string(x))
+		if err != nil {
+			return "", fmt.Errorf("failed to create absolute path from %q: %w", x, err)
+		}
+
+		x = path.Clean()
+	}
+
+	return x, nil
+}
+
+// pluginEnvValue returns the value of the environment variable for the given
+// config identifiers, applying the environment variable name override from
+// the plugin's config entry it is set.
+func pluginEnvValue(idents []string, entry *api.ConfigEntry) string {
+	if entry == nil || entry.EnvOverride == "" {
+		return envValue(idents)
+	}
+
+	return os.Getenv(strings.ToUpper(defaultPrefix + "_" + entry.EnvOverride))
+}
+
+// pluginFlagName returns the name of the command-line flag for the given config
+// identifiers, applying the flag name from the plugin's config entry it is set.
+func pluginFlagName(idents []string, entry *api.ConfigEntry) string {
+	if entry != nil {
+		if entry.Flag == nil {
+			return ""
+		}
+
+		if entry.Flag.Name == "" {
+			return strings.ToLower(strings.ReplaceAll(configKey(idents), ".", "-"))
+		}
+
+		return entry.Flag.Name
+	}
+
+	key := configKey(idents)
+
+	return FlagName(key)
+}
+
+// setDir sets the correct config value for "Dir" at the start of the config
+// struct parsing.
+func setDir(ctx context.Context, cfg reflect.Value, opts ApplyOptions) (ApplyOptions, error) {
+	i := -1
+
+	for j := range cfg.NumField() {
+		if cfg.Type().Field(j).Name == "Directory" {
+			i = j
+
+			break
+		}
+	}
+
+	if i < 0 {
+		panic(fmt.Sprintf("failed to find Directory field in %q", cfg.Type().Name()))
+	}
+
+	field := cfg.Type().Field(i)
+	val := cfg.Field(i)
+
+	log.Trace(
+		ctx,
+		"checking config field",
+		"key",
+		field.Name,
+		"value",
+		val,
+		"opts",
+		opts,
+	)
+
+	if !val.CanSet() {
+		panic(fmt.Sprintf("cannot set Directory field in %q", cfg.Type().Name()))
+	}
+
+	newOpts := ApplyOptions{
+		idents:  append(opts.idents, field.Name),
+		Dir:     opts.Dir,
+		FlagSet: opts.FlagSet,
+		Store:   opts.Store,
+	}
+
+	if err := applyPath(val, newOpts); err != nil {
+		return ApplyOptions{}, err
+	}
+
+	opts.Dir = fspath.Path(val.String())
+
+	log.Trace(ctx, "set config field", "key", field.Name, "value", val)
+
+	return opts, nil
+}
+
+// stringValue resolves a string value from the environment variables and
+// the command-line flags to be used in the config.
+func stringValue(x string, opts ApplyOptions, entry *api.ConfigEntry) (string, error) {
+	env := pluginEnvValue(opts.idents, entry)
+
+	if env != "" && (entry == nil || !entry.FlagOnly) {
+		x = env
+	}
+
+	flagName := pluginFlagName(opts.idents, entry)
+
+	if opts.FlagSet.Changed(flagName) {
 		var err error
 
-		// TODO: Check the struct tags for env.
-		parser := &ValueParser{
-			Cfg:      p.Cfg,
-			FlagSet:  p.FlagSet,
-			Plugins:  p.Plugins,
-			Value:    p.Value.Field(i),
-			Field:    p.Value.Type().Field(i),
-			Plugin:   nil,
-			FullName: "",
-			EnvName:  "",
-			EnvValue: "",
-			FlagName: "",
-		}
-
-		if p.FullName != "" {
-			parser.FullName += p.FullName + "."
-		}
-
-		parser.FullName += parser.Field.Name
-
-		parser.EnvName = toEnv(parser.Field.Name, p.EnvName)
-		parser.EnvValue = os.Getenv(parser.EnvName)
-		parser.FlagName = FlagName(parser.FullName)
-
-		logging.TraceContext(ctx, "checking config field", "parser", parser)
-
-		if !parser.Value.CanSet() {
-			continue
-		}
-
-		if parser.Field.Name == "Defaults" || parser.Field.Name == "Plugins" ||
-			parser.Field.Name == "Tasks" {
-			continue
-		}
-
-		if parser.Value.Kind() == reflect.Struct {
-			// Apply the overrides recursively but set the plugins to nil as
-			// only the top-level config has the map for config values.
-			err = parser.ApplyOverrides(ctx)
-			if err != nil {
-				return fmt.Errorf("%w", err)
-			}
-
-			continue
-		}
-
-		switch parser.Value.Kind() { //nolint:exhaustive // TODO: implemented as needed
-		case reflect.Bool:
-			err = parser.setBool()
-		case reflect.Int:
-			if parser.Value.Type().Name() == "ColorMode" {
-				err = parser.setColorMode()
-			} else {
-				err = parser.setInt()
-			}
-		case reflect.String:
-			if parser.Value.Type().Name() == "Path" {
-				err = parser.setPath()
-			} else {
-				err = parser.setString()
-			}
-		case reflect.Struct:
-			panic(
-				fmt.Sprintf(
-					"reached the struct check when converting environment variable to config value in %s: %s",
-					parser.Field.Name,
-					parser.Value.Kind(),
-				),
-			)
-		default:
-			panic(
-				fmt.Sprintf(
-					"unsupported config field type for %s: %s",
-					parser.Field.Name,
-					parser.Value.Kind(),
-				),
-			)
-		}
-
+		x, err = opts.FlagSet.GetString(flagName)
 		if err != nil {
-			return fmt.Errorf("failed to set config value: %w", err)
-		}
-
-		logging.TraceContext(ctx, "config value set", "parser", parser)
-	}
-
-	return nil
-}
-
-// applyPluginOverrides applies the overrides of the config values from
-// environment variables and command-line flags to plugin configs in cfg in p.
-// It modifies the pointed cfg.
-func (p *ValueParser) applyPluginOverrides(
-	ctx context.Context,
-	cfgMap map[string]any,
-	configs []rpp.ConfigEntry,
-) error {
-	logging.TraceContext(ctx, "applying plugin overrides", "cfgs", configs)
-
-	for _, cfgVal := range configs {
-		parser := &pluginParser{
-			flagSet:  p.FlagSet,
-			m:        cfgMap,
-			c:        cfgVal,
-			envName:  "",
-			envValue: "",
-			flagName: "",
-		}
-
-		if cfgVal.EnvName == "" {
-			prefix := toEnv(p.EnvName, EnvPrefix)
-			parser.envName = toEnv(cfgVal.Key, prefix)
-		} else {
-			parser.envName = EnvPrefix + "_" + cfgVal.EnvName
-		}
-
-		parser.envValue = os.Getenv(parser.envName)
-
-		var f rpp.Flag
-
-		if fp, err := cfgVal.RealFlag(); err != nil {
-			return fmt.Errorf("%w", err)
-		} else if fp != nil {
-			f = *fp
-		}
-
-		parser.flagName = f.Name
-
-		logging.TraceContext(ctx, "checking plugin config", "parser", parser)
-
-		switch cfgVal.Type {
-		case rpp.BoolValue:
-			x, err := parser.bool()
-			if err != nil {
-				return fmt.Errorf(
-					"failed to set value for %q by %q: %w",
-					cfgVal.Key,
-					p.Plugin.Name,
-					err,
-				)
-			}
-
-			cfgMap[cfgVal.Key] = x
-		case rpp.IntValue:
-			x, err := parser.int()
-			if err != nil {
-				return fmt.Errorf(
-					"failed to set value for %q by %q: %w",
-					cfgVal.Key,
-					p.Plugin.Name,
-					err,
-				)
-			}
-
-			cfgMap[cfgVal.Key] = x
-		case rpp.StringValue:
-			x, err := parser.string()
-			if err != nil {
-				return fmt.Errorf(
-					"failed to set value for %q by %q: %w",
-					cfgVal.Key,
-					p.Plugin.Name,
-					err,
-				)
-			}
-
-			cfgMap[cfgVal.Key] = x
-		default:
-			return fmt.Errorf(
-				"%w: ConfigEntry %q in plugin %q has invalid type: %s",
-				ErrInvalidConfig,
-				cfgVal.Key,
-				p.Plugin.Name,
-				cfgVal.Type,
-			)
-		}
-	}
-
-	return nil
-}
-
-// toEnv converts a struct field from camel case to snake case and upper case in
-// order to make the resulting environment variable names more natural.
-func toEnv(name, prefix string) string {
-	result := ""
-
-	for i, r := range name {
-		if i > 0 && unicode.IsUpper(r) {
-			result += "_"
-		}
-
-		result += string(r)
-	}
-
-	return strings.ToUpper(fmt.Sprintf("%s_%s", prefix, result))
-}
-
-// setBool sets a boolean value from the environment variable or
-// the command-line flag to the currently parsed value.
-func (p *ValueParser) setBool() error {
-	var err error
-
-	x := p.Value.Bool()
-
-	if p.EnvValue != "" {
-		if p.canUnmarshal() {
-			var v reflect.Value
-
-			v, err = p.unmarshal(p.EnvValue)
-			if err != nil {
-				return fmt.Errorf("%s=%q: %w", p.EnvName, p.EnvValue, err)
-			}
-
-			x = v.Bool()
-		} else {
-			x, err = strconv.ParseBool(p.EnvValue)
-		}
-	}
-
-	if err != nil {
-		return fmt.Errorf("%s=%q: %w", p.EnvName, p.EnvValue, err)
-	}
-
-	if p.FlagSet.Changed(p.FlagName) {
-		x, err = p.FlagSet.GetBool(p.FlagName)
-		if err != nil {
-			return fmt.Errorf("failed to get value for --%s: %w", p.FlagName, err)
-		}
-	}
-
-	if HasInvertedFlagName(p.FullName) {
-		inverted := InvertedFlagName(p.FullName)
-		if p.FlagSet.Changed(inverted) {
-			x, err = p.FlagSet.GetBool(p.FlagName)
-			if err != nil {
-				return fmt.Errorf("failed to get value for --%s: %w", inverted, err)
-			}
-
-			x = !x
-		}
-	}
-
-	p.Value.SetBool(x)
-
-	return nil
-}
-
-// setColorMode sets a color mode value from the environment variable or
-// the command-line flag to the currently parsed value.
-func (p *ValueParser) setColorMode() error {
-	// TODO: Unsafe conversion.
-	x := iostreams.ColorMode(p.Value.Int())
-
-	if !p.canUnmarshal() {
-		panic(fmt.Sprintf("casting type of field %q to TextUnmarshaler", p.Field.Name))
-	}
-
-	if p.EnvValue != "" {
-		v, err := p.unmarshal(p.EnvValue)
-		if err != nil {
-			return fmt.Errorf("%s=%q: %w", p.EnvName, p.EnvValue, err)
-		}
-
-		// TODO: Unsafe conversion.
-		x = iostreams.ColorMode(v.Int())
-	}
-
-	if p.FlagSet.Changed(p.FlagName) {
-		f := p.FlagSet.Lookup(p.FlagName)
-		if f == nil {
-			panic("failed to get value for --" + p.FlagName)
-		}
-
-		v, err := p.unmarshal(f.Value.String())
-		if err != nil {
-			return fmt.Errorf("failed to unmarshal color mode %q: %w", f.Value.String(), err)
-		}
-
-		// TODO: Unsafe conversion.
-		x = iostreams.ColorMode(v.Int())
-	}
-
-	p.Value.SetInt(int64(x))
-
-	return nil
-}
-
-// setInt sets an integer value from the environment variable or
-// the command-line flag to the currently parsed value.
-func (p *ValueParser) setInt() error {
-	var err error
-
-	x := p.Value.Int()
-
-	if p.EnvValue != "" {
-		if p.canUnmarshal() {
-			var v reflect.Value
-
-			v, err = p.unmarshal(p.EnvValue)
-			if err != nil {
-				return fmt.Errorf("%s=%q: %w", p.EnvName, p.EnvValue, err)
-			}
-
-			x = v.Int()
-		} else {
-			x, err = strconv.ParseInt(p.EnvValue, 10, 0)
-		}
-	}
-
-	if err != nil {
-		return fmt.Errorf("%s=%q: %w", p.EnvName, p.EnvValue, err)
-	}
-
-	if p.FlagSet.Changed(p.FlagName) {
-		var n int
-
-		n, err = p.FlagSet.GetInt(p.FlagName)
-		if err != nil {
-			return fmt.Errorf("failed to get value for --%s: %w", p.FlagName, err)
-		}
-
-		x = int64(n)
-	}
-
-	p.Value.SetInt(x)
-
-	return nil
-}
-
-// setPath sets a string value from the environment variable or
-// the command-line flag to the currently parsed value as an [fspath.Path]. It
-// also cleans the path and possibly makes it absolute.
-func (p *ValueParser) setPath() error {
-	var err error
-
-	x := fspath.Path(p.Value.String())
-
-	if p.EnvValue != "" {
-		x = fspath.Path(p.EnvValue)
-	}
-
-	if p.FlagSet.Changed(p.FlagName) {
-		x, err = p.FlagSet.GetPath(p.FlagName)
-		if err != nil {
-			return fmt.Errorf("failed to get value for --%s: %w", p.FlagName, err)
-		}
-	}
-
-	x, err = x.Abs()
-	if err != nil {
-		return fmt.Errorf("%w", err)
-	}
-
-	p.Value.SetString(string(x))
-
-	return nil
-}
-
-// setString sets a string value from the environment variable or
-// the command-line flag to the currently parsed value.
-func (p *ValueParser) setString() error {
-	x := p.Value.String()
-
-	if p.EnvValue != "" {
-		x = p.EnvValue
-	}
-
-	if p.FlagSet.Changed(p.FlagName) {
-		var err error
-
-		x, err = p.FlagSet.GetString(p.FlagName)
-		if err != nil {
-			return fmt.Errorf("failed to get value for --%s: %w", p.FlagName, err)
-		}
-	}
-
-	p.Value.SetString(x)
-
-	return nil
-}
-
-// bool resolves the value of a bool config value in plugin configurations.
-func (p *pluginParser) bool() (bool, error) {
-	var (
-		err error
-		x   bool
-	)
-
-	val, ok := p.m[p.c.Key]
-	if !ok {
-		// At start the config entry should have the default value.
-		x, ok = p.c.Value.(bool)
-		if !ok {
-			return x, fmt.Errorf(
-				"%w: default value for %q is not a bool: %[3]v (%[3]T)",
-				errInvalidCast,
-				p.c.Key,
-				p.c.Value,
-			)
-		}
-	} else {
-		x, ok = val.(bool)
-		if !ok {
-			return x, fmt.Errorf("%w: given value for %q is not a bool: %[3]v (%[3]T)", errInvalidCast, p.c.Key, p.c.Value)
-		}
-	}
-
-	if p.envValue != "" {
-		x, err = strconv.ParseBool(p.envValue)
-		if err != nil {
-			return x, fmt.Errorf("%s=%q: %w", p.envName, p.envValue, err)
-		}
-	}
-
-	// TODO: Inverse flags.
-	if p.flagName != "" && p.flagSet.Changed(p.flagName) {
-		x, err = p.flagSet.GetBool(p.flagName)
-		if err != nil {
-			return x, fmt.Errorf("failed to get value for --%s: %w", p.flagName, err)
+			return "", fmt.Errorf("failed to get value for --%s: %w", flagName, err)
 		}
 	}
 
 	return x, nil
 }
 
-// int resolves the value of an int config value in plugin configurations.
-func (p *pluginParser) int() (int64, error) {
-	var (
-		err error
-		x   int64
-	)
-
-	val, ok := p.m[p.c.Key]
-	if !ok {
-		var v int
-
-		v, err = p.c.Int()
-		if err != nil {
-			return x, fmt.Errorf("failed to get int value for %q: %w", p.c.Key, err)
-		}
-
-		// At start the config entry should have the default value.
-		x = int64(v)
-	} else {
-		x, ok = val.(int64)
-		if !ok {
-			return x, fmt.Errorf("%w: given value for %q is not an int: %[3]v (%[3]T)", errInvalidCast, p.c.Key, p.c.Value)
-		}
-	}
-
-	if p.envValue != "" {
-		x, err = strconv.ParseInt(p.envValue, 10, 0)
-		if err != nil {
-			return x, fmt.Errorf("%s=%q: %w", p.envName, p.envValue, err)
-		}
-	}
-
-	if p.flagName != "" && p.flagSet.Changed(p.flagName) {
-		var n int
-
-		n, err = p.flagSet.GetInt(p.flagName)
-		if err != nil {
-			return x, fmt.Errorf("failed to get value for --%s: %w", p.flagName, err)
-		}
-
-		x = int64(n)
-	}
-
-	return x, nil
-}
-
-// string resolves the value of a string config value in plugin configurations.
-func (p *pluginParser) string() (string, error) {
-	var (
-		err error
-		x   string
-	)
-
-	val, ok := p.m[p.c.Key]
-	if !ok {
-		// At start the config entry should have the default value.
-		x, ok = p.c.Value.(string)
-		if !ok {
-			return x, fmt.Errorf(
-				"%w: default value for %q is not an int: %[3]v (%[3]T)",
-				errInvalidCast,
-				p.c.Key,
-				p.c.Value,
-			)
-		}
-	} else {
-		x, ok = val.(string)
-		if !ok {
-			return x, fmt.Errorf("%w: given value for %q is not an int: %[3]v (%[3]T)", errInvalidCast, p.c.Key, p.c.Value)
-		}
-	}
-
-	if p.envValue != "" {
-		x = p.envValue
-	}
-
-	if p.flagName != "" && p.flagSet.Changed(p.flagName) {
-		x, err = p.flagSet.GetString(p.flagName)
-		if err != nil {
-			return x, fmt.Errorf("failed to get value for --%s: %w", p.flagName, err)
-		}
-	}
-
-	return x, nil
-}
-
-// canUnmarshal reports whether the field can be cast to
-// [encoding.TextUnmarshaler] and unmarshaled using it.
-func (p *ValueParser) canUnmarshal() bool {
-	return reflect.PointerTo(p.Value.Type()).Implements(textUnmarshalerType)
-}
-
-// unmarshal converts the string s to the type of the value that is currently
-// being parsed by calling the type's UnmarshalText function. It returns
-// the actual value instead of a pointer to the value.
-func (p *ValueParser) unmarshal(s string) (reflect.Value, error) {
-	ptr := reflect.New(p.Value.Type())
+// unmarshal converts s to the type of value by calling value's type's
+// UnmarshalText function. It returns the actual value instead of a pointer to
+// the value.
+func unmarshal(value reflect.Value, s string) (reflect.Value, error) {
+	ptr := reflect.New(value.Type())
 
 	unmarshaler, ok := ptr.Interface().(encoding.TextUnmarshaler)
 	if !ok {
-		return reflect.Value{}, fmt.Errorf(
-			"%w: type of %q to TextUnmarshaler",
-			errInvalidCast,
-			p.Field.Name,
-		)
+		return reflect.Value{}, fmt.Errorf("%w: type of %q to TextUnmarshaler", errInvalidCast, value)
 	}
 
 	if err := unmarshaler.UnmarshalText([]byte(s)); err != nil {

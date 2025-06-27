@@ -1,4 +1,4 @@
-// Copyright 2025 Antti Kivi
+// Copyright 2025 The Reginald Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,8 +14,7 @@
 
 // Package fspath implements utility routines for manipulating filename paths in
 // a way compatible with the target operating system-defined file paths through
-// the [Path] type. It also implements basic utility routines for interacting
-// with the files and file system through [Path].
+// the [Path] type.
 package fspath
 
 import (
@@ -42,7 +41,7 @@ func New(elem ...string) Path {
 func NewAbs(elem ...string) (Path, error) {
 	p, err := New(elem...).Abs()
 	if err != nil {
-		return "", fmt.Errorf("failed to create Path: %w", err)
+		return "", fmt.Errorf("%w", err)
 	}
 
 	return p, nil
@@ -80,6 +79,13 @@ func (p Path) Base() Path {
 	return Path(filepath.Base(string(p)))
 }
 
+// Clean returns the shortest path name equivalent to path by eliminating
+// redundant separators and resolving `.` and `..` elements. It wraps
+// [filepath.Clean].
+func (p Path) Clean() Path {
+	return Path(filepath.Clean(string(p)))
+}
+
 // Dir returns all but the last element of path, typically the path's directory.
 // After dropping the final element, Dir calls [filepath.Clean] on the path and
 // trailing slashes are removed. If the path is empty, Dir returns ".". If
@@ -88,13 +94,6 @@ func (p Path) Base() Path {
 // directory.
 func (p Path) Dir() Path {
 	return Path(filepath.Dir(string(p)))
-}
-
-// Clean returns the shortest path name equivalent to path by eliminating
-// redundant separators and resolving `.` and `..` elements. It wraps
-// [filepath.Clean].
-func (p Path) Clean() Path {
-	return Path(filepath.Clean(string(p)))
 }
 
 // ExpandEnv replaces ${var} or $var and even %var% on Windows in the string
@@ -137,6 +136,20 @@ func (p Path) IsAbs() bool {
 	return filepath.IsAbs(string(p))
 }
 
+// IsDir reports whether the file name exists and is a directory.
+func (p Path) IsDir() (bool, error) {
+	info, err := os.Stat(string(p))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("%w", err)
+	}
+
+	return info.IsDir(), nil
+}
+
 // IsFile reports whether the file name exists and is a file.
 func (p Path) IsFile() (bool, error) {
 	info, err := os.Stat(string(p))
@@ -176,7 +189,7 @@ func (p Path) Join(elem ...string) Path {
 // MkdirAll wraps [os.MkdirAll].
 func (p Path) MkdirAll(perm os.FileMode) error {
 	if err := os.MkdirAll(string(p), perm); err != nil {
-		return fmt.Errorf("failed to create directory %q: %w", p, err)
+		return fmt.Errorf("%w", err)
 	}
 
 	return nil
@@ -193,7 +206,7 @@ func (p Path) MkdirAll(perm os.FileMode) error {
 func (p Path) OpenFile(flag int, perm os.FileMode) (*os.File, error) {
 	f, err := os.OpenFile(string(p), flag, perm) // #nosec G304 -- utility function
 	if err != nil {
-		return nil, fmt.Errorf("failed to open %q: %w", p, err)
+		return nil, fmt.Errorf("%w", err)
 	}
 
 	return f, nil
@@ -206,7 +219,7 @@ func (p Path) OpenFile(flag int, perm os.FileMode) (*os.File, error) {
 func (p Path) ReadDir() ([]os.DirEntry, error) {
 	list, err := os.ReadDir(string(p))
 	if err != nil {
-		return nil, fmt.Errorf("failed to read directory %q: %w", p, err)
+		return nil, fmt.Errorf("%w", err)
 	}
 
 	return list, nil
@@ -220,7 +233,7 @@ func (p Path) ReadDir() ([]os.DirEntry, error) {
 func (p Path) ReadFile() ([]byte, error) {
 	data, err := os.ReadFile(string(p))
 	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
+		return nil, fmt.Errorf("%w", err)
 	}
 
 	return data, nil

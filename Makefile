@@ -1,4 +1,4 @@
-# Copyright 2025 Antti Kivi
+# Copyright 2025 The Reginald Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,8 +20,15 @@
 .SUFFIXES:
 
 GO = go
+GOFLAGS =
+
+VERSION =
+OUTPUT =
+
+TOOLFLAGS =
 
 ADDLICENSE_VERSION = 1.1.1
+DELVE_VERSION = 1.25.0
 GCI_VERSION = 0.13.6
 GO_LICENSES_VERSION = 1.6.0
 GOFUMPT_VERSION = 0.8.0
@@ -29,55 +36,56 @@ GOLANGCI_LINT_VERSION = 2.1.6
 GOLINES_VERSION = 0.12.2
 
 ALLOWED_LICENSES = Apache-2.0,BSD-2-Clause,BSD-3-Clause,MIT
-
-COPYRIGHT_HOLDER = Antti Kivi
+COPYRIGHT_HOLDER = The Reginald Authors
 LICENSE = apache
-ADDLICENSE_PATTERNS = *.go examples internal pkg scripts
+ADDLICENSE_PATTERNS = *.go internal plugins tools
 
 GO_MODULE = github.com/reginald-project/reginald
 
 RM = rm -f
 
 # Default target.
-all: FORCE build plugins
+all: reginald plugins
 
 # CODE QUALITY & CHECKS
 
-audit: FORCE license-check test lint
+audit: license-check test lint
 	"$(GO)" mod tidy -diff
 	"$(GO)" mod verify
 
-license-check: FORCE go-licenses
+license-check: go-licenses
 	"$(GO)" mod verify
 	"$(GO)" mod download
 	go-licenses check --include_tests $(GO_MODULE)/... --allowed_licenses="$(ALLOWED_LICENSES)"
 
-lint: FORCE addlicense golangci-lint
+lint: addlicense golangci-lint
 	addlicense -check -c "$(COPYRIGHT_HOLDER)" -l "$(LICENSE)" $(ADDLICENSE_PATTERNS)
 	golangci-lint config verify
 	golangci-lint run
 
-test: FORCE go
+test: FORCE
 	"$(GO)" test $(GOFLAGS) ./...
 
 # DEVELOPMENT & BUILDING
 
-tidy: FORCE addlicense gci go gofumpt golines
+tidy: addlicense gci gofumpt golines
 	addlicense -v -c "$(COPYRIGHT_HOLDER)" -l "$(LICENSE)" $(ADDLICENSE_PATTERNS)
 	"$(GO)" mod tidy -v
 	gci write .
-	golines --no-chain-split-dots --no-reformat-tags -w .
+	golines -m 120 -t 4 --no-chain-split-dots --no-reformat-tags -w .
 	gofumpt -extra -l -w .
 
-fmt: FORCE tidy
+reginald: FORCE buildtask
+	@./buildtask $@
 
-build: FORCE go
-	@./scripts/build "$(GO)" "$(VERSION)" "$(PRERELEASE)" "$(BUILD_METADATA)" "" "$(GOFLAGS)"
+build: reginald
 
-plugins: FORCE example-plugin
+plugins: reginald-go
 
-example-plugin: FORCE go
-	"$(GO)" build -o reginald-example ./examples
+reginald-go: FORCE
+	mkdir -p ./bin/go
+	cp ./plugins/go/manifest.json ./bin/go/manifest.json
+	"$(GO)" build -o ./bin/go/reginald-go ./plugins/go
 
 clean: FORCE
 	@exe=""; \
@@ -93,36 +101,18 @@ clean: FORCE
 	fi; \
 	\
 	$(RM) "$${output}"
-	@$(RM) reginald-example
+	@$(RM) -r bin
 
 # TOOL HELPERS
 
-addlicense: FORCE
-	@./scripts/install_tool "$(GO)" "$@" "$(ADDLICENSE_VERSION)" "$(FORCE_REINSTALL)"
+addlicense delve gci go-licenses gofumpt golangci-lint golines: FORCE installtool
+	@./installtool $@ $(TOOLFLAGS)
 
-gci: FORCE
-	@./scripts/install_tool "$(GO)" "$@" "$(GCI_VERSION)" "$(FORCE_REINSTALL)"
+buildtask: tools/buildtask/tool.go
+	"$(GO)" build -o $@ -tags tool $<
 
-go: FORCE
-	@if ! command -v "$(GO)" >/dev/null 2>&1; then \
-		printf 'Error: the Go executable was not found, tried "%s"\n' "$(GO)" >&2; \
-		exit 1; \
-	else \
-		GOFLAGS= ; \
-		printf 'using Go version %s\n' "$$("$(GO)" version | awk '{print $$3}' | cut -c 3-)"; \
-	fi
-
-go-licenses: FORCE
-	@./scripts/install_tool "$(GO)" "$@" "$(GO_LICENSES_VERSION)" "$(FORCE_REINSTALL)"
-
-gofumpt: FORCE
-	@./scripts/install_tool "$(GO)" "$@" "$(GOFUMPT_VERSION)" "$(FORCE_REINSTALL)"
-
-golangci-lint: FORCE
-	@./scripts/install_tool "$(GO)" "$@" "$(GOLANGCI_LINT_VERSION)" "$(FORCE_REINSTALL)"
-
-golines: FORCE
-	@./scripts/install_tool "$(GO)" "$@" "$(GOLINES_VERSION)" "$(FORCE_REINSTALL)"
+installtool: tools/installtool/tool.go
+	"$(GO)" build -o $@ -tags tool $<
 
 # SPECIAL TARGET
 
