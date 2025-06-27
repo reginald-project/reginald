@@ -32,6 +32,7 @@ import (
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/log"
 	"github.com/reginald-project/reginald/internal/panichandler"
+	"github.com/reginald-project/reginald/internal/terminal"
 )
 
 // A Plugin is a plugin that Reginald recognizes.
@@ -425,6 +426,31 @@ func (e *externalPlugin) read(ctx context.Context, handlePanic func()) {
 	}
 }
 
+// readStderr runs the standard error stream reading loop of the plugin. It
+// listens to the connection with the plugin process for data through
+// the standard error pipe and handles the messages.
+func (e *externalPlugin) readStderr(ctx context.Context, handlePanic func()) {
+	defer handlePanic()
+
+	conn, ok := e.conn.(*connection)
+	if !ok {
+		panic(fmt.Sprintf("connection for plugin %q is not *connection", e.manifest.Name))
+	}
+
+	scanner := bufio.NewScanner(conn.stderr)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		log.Warn(ctx, "plugin printed to stderr", "plugin", e.manifest.Name, "output", line)
+		terminal.Errorf("[%s] %s\n", e.manifest.Name, line)
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Error(ctx, "error reading plugin stderr", "plugin", e.manifest.Name, "err", err)
+	}
+}
+
 // start starts the execution of the plugin process.
 func (e *externalPlugin) start(ctx context.Context) error {
 	m := e.manifest
@@ -475,8 +501,8 @@ func (e *externalPlugin) start(ctx context.Context) error {
 
 	handlePanic := panichandler.WithStackTrace()
 
-	// TODO: Add read loops.
 	go e.read(ctx, handlePanic)
+	go e.readStderr(ctx, handlePanic)
 
 	go func() {
 		defer handlePanic()
