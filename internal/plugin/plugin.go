@@ -537,8 +537,6 @@ func (q *responseQueue) channel(id *api.ID) chan api.Response {
 		return nil
 	}
 
-	delete(q.q, key)
-
 	return ch
 }
 
