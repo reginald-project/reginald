@@ -105,6 +105,27 @@ func NewStore(ctx context.Context, wd fspath.Path, paths []fspath.Path) (*Store,
 	return store, nil
 }
 
+// Command returns the command with the given name from the store. If prev is
+// nil, the command is looked up from the store root. Otherwise, it is looked up
+// from the subcommands of prev.
+func (s *Store) Command(prev *Command, name string) *Command {
+	var cmds []*Command
+
+	if prev == nil {
+		cmds = s.Commands
+	} else {
+		cmds = prev.Commands
+	}
+
+	for _, cmd := range cmds {
+		if cmd.Name == name || (len(cmd.Aliases) > 0 && slices.Contains(cmd.Aliases, name)) {
+			return cmd
+		}
+	}
+
+	return nil
+}
+
 // Init loads the required plugins and performs a handshake with them.
 // The function uses the command that was run to determine which plugins should
 // be loaded.
@@ -136,12 +157,81 @@ func (*Store) Init(ctx context.Context, cmd *Command) error {
 		return fmt.Errorf("failed to init plugins: %w", err)
 	}
 
+	log.Debug(ctx, "plugins started")
+
 	return nil
 }
 
 // Len returns the number of plugins in the store.
 func (s *Store) Len() int {
 	return len(s.Plugins)
+}
+
+// Shutdown requests all of the started plugins to shut down and notfies them to
+// exit. It will ultimately kill the processes for the plugins that fail to shut
+// down gracefully.
+func (s *Store) Shutdown(ctx context.Context) error {
+	g, gctx := errgroup.WithContext(ctx)
+
+	for _, plugin := range s.Plugins {
+		if !plugin.External() {
+			log.Trace(ctx, "shutting down built-in plugin", "no-op", true, "plugin", plugin.Manifest().Name)
+
+			continue
+		}
+
+		external, ok := plugin.(*externalPlugin)
+		if !ok {
+			return fmt.Errorf(
+				"%w: plugin %q cannot be converted to *externalPlugin",
+				errInvalidCast,
+				plugin.Manifest().Name,
+			)
+		}
+
+		if external.cmd == nil {
+			log.Trace(ctx, "skipping shutdown as process was not started", "plugin", external.manifest.Name)
+
+			continue
+		}
+
+		handlePanic := panichandler.WithStackTrace()
+
+		g.Go(func() error {
+			defer handlePanic()
+
+			if err := shutdown(gctx, external); err != nil {
+				return err
+			}
+
+			if err := exit(ctx, external); err != nil {
+				return err
+			}
+
+			select {
+			case err := <-external.doneCh:
+				if err != nil {
+					return fmt.Errorf("process for plugin %q returned error: %w", external.manifest.Name, err)
+				}
+			case <-ctx.Done():
+				if err := external.kill(ctx); err != nil {
+					return fmt.Errorf("failed to kill plugin %q: %w", external.manifest.Name, err)
+				}
+
+				return fmt.Errorf("shutting down plugin %q halted: %w", external.manifest.Name, ctx.Err())
+			}
+
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("failed to shut down plugins: %w", err)
+	}
+
+	log.Debug(ctx, "plugins shut down")
+
+	return nil
 }
 
 // LogValue implements [slog.LogValuer] for Store. It returns a group value for
@@ -157,27 +247,6 @@ func (s *Store) LogValue() slog.Value {
 	attrs = append(attrs, slog.Any("plugins", names), slog.Any("commands", logCmds(s.Commands)))
 
 	return slog.GroupValue(attrs...)
-}
-
-// Command returns the command with the given name from the store. If prev is
-// nil, the command is looked up from the store root. Otherwise, it is looked up
-// from the subcommands of prev.
-func (s *Store) Command(prev *Command, name string) *Command {
-	var cmds []*Command
-
-	if prev == nil {
-		cmds = s.Commands
-	} else {
-		cmds = prev.Commands
-	}
-
-	for _, cmd := range cmds {
-		if cmd.Name == name || (len(cmd.Aliases) > 0 && slices.Contains(cmd.Aliases, name)) {
-			return cmd
-		}
-	}
-
-	return nil
 }
 
 // readAllSearchPaths loads plugins from all of the given search paths.
@@ -384,7 +453,6 @@ func readExternalPlugin(ctx context.Context, path fspath.Path) (*externalPlugin,
 		cmd:      nil,
 		doneCh:   make(chan error),
 		lastID:   atomic.Int64{},
-		loaded:   false,
 		manifest: manifest,
 		queue: &responseQueue{
 			q:  make(map[string]chan api.Response),

@@ -47,6 +47,9 @@ type Plugin interface {
 	// occurred or was returned in response.
 	call(ctx context.Context, method string, params, result any) error
 
+	// notify sends a notification request to the plugin.
+	notify(ctx context.Context, method string, params any) error
+
 	// start starts the execution of the plugin process.
 	start(ctx context.Context) error
 }
@@ -61,11 +64,10 @@ type builtinPlugin struct {
 // A connection handles the connection with the plugin client and the external
 // plugin executable for an [externalPlugin].
 type connection struct {
-	stdin  io.WriteCloser // stdin of the process //nolint:unused // TODO: Used soon.
-	stdout io.ReadCloser  // stdout of the process //nolint:unused // TODO: Used soon.
-	//nolint:unused // TODO: Used soon.
-	stderr io.ReadCloser // stderr of the process
-	mu     sync.Mutex    // serializes writing
+	stdin  io.WriteCloser // stdin of the process
+	stdout io.ReadCloser  // stdout of the process
+	stderr io.ReadCloser  // stderr of the process
+	mu     sync.Mutex     // serializes writing
 }
 
 // An externalPlugin is an externalPlugin plugin that is not provided by
@@ -91,10 +93,6 @@ type externalPlugin struct {
 	// the protocol supports both strings and ints as the ID, we just default to
 	// ints to make the client more reasonable.
 	lastID atomic.Int64
-
-	// loaded tells whether the executable for this plugin is loaded and started
-	// up.
-	loaded bool
 }
 
 // A responseQueue holds channels that transfer responses sent from the plugins
@@ -130,8 +128,22 @@ func (b *builtinPlugin) Manifest() *api.Manifest {
 }
 
 // Close closes the standard streams attached to the connection.
-func (*connection) Close() error {
-	// TODO: Close the pipes.
+func (c *connection) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if err := c.stderr.Close(); err != nil {
+		return fmt.Errorf("failed to close connection stderr: %w", err)
+	}
+
+	if err := c.stdin.Close(); err != nil {
+		return fmt.Errorf("failed to close connection stdin: %w", err)
+	}
+
+	if err := c.stdout.Close(); err != nil {
+		return fmt.Errorf("failed to close connection stdout: %w", err)
+	}
+
 	return nil
 }
 
@@ -193,6 +205,13 @@ func (b *builtinPlugin) call(ctx context.Context, method string, _, result any) 
 	default:
 		panic("invalid method call: " + method)
 	}
+
+	return nil
+}
+
+// notify sends a notification request to the plugin.
+func (b *builtinPlugin) notify(ctx context.Context, method string, _ any) error {
+	log.Trace(ctx, "built-in notfication", "plugin", b.manifest.Name, "method", method)
 
 	return nil
 }
@@ -267,6 +286,48 @@ func (e *externalPlugin) call(ctx context.Context, method string, params, result
 		log.Trace(ctx, "method call successful", "plugin", e.manifest.Name, "method", method, "id", id)
 	case <-ctx.Done():
 		return fmt.Errorf("method call halted: %w", ctx.Err())
+	}
+
+	return nil
+}
+
+// kill kills the plugin process.
+func (e *externalPlugin) kill(ctx context.Context) error {
+	if e.cmd.Process != nil {
+		log.Warn(ctx, "killing plugin process", "plugin", e.manifest.Name)
+
+		if err := e.cmd.Process.Kill(); err != nil {
+			return fmt.Errorf("failed to kill process for plugin %q: %w", e.manifest.Name, err)
+		}
+	}
+
+	e.queue.closeAll()
+
+	if err := e.conn.Close(); err != nil {
+		return fmt.Errorf("failed to close connection to plugin %q: %w", e.manifest.Name, err)
+	}
+
+	return nil
+}
+
+// notify sends a notification request to the plugin.
+func (e *externalPlugin) notify(ctx context.Context, method string, params any) error {
+	rawParams, err := json.Marshal(params)
+	if err != nil {
+		return fmt.Errorf("failed to marshal params: %w", err)
+	}
+
+	req := api.Request{
+		JSONRPC: api.JSONRPCVersion,
+		ID:      nil,
+		Method:  method,
+		Params:  rawParams,
+	}
+
+	log.Trace(ctx, "sending notification", "plugin", e.manifest.Name, "method", method, "params", params)
+
+	if err = write(e.conn, req); err != nil {
+		return fmt.Errorf("failed write notification request: %w", err)
 	}
 
 	return nil
@@ -368,8 +429,8 @@ func (e *externalPlugin) read(ctx context.Context, handlePanic func()) {
 func (e *externalPlugin) start(ctx context.Context) error {
 	m := e.manifest
 
-	if e.loaded {
-		return fmt.Errorf("%w: %q", errRestart, m.Name)
+	if e.cmd != nil {
+		panic(fmt.Sprintf("trying to restart process for plugin %q", e.manifest.Name))
 	}
 
 	exe := fspath.Path(m.Executable)

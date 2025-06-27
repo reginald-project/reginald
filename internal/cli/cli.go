@@ -18,6 +18,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"runtime"
 	"slices"
@@ -81,6 +82,12 @@ func Run(ctx context.Context) error {
 			err:  err,
 		}
 	}
+
+	defer func() {
+		if err := info.store.Shutdown(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "Error when shutting down plugins: %v\n", err)
+		}
+	}()
 
 	return nil
 }

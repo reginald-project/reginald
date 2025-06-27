@@ -24,9 +24,9 @@ import (
 var (
 	ErrInvalidConfig   = errors.New("invalid plugin config")
 	errHandshake       = errors.New("plugin provided incompatible response")
+	errInvalidCast     = errors.New("cannot convert type")
 	errInvalidManifest = errors.New("invalid plugin manifest")
 	errNoResponse      = errors.New("no response")
-	errRestart         = errors.New("plugin already running")
 	errWrongLength     = errors.New("number of bytes read does not match")
 	errZeroLength      = errors.New("Content-Length is zero")
 )

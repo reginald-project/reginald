@@ -22,6 +22,17 @@ import (
 	"github.com/reginald-project/reginald/internal/log"
 )
 
+// exit sends the "exit" notification to the given plugin.
+func exit(ctx context.Context, plugin Plugin) error {
+	if err := plugin.notify(ctx, api.MethodShutdown, nil); err != nil {
+		return fmt.Errorf("call %q to plugin %q failed: %w", api.MethodExit, plugin.Manifest().Name, err)
+	}
+
+	log.Trace(ctx, "exit notification successful", "plugin", plugin.Manifest().Name)
+
+	return nil
+}
+
 // handshake performs the "handshake" method call with the given plugin.
 func handshake(ctx context.Context, plugin Plugin) error {
 	params := api.DefaultHandshakeParams()
@@ -52,6 +63,17 @@ func handshake(ctx context.Context, plugin Plugin) error {
 	}
 
 	log.Trace(ctx, "handshake successful", "plugin", plugin.Manifest().Name)
+
+	return nil
+}
+
+// shutdown makes a "shutdown" call to the given plugin.
+func shutdown(ctx context.Context, plugin Plugin) error {
+	if err := plugin.call(ctx, api.MethodShutdown, nil, nil); err != nil {
+		return fmt.Errorf("call %q to plugin %q failed: %w", api.MethodShutdown, plugin.Manifest().Name, err)
+	}
+
+	log.Trace(ctx, "shutdown call successful", "plugin", plugin.Manifest().Name)
 
 	return nil
 }
