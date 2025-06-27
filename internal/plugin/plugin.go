@@ -170,21 +170,41 @@ func (e *externalPlugin) Manifest() *api.Manifest {
 	return e.manifest
 }
 
-// Call calls a method in the plugin. It unmarshals the result into result if
+// call calls a method in the plugin. It unmarshals the result into result if
 // the method call is successful. Otherwise, it returns any error that occurred
 // or was returned in response.
-func (*builtinPlugin) call(_ context.Context, _ string, _, _ any) error {
+func (b *builtinPlugin) call(ctx context.Context, method string, _, result any) error {
+	log.Trace(ctx, "built-in method call", "plugin", b.manifest.Name, "method", method)
+
+	switch method {
+	case api.MethodHandshake:
+		handshakeResult, ok := result.(*api.HandshakeResult)
+		if !ok {
+			panic(fmt.Sprintf("invalid result type for method %q: %[2]T (%[2]v)", method, result))
+		}
+
+		*handshakeResult = api.HandshakeResult{
+			Name: b.manifest.Name,
+			Handshake: api.Handshake{
+				Protocol:        "reginald",
+				ProtocolVersion: 0,
+			},
+		}
+	default:
+		panic("invalid method call: " + method)
+	}
+
 	return nil
 }
 
-// Start starts the execution of the plugin process.
+// start starts the execution of the plugin process.
 func (b *builtinPlugin) start(ctx context.Context) error {
 	log.Trace(ctx, "starting built-in plugin", "no-op", true, "plugin", b.manifest.Domain)
 
 	return nil
 }
 
-// Call calls a method in the plugin. It unmarshals the result into result if
+// call calls a method in the plugin. It unmarshals the result into result if
 // the method call is successful. Otherwise, it returns any error that occurred
 // or was returned in response.
 func (e *externalPlugin) call(ctx context.Context, method string, params, result any) error {
@@ -248,68 +268,6 @@ func (e *externalPlugin) call(ctx context.Context, method string, params, result
 	case <-ctx.Done():
 		return fmt.Errorf("method call halted: %w", ctx.Err())
 	}
-
-	return nil
-}
-
-// Start starts the execution of the plugin process.
-func (e *externalPlugin) start(ctx context.Context) error {
-	m := e.manifest
-
-	if e.loaded {
-		return fmt.Errorf("%w: %q", errRestart, m.Name)
-	}
-
-	exe := fspath.Path(m.Executable)
-
-	if ok, err := exe.IsFile(); err != nil {
-		return fmt.Errorf("failed to check if executable for %q is a file: %w", m.Name, err)
-	} else if !ok {
-		panic(fmt.Sprintf("executable for plugin %q at %s is not file", m.Name, exe))
-	}
-
-	// TODO: Add the mode for executing only trusted plugins.
-	c := exec.CommandContext(ctx, string(exe.Clean())) // #nosec G204 -- sanitized earlier
-
-	stdin, err := c.StdinPipe()
-	if err != nil {
-		return fmt.Errorf("failed to create stdin pipe for %s: %w", exe, err)
-	}
-
-	stdout, err := c.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf(
-			"failed to create stdout pipe for %s: %w", exe, err)
-	}
-
-	stderr, err := c.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("failed to create stderr pipe for %s: %w", exe, err)
-	}
-
-	conn := &connection{
-		mu:     sync.Mutex{},
-		stderr: stderr,
-		stdin:  stdin,
-		stdout: stdout,
-	}
-	e.conn = conn
-	e.cmd = c
-
-	if err = e.cmd.Start(); err != nil {
-		return fmt.Errorf("execution of %q (%s) failed: %w", m.Name, e.cmd.Path, err)
-	}
-
-	handlePanic := panichandler.WithStackTrace()
-
-	// TODO: Add read loops.
-	go e.read(ctx, handlePanic)
-
-	go func() {
-		defer handlePanic()
-		e.doneCh <- e.cmd.Wait()
-		close(e.doneCh)
-	}()
 
 	return nil
 }
@@ -404,6 +362,68 @@ func (e *externalPlugin) read(ctx context.Context, handlePanic func()) {
 		ch <- res
 		close(ch)
 	}
+}
+
+// start starts the execution of the plugin process.
+func (e *externalPlugin) start(ctx context.Context) error {
+	m := e.manifest
+
+	if e.loaded {
+		return fmt.Errorf("%w: %q", errRestart, m.Name)
+	}
+
+	exe := fspath.Path(m.Executable)
+
+	if ok, err := exe.IsFile(); err != nil {
+		return fmt.Errorf("failed to check if executable for %q is a file: %w", m.Name, err)
+	} else if !ok {
+		panic(fmt.Sprintf("executable for plugin %q at %s is not file", m.Name, exe))
+	}
+
+	// TODO: Add the mode for executing only trusted plugins.
+	c := exec.CommandContext(ctx, string(exe.Clean())) // #nosec G204 -- sanitized earlier
+
+	stdin, err := c.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdin pipe for %s: %w", exe, err)
+	}
+
+	stdout, err := c.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf(
+			"failed to create stdout pipe for %s: %w", exe, err)
+	}
+
+	stderr, err := c.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stderr pipe for %s: %w", exe, err)
+	}
+
+	conn := &connection{
+		mu:     sync.Mutex{},
+		stderr: stderr,
+		stdin:  stdin,
+		stdout: stdout,
+	}
+	e.conn = conn
+	e.cmd = c
+
+	if err = e.cmd.Start(); err != nil {
+		return fmt.Errorf("execution of %q (%s) failed: %w", m.Name, e.cmd.Path, err)
+	}
+
+	handlePanic := panichandler.WithStackTrace()
+
+	// TODO: Add read loops.
+	go e.read(ctx, handlePanic)
+
+	go func() {
+		defer handlePanic()
+		e.doneCh <- e.cmd.Wait()
+		close(e.doneCh)
+	}()
+
+	return nil
 }
 
 func (q *responseQueue) add(id *api.ID) {
