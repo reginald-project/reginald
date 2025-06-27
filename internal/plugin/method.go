@@ -24,8 +24,8 @@ import (
 
 // exit sends the "exit" notification to the given plugin.
 func exit(ctx context.Context, plugin Plugin) error {
-	if err := plugin.notify(ctx, api.MethodShutdown, nil); err != nil {
-		return fmt.Errorf("call %q to plugin %q failed: %w", api.MethodExit, plugin.Manifest().Name, err)
+	if err := plugin.notify(ctx, api.MethodExit, nil); err != nil {
+		return err
 	}
 
 	log.Trace(ctx, "exit notification successful", "plugin", plugin.Manifest().Name)
@@ -40,7 +40,7 @@ func handshake(ctx context.Context, plugin Plugin) error {
 	var result api.HandshakeResult
 
 	if err := plugin.call(ctx, api.MethodHandshake, params, &result); err != nil {
-		return fmt.Errorf("call %q to plugin %q failed: %w", api.MethodHandshake, plugin.Manifest().Name, err)
+		return err
 	}
 
 	switch {
@@ -62,18 +62,23 @@ func handshake(ctx context.Context, plugin Plugin) error {
 		)
 	}
 
-	log.Trace(ctx, "handshake successful", "plugin", plugin.Manifest().Name)
+	log.Trace(ctx, "handshake successful", "plugin", plugin.Manifest().Name, "result", result)
 
 	return nil
 }
 
 // shutdown makes a "shutdown" call to the given plugin.
 func shutdown(ctx context.Context, plugin Plugin) error {
-	if err := plugin.call(ctx, api.MethodShutdown, nil, nil); err != nil {
-		return fmt.Errorf("call %q to plugin %q failed: %w", api.MethodShutdown, plugin.Manifest().Name, err)
+	var result bool
+	if err := plugin.call(ctx, api.MethodShutdown, nil, &result); err != nil {
+		return err
 	}
 
-	log.Trace(ctx, "shutdown call successful", "plugin", plugin.Manifest().Name)
+	if !result {
+		return fmt.Errorf("%w: shutdown returned \"%t\"", errInvalidResponse, result)
+	}
+
+	log.Trace(ctx, "shutdown call successful", "plugin", plugin.Manifest().Name, "result", result)
 
 	return nil
 }

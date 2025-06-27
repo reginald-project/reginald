@@ -20,6 +20,41 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/reginald-project/reginald-sdk-go/api"
 )
 
-func main() { fmt.Fprintln(os.Stderr, "Hello world") }
+func main() {
+	fmt.Fprintln(os.Stderr, "Hello world")
+
+	opts := &ServerOpts{
+		Name:        "reginald-go",
+		Version:     "0.1.0",
+		Domain:      "go",
+		Description: "TODO",
+		Help:        "TODO",
+		Executable:  "reginald-go",
+		Config: []api.ConfigEntry{
+			{ //nolint:exhaustruct // omit default values
+				KeyValue: api.KeyValue{ //nolint:exhaustruct // omit default values
+					Key:   "version",
+					Value: "1.23",
+					Type:  api.StringValue,
+				},
+			},
+		},
+	}
+
+	versionsCmd := Command{ //nolint:exhaustruct // omit default values
+		Name:  "version",
+		Usage: "versions [options]",
+		Args:  nil,
+	}
+
+	server := NewServer(opts, versionsCmd)
+
+	if err := server.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "%s is going to exit with an error: %v", opts.Name, err)
+		os.Exit(1)
+	}
+}

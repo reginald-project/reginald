@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -264,14 +265,15 @@ func (e *externalPlugin) call(ctx context.Context, method string, params, result
 	e.queue.add(rpcID)
 	defer e.queue.close(rpcID)
 
-	if err = write(e.conn, req); err != nil {
-		return fmt.Errorf("failed write request: %w", err)
+	err = write(ctx, e.conn, req)
+	if err != nil {
+		return err
 	}
 
 	select {
 	case res, ok := <-e.queue.channel(rpcID):
 		if !ok {
-			return fmt.Errorf("%w: plugin %q (method %s)", errNoResponse, e.manifest.Name, method)
+			return fmt.Errorf("%w: plugin %q (method %q)", errNoResponse, e.manifest.Name, method)
 		}
 
 		log.Trace(ctx, "received response", "plugin", e.manifest.Name, "res", res)
@@ -327,11 +329,7 @@ func (e *externalPlugin) notify(ctx context.Context, method string, params any) 
 
 	log.Trace(ctx, "sending notification", "plugin", e.manifest.Name, "method", method, "params", params)
 
-	if err = write(e.conn, req); err != nil {
-		return fmt.Errorf("failed write notification request: %w", err)
-	}
-
-	return nil
+	return write(ctx, e.conn, req)
 }
 
 // read runs the reading loop of the plugin. It listens to the connection with
@@ -346,6 +344,12 @@ func (e *externalPlugin) read(ctx context.Context, handlePanic func()) {
 	for {
 		msg, err := read(reader)
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				log.Warn(ctx, "read EOF from plugin", "plugin", e.manifest.Name, "err", err)
+
+				return
+			}
+
 			log.Error(ctx, "error when reading from plugin", "plugin", e.manifest.Name, "err", err)
 
 			return
@@ -422,7 +426,6 @@ func (e *externalPlugin) read(ctx context.Context, handlePanic func()) {
 		}
 
 		ch <- res
-		close(ch)
 	}
 }
 
@@ -543,6 +546,10 @@ func (q *responseQueue) channel(id *api.ID) chan api.Response {
 // close closes the channel matching the given ID and deletes the entry from
 // the queue.
 func (q *responseQueue) close(id *api.ID) {
+	if q.q == nil {
+		panic("closing in nil responseQueue")
+	}
+
 	key := idToKey(id)
 
 	q.mu.Lock()
@@ -559,6 +566,10 @@ func (q *responseQueue) close(id *api.ID) {
 
 // closeAll closes all of the channels from the queue.
 func (q *responseQueue) closeAll() {
+	if q.q == nil {
+		panic("closing nil responseQueue")
+	}
+
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -612,7 +623,7 @@ func read(r *bufio.Reader) (*rpcMessage, error) {
 	if n, err := io.ReadFull(r, buf); err != nil {
 		return nil, fmt.Errorf("failed to read RPC message: %w", err)
 	} else if n != l {
-		return nil, fmt.Errorf("failed to read RPC message: %w, want %d, got %d", errWrongLength, l, n)
+		return nil, fmt.Errorf("failed to read RPC message: %w, want %d, got %d", errInvalidLength, l, n)
 	}
 
 	d := json.NewDecoder(bytes.NewReader(buf))
@@ -626,11 +637,13 @@ func read(r *bufio.Reader) (*rpcMessage, error) {
 	return msg, nil
 }
 
-func write(w io.Writer, req api.Request) error {
+func write(ctx context.Context, w io.Writer, req api.Request) error {
 	data, err := json.Marshal(req)
 	if err != nil {
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
+
+	log.Trace(ctx, "writing data", "data", string(data))
 
 	header := fmt.Sprintf("Content-Length: %d\r\n\r\n", len(data))
 	if _, err = w.Write([]byte(header)); err != nil {
