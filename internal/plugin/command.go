@@ -39,7 +39,7 @@ type Command struct {
 // logCmds is a helper type for logging a slice of commands.
 type logCmds []*Command
 
-// LogValue implements [slog.LogValuer] for LogCmds. It formats the slice of
+// LogValue implements [slog.LogValuer] for logCmds. It formats the slice of
 // commands as a group correctly for the different types of [slog.Handler] in
 // use.
 func (c logCmds) LogValue() slog.Value {

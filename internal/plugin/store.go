@@ -44,6 +44,9 @@ type Store struct {
 
 	// Commands is the list of commands that are defined in the plugins.
 	Commands []*Command
+
+	// Tasks is the list of tasks that are defined in the plugins.
+	Tasks []*Task
 }
 
 // NewStore finds the available built-in and external plugin manifests from
@@ -82,20 +85,30 @@ func NewStore(ctx context.Context, wd fspath.Path, paths []fspath.Path) (*Store,
 		return nil, err
 	}
 
-	var commands []*Command
+	var (
+		commands []*Command
+		tasks    []*Task
+	)
 
 	for _, p := range plugins {
 		cmds := newCommands(p)
 		if cmds != nil {
 			commands = append(commands, cmds...)
 		}
+
+		t := newTasks(p)
+		if t != nil {
+			tasks = append(tasks, t...)
+		}
 	}
 
 	log.Debug(ctx, "created plugin commands", "cmds", logCmds(commands))
+	log.Debug(ctx, "created plugin tasks", "tasks", logTasks(tasks))
 
 	store := &Store{
 		Plugins:  plugins,
 		Commands: commands,
+		Tasks:    tasks,
 	}
 
 	if len(pathErrs) > 0 {
