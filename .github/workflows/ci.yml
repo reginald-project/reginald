@@ -104,6 +104,9 @@ jobs:
           echo "ARTIFACT_NAME=reginald-${{ env.ARTIFACT_VERSION }}-${{
           matrix.goos }}-${{ matrix.goarch }}" >> "${GITHUB_ENV}"
 
+      - name: Show files
+        run: ls -la
+
       - name: Upload the build artifact
         uses: actions/upload-artifact@v4.6.2
         if: ${{ github.ref == 'refs/heads/main' }}
