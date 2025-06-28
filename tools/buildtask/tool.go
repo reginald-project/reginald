@@ -59,7 +59,7 @@ func main() {
 				output = "reginald"
 			}
 
-			if isWindows() {
+			if isWindows() && !strings.HasSuffix(output, ".exe") {
 				output += ".exe"
 			}
 
