@@ -73,14 +73,13 @@ type ApplyOptions struct {
 	idents []string
 }
 
-// ApplyOptions is the type for the options for the Apply function.
+// TaskApplyOptions is the type for the options for the ApplyTasks function.
 type TaskApplyOptions struct {
-	Dir fspath.Path // base directory for the program operations
-
 	// Store contains the discovered plugin. It should not be set when applying
 	// the built-in config values
 	Store    *plugin.Store
 	Defaults plugin.TaskDefaults // default options for the task types
+	Dir      fspath.Path         // base directory for the program operations
 }
 
 // Apply applies the values of the config values from environment variables and
@@ -162,6 +161,8 @@ func ApplyPlugins(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 // ApplyTasks applies the default values for tasks from the given defaults,
 // assigns the IDs and other missing values, and normalizes paths. It returns
 // new configs for the tasks.
+//
+//nolint:cyclop,funlen,gocognit,maintidx // right now we only need single function for this
 func ApplyTasks(ctx context.Context, cfg []plugin.TaskConfig, opts TaskApplyOptions) ([]plugin.TaskConfig, error) {
 	log.Debug(ctx, "applying task configs")
 
@@ -177,7 +178,7 @@ func ApplyTasks(ctx context.Context, cfg []plugin.TaskConfig, opts TaskApplyOpti
 	taskCfg := make([]plugin.TaskConfig, 0, len(cfg))
 	counts := make(map[string]int)
 
-	for _, tc := range cfg {
+	for _, tc := range cfg { //nolint:varnamelen
 		log.Trace(ctx, "finding task", "type", tc.Type)
 
 		tt := opts.Store.Task(tc.Type)
@@ -185,7 +186,7 @@ func ApplyTasks(ctx context.Context, cfg []plugin.TaskConfig, opts TaskApplyOpti
 			return nil, fmt.Errorf("%w: unknown task type %q", ErrInvalidConfig, tc.Type)
 		}
 
-		id := tc.ID
+		id := tc.ID //nolint:varnamelen
 		if id == "" {
 			id = tc.Type + "-" + strconv.Itoa(counts[tc.Type])
 		}
@@ -202,7 +203,13 @@ func ApplyTasks(ctx context.Context, cfg []plugin.TaskConfig, opts TaskApplyOpti
 				var err error
 
 				if value, err = kv.Int(); err != nil {
-					return nil, fmt.Errorf("failed to convert value for %q in %q (%s) to int: %w", kv.Key, id, tc.Type, err)
+					return nil, fmt.Errorf(
+						"failed to convert value for %q in %q (%s) to int: %w",
+						kv.Key,
+						id,
+						tc.Type,
+						err,
+					)
 				}
 			}
 
@@ -247,7 +254,14 @@ func ApplyTasks(ctx context.Context, cfg []plugin.TaskConfig, opts TaskApplyOpti
 
 				path, err = path.Expand()
 				if err != nil {
-					return nil, fmt.Errorf("failed expand path value %q for %q in %q (%s): %w", path, kv.Key, id, tc.Type, err)
+					return nil, fmt.Errorf(
+						"failed expand path value %q for %q in %q (%s): %w",
+						path,
+						kv.Key,
+						id,
+						tc.Type,
+						err,
+					)
 				}
 
 				if !path.IsAbs() {
@@ -262,14 +276,44 @@ func ApplyTasks(ctx context.Context, cfg []plugin.TaskConfig, opts TaskApplyOpti
 
 				value, ok = value.(string)
 			default:
-				return nil, fmt.Errorf("%w: config entry %q in %q (%s) has invalid type: %s", plugin.ErrInvalidConfig, kv.Key, id, tc.Type, kv.Type)
+				return nil, fmt.Errorf(
+					"%w: config entry %q in %q (%s) has invalid type: %s",
+					plugin.ErrInvalidConfig,
+					kv.Key,
+					id,
+					tc.Type,
+					kv.Type,
+				)
 			}
 
 			if !ok {
-				return nil, fmt.Errorf("%w: value of %q for %q (%s) has wrong type: want %s, got %T[6] (%[6]v)", ErrInvalidConfig, kv.Key, tc.Type, id, kv.Type, value)
+				return nil, fmt.Errorf(
+					"%w: value of %q for %q (%s) has wrong type: want %s, got %T[6] (%[6]v)",
+					ErrInvalidConfig,
+					kv.Key,
+					tc.Type,
+					id,
+					kv.Type,
+					value,
+				)
 			}
 
-			log.Trace(ctx, "setting task value", "key", kv.Key, "id", id, "task", tc.Type, "kvType", kv.Type, "value", value, "type", fmt.Sprintf("%T", value))
+			log.Trace(
+				ctx,
+				"setting task value",
+				"key",
+				kv.Key,
+				"id",
+				id,
+				"task",
+				tc.Type,
+				"kvType",
+				kv.Type,
+				"value",
+				value,
+				"type",
+				fmt.Sprintf("%T", value),
+			)
 
 			options[kv.Key] = value
 		}
@@ -547,6 +591,8 @@ func applyPluginCommands(ctx context.Context, cfg map[string]any, cmds []*plugin
 
 // applyPluginMap applies the config values from the environment variables and
 // the command-line flags to the given plugin configs map.
+//
+//nolint:gocognit // need for complexity when checking the config type
 func applyPluginMap(
 	ctx context.Context,
 	cfg map[string]any,
@@ -621,6 +667,22 @@ func applyPluginMap(
 			}
 
 			x, err = intValue(x, newOpts, &entry)
+			raw = x
+		case api.PathValue:
+			x, ok := raw.(fspath.Path)
+			if !ok {
+				err = fmt.Errorf(
+					"%w: value %[2]v for %q in %q (wanted string, got %[2]T)",
+					errInvalidCast,
+					raw,
+					entry.Key,
+					parent,
+				)
+
+				break
+			}
+
+			x, err = pathValue(x, newOpts, &entry)
 			raw = x
 		case api.StringValue:
 			x, ok := raw.(string)

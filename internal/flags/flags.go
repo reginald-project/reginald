@@ -146,6 +146,13 @@ func (f *FlagSet) AddPluginFlag(cfg *api.ConfigEntry, prefix string) error {
 		}
 
 		f.IntP(name, flag.Shorthand, defVal, description, "")
+	case api.PathValue:
+		defVal, ok := cfg.Value.(fspath.Path)
+		if !ok {
+			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cfg.Value)
+		}
+
+		f.PathP(name, flag.Shorthand, defVal, description, "")
 	case api.StringValue:
 		defVal, ok := cfg.Value.(string)
 		if !ok {

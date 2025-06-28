@@ -193,7 +193,7 @@ linters:
       ignore-decls:
         - eg *errgroup.Group
         - g *errgroup.Group
-        - id rpp.ID
+        - kv api.KeyValue
         - mu sync.Mutex
         - ok bool
         - wg sync.WaitGroup
