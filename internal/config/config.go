@@ -29,6 +29,7 @@ import (
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/log"
 	"github.com/reginald-project/reginald/internal/log/logconfig"
+	"github.com/reginald-project/reginald/internal/plugin"
 	"github.com/reginald-project/reginald/internal/terminal"
 )
 
@@ -57,7 +58,7 @@ type Config struct {
 	PluginPaths []fspath.Path `mapstructure:"plugin-paths"`
 
 	// Defaults contains the default options set for tasks.
-	Defaults TaskDefaults `mapstructure:"defaults"`
+	Defaults plugin.TaskDefaults `mapstructure:"defaults"`
 
 	// Plugins contains the rest of the config options which should only be
 	// plugin-defined options.
@@ -65,7 +66,7 @@ type Config struct {
 
 	// Tasks contains tasks and the configs for them as given in the config
 	// file.
-	Tasks []Task `mapstructure:"tasks"`
+	Tasks []plugin.TaskConfig `mapstructure:"tasks"`
 
 	// Logging contains the config values for logging.
 	Logging logconfig.Config `flag:"log" mapstructure:"logging"`
@@ -91,29 +92,6 @@ type Config struct {
 	Strict bool `mapstructure:"strict"`
 }
 
-// A Task is the configuration of a task instance.
-type Task struct {
-	// Type is the type of this task. It defines which task implementation is
-	// called when this task is executed.
-	Type string `mapstructure:"type"`
-
-	// ID is the unique ID for this task. It must be unique. The ID must also be
-	// different from the provided task types.
-	ID string `mapstructure:"id,omitempty"`
-
-	// Options contains the rest of the config options for the task.
-	Options TaskOptions `mapstructure:",remain"` //nolint:tagliatelle // linter doesn't know about "remain"
-
-	// Dependencies are the task IDs or types that this task depends on.
-	Dependencies []string `mapstructure:"dependencies"`
-}
-
-// TaskDefaults is the type for the default config values set for the tasks.
-type TaskDefaults map[string]any
-
-// TaskOptions is the type for the config options in a task config entry.
-type TaskOptions map[string]any
-
 // DefaultConfig returns the default values for configuration. The function
 // panics on errors.
 func DefaultConfig() *Config {
@@ -131,14 +109,14 @@ func DefaultConfig() *Config {
 		sourceFile:  "",
 		Color:       terminal.ColorAuto,
 		Debug:       false,
-		Defaults:    TaskDefaults{},
+		Defaults:    plugin.TaskDefaults{},
 		Directory:   fspath.Path(wd),
 		Interactive: false,
 		Strict:      false,
 		Logging:     logconfig.Default(),
 		PluginPaths: pluginPaths,
 		Quiet:       false,
-		Tasks:       []Task{},
+		Tasks:       []plugin.TaskConfig{},
 		Verbose:     false,
 		Plugins:     map[string]any{},
 	}
@@ -152,20 +130,6 @@ func (c *Config) File() fspath.Path {
 // HasFile reports whether the config was parsed from a file.
 func (c *Config) HasFile() bool {
 	return c.sourceFile != ""
-}
-
-// IsBool reports whether o has an entry with the given key that is a bool.
-func (o TaskOptions) IsBool(key string) bool {
-	v, ok := o[key]
-	if !ok {
-		return false
-	}
-
-	if _, ok := v.(bool); !ok {
-		return false
-	}
-
-	return true
 }
 
 // DefaultDir returns the default working directory for Reginald.

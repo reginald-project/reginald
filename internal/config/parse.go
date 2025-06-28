@@ -41,6 +41,7 @@ var (
 	ErrInvalidConfig = errors.New("invalid config")
 	errInvalidCast   = errors.New("cannot convert type")
 	errNilFlag       = errors.New("no flag found")
+	errNilPlugins    = errors.New("no plugins found")
 )
 
 // textUnmarshalerType is a helper variable for checking if types of fields in
@@ -70,6 +71,16 @@ type ApplyOptions struct {
 	// the config value that is currently being parsed. It must always start
 	// with the global prefix for the environment variables.
 	idents []string
+}
+
+// ApplyOptions is the type for the options for the Apply function.
+type TaskApplyOptions struct {
+	Dir fspath.Path // base directory for the program operations
+
+	// Store contains the discovered plugin. It should not be set when applying
+	// the built-in config values
+	Store    *plugin.Store
+	Defaults plugin.TaskDefaults // default options for the task types
 }
 
 // Apply applies the values of the config values from environment variables and
@@ -146,6 +157,29 @@ func ApplyPlugins(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 	cfg.Plugins = pluginsMap
 
 	return nil
+}
+
+// ApplyTasks applies the config values for tasks from environment variables
+// and command-line flags to cfg. It modifies the pointed cfg.
+
+// ApplyTasks applies the default values for tasks from the given defaults,
+// assigns the IDs and other missing values, and normalizes paths. It returns
+// new configs for the tasks.
+func ApplyTasks(ctx context.Context, cfg []plugin.TaskConfig, opts TaskApplyOptions) ([]plugin.TaskConfig, error) {
+	log.Debug(ctx, "applying task configs")
+
+	if opts.Store == nil {
+		panic("nil plugin store")
+	}
+
+	plugins := opts.Store.Plugins
+	if len(plugins) == 0 {
+		return nil, fmt.Errorf("cannot apply task config: %w", errNilPlugins)
+	}
+
+	taskCfg := make([]plugin.TaskConfig, 0, len(cfg))
+
+	return taskCfg, nil
 }
 
 // Parse parses the configuration according to the configuration given with

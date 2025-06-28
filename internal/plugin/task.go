@@ -29,8 +29,45 @@ type Task struct {
 	api.Task
 }
 
+// A TaskConfig is the config for a task instance.
+type TaskConfig struct {
+	// Type is the type of this task. It defines which task implementation is
+	// called when this task is executed.
+	Type string `mapstructure:"type"`
+
+	// ID is the unique ID for this task. It must be unique. The ID must also be
+	// different from the provided task types.
+	ID string `mapstructure:"id,omitempty"`
+
+	// Options contains the rest of the config options for the task.
+	Options TaskOptions `mapstructure:",remain"` //nolint:tagliatelle // linter doesn't know about "remain"
+
+	// Dependencies are the task IDs or types that this task depends on.
+	Dependencies []string `mapstructure:"dependencies"`
+}
+
+// TaskDefaults is the type for the default config values set for the tasks.
+type TaskDefaults map[string]any
+
+// TaskOptions is the type for the config options in a task config entry.
+type TaskOptions map[string]any
+
 // logTasks is a helper type for logging a slice of tasks.
 type logTasks []*Task
+
+// IsBool reports whether o has an entry with the given key that is a bool.
+func (o TaskOptions) IsBool(key string) bool {
+	v, ok := o[key]
+	if !ok {
+		return false
+	}
+
+	if _, ok := v.(bool); !ok {
+		return false
+	}
+
+	return true
+}
 
 // LogValue implements [slog.LogValuer] for logTasks. It formats the slice of
 // tasks as a group correctly for the different types of [slog.Handler] in use.
