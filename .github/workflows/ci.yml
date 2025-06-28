@@ -109,7 +109,7 @@ jobs:
         if: ${{ github.ref == 'refs/heads/main' }}
         with:
           name: ${{ env.ARTIFACT_NAME }}
-          path: ${{ env.BUILD_OUTPUT }}
+          path: ./${{ env.BUILD_OUTPUT }}
           if-no-files-found: error
 
   lint:
