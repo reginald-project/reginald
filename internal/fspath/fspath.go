@@ -96,6 +96,12 @@ func (p Path) Dir() Path {
 	return Path(filepath.Dir(string(p)))
 }
 
+// Expand expands the environment variables and the user home directories in p,
+// in the listed order. It is equivalent to calling ExpandUser(ExpandEnv(p)).
+func (p Path) Expand() (Path, error) {
+	return ExpandUser(ExpandEnv(p))
+}
+
 // ExpandEnv replaces ${var} or $var and even %var% on Windows in the string
 // according to the values of the current environment variables. References to
 // undefined variables are replaced by an empty string.
@@ -242,6 +248,16 @@ func (p Path) ReadFile() ([]byte, error) {
 // String returns p as a string and implements [fmt.Stringer] for [Path].
 func (p Path) String() string {
 	return string(p)
+}
+
+// ExpandEnv calls [Path.ExpandEnv].
+func ExpandEnv(p Path) Path {
+	return p.ExpandEnv()
+}
+
+// ExpandUser calls [Path.ExpandUser].
+func ExpandUser(p Path) (Path, error) {
+	return p.ExpandUser()
 }
 
 // expandOtherUser tries to replace "~username" in path to match the

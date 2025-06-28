@@ -180,6 +180,21 @@ func (s *Store) Len() int {
 	return len(s.Plugins)
 }
 
+// LogValue implements [slog.LogValuer] for Store. It returns a group value for
+// logging a Store.
+func (s *Store) LogValue() slog.Value {
+	var attrs []slog.Attr
+
+	names := make([]string, len(s.Plugins))
+	for i, p := range s.Plugins {
+		names[i] = p.Manifest().Name
+	}
+
+	attrs = append(attrs, slog.Any("plugins", names), slog.Any("commands", logCmds(s.Commands)))
+
+	return slog.GroupValue(attrs...)
+}
+
 // Shutdown requests all of the started plugins to shut down and notfies them to
 // exit. It will ultimately kill the processes for the plugins that fail to shut
 // down gracefully.
@@ -247,19 +262,28 @@ func (s *Store) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// LogValue implements [slog.LogValuer] for Store. It returns a group value for
-// logging a Store.
-func (s *Store) LogValue() slog.Value {
-	var attrs []slog.Attr
-
-	names := make([]string, len(s.Plugins))
-	for i, p := range s.Plugins {
-		names[i] = p.Manifest().Name
+// Task returns that task with the given task type from the store. The task type
+// must be the full-qualified task type meaning that it must be specified as
+// "<domain>/<task>".
+func (s *Store) Task(tt string) *Task {
+	i := strings.IndexByte(tt, '/')
+	if i == -1 {
+		return nil
 	}
 
-	attrs = append(attrs, slog.Any("plugins", names), slog.Any("commands", logCmds(s.Commands)))
+	domain := tt[:i]
+	taskType := tt[i+1:]
 
-	return slog.GroupValue(attrs...)
+	fmt.Println("domain", domain)
+	fmt.Println("taskType", taskType)
+
+	for _, t := range s.Tasks {
+		if t.Plugin.Manifest().Domain == domain && t.Type == taskType {
+			return t
+		}
+	}
+
+	return nil
 }
 
 // readAllSearchPaths loads plugins from all of the given search paths.

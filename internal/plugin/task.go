@@ -47,7 +47,7 @@ type TaskConfig struct {
 }
 
 // TaskDefaults is the type for the default config values set for the tasks.
-type TaskDefaults map[string]any
+type TaskDefaults map[string]map[string]any
 
 // TaskOptions is the type for the config options in a task config entry.
 type TaskOptions map[string]any

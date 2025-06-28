@@ -159,9 +159,6 @@ func ApplyPlugins(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 	return nil
 }
 
-// ApplyTasks applies the config values for tasks from environment variables
-// and command-line flags to cfg. It modifies the pointed cfg.
-
 // ApplyTasks applies the default values for tasks from the given defaults,
 // assigns the IDs and other missing values, and normalizes paths. It returns
 // new configs for the tasks.
@@ -178,6 +175,114 @@ func ApplyTasks(ctx context.Context, cfg []plugin.TaskConfig, opts TaskApplyOpti
 	}
 
 	taskCfg := make([]plugin.TaskConfig, 0, len(cfg))
+	counts := make(map[string]int)
+
+	for _, tc := range cfg {
+		log.Trace(ctx, "finding task", "type", tc.Type)
+
+		tt := opts.Store.Task(tc.Type)
+		if tt == nil {
+			return nil, fmt.Errorf("%w: unknown task type %q", ErrInvalidConfig, tc.Type)
+		}
+
+		id := tc.ID
+		if id == "" {
+			id = tc.Type + "-" + strconv.Itoa(counts[tc.Type])
+		}
+
+		counts[tc.Type]++
+
+		defaults := opts.Defaults[tc.Type]
+		options := make(plugin.TaskOptions, len(tt.Config))
+
+		for _, kv := range tt.Config {
+			value := kv.Value
+
+			if kv.Type == api.IntValue {
+				var err error
+
+				if value, err = kv.Int(); err != nil {
+					return nil, fmt.Errorf("failed to convert value for %q in %q (%s) to int: %w", kv.Key, id, tc.Type, err)
+				}
+			}
+
+			if defaults != nil {
+				defaultsValue, ok := defaults[kv.Key]
+				if ok {
+					value = defaultsValue
+				}
+			}
+
+			fileValue, ok := tc.Options[kv.Key]
+			if ok {
+				value = fileValue
+			}
+
+			switch kv.Type {
+			case api.BoolValue:
+				if value == nil {
+					value = false
+				}
+
+				value, ok = value.(bool)
+			case api.IntValue:
+				if value == nil {
+					value = 0
+				}
+
+				value, ok = value.(int)
+			case api.PathValue:
+				if value == nil {
+					value = ""
+				}
+
+				var path fspath.Path
+
+				path, ok = value.(fspath.Path)
+				if !ok {
+					break
+				}
+
+				var err error
+
+				path, err = path.Expand()
+				if err != nil {
+					return nil, fmt.Errorf("failed expand path value %q for %q in %q (%s): %w", path, kv.Key, id, tc.Type, err)
+				}
+
+				if !path.IsAbs() {
+					path = path.Join(string(opts.Dir), string(path))
+				}
+
+				value = path
+			case api.StringValue:
+				if value == nil {
+					value = ""
+				}
+
+				value, ok = value.(string)
+			default:
+				return nil, fmt.Errorf("%w: config entry %q in %q (%s) has invalid type: %s", plugin.ErrInvalidConfig, kv.Key, id, tc.Type, kv.Type)
+			}
+
+			if !ok {
+				return nil, fmt.Errorf("%w: value of %q for %q (%s) has wrong type: want %s, got %T[6] (%[6]v)", ErrInvalidConfig, kv.Key, tc.Type, id, kv.Type, value)
+			}
+
+			log.Trace(ctx, "setting task value", "key", kv.Key, "id", id, "task", tc.Type, "kvType", kv.Type, "value", value, "type", fmt.Sprintf("%T", value))
+
+			options[kv.Key] = value
+		}
+
+		c := plugin.TaskConfig{
+			ID:           id,
+			Type:         tc.Type,
+			Options:      options,
+			Dependencies: tc.Dependencies,
+		}
+
+		taskCfg = append(taskCfg, c)
+	}
 
 	return taskCfg, nil
 }
