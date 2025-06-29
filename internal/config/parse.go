@@ -73,15 +73,6 @@ type ApplyOptions struct {
 	idents []string
 }
 
-// TaskApplyOptions is the type for the options for the ApplyTasks function.
-type TaskApplyOptions struct {
-	// Store contains the discovered plugin. It should not be set when applying
-	// the built-in config values
-	Store    *plugin.Store
-	Defaults plugin.TaskDefaults // default options for the task types
-	Dir      fspath.Path         // base directory for the program operations
-}
-
 // Apply applies the values of the config values from environment variables and
 // command-line flags to cfg. It modifies the pointed cfg.
 func Apply(ctx context.Context, cfg *Config, opts ApplyOptions) error {
@@ -156,179 +147,6 @@ func ApplyPlugins(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 	cfg.Plugins = pluginsMap
 
 	return nil
-}
-
-// ApplyTasks applies the default values for tasks from the given defaults,
-// assigns the IDs and other missing values, and normalizes paths. It returns
-// new configs for the tasks.
-//
-//nolint:cyclop,funlen,gocognit,maintidx // right now we only need single function for this
-func ApplyTasks(ctx context.Context, cfg []plugin.TaskConfig, opts TaskApplyOptions) ([]plugin.TaskConfig, error) {
-	log.Debug(ctx, "applying task configs")
-
-	if opts.Store == nil {
-		panic("nil plugin store")
-	}
-
-	plugins := opts.Store.Plugins
-	if len(plugins) == 0 {
-		return nil, fmt.Errorf("cannot apply task config: %w", errNilPlugins)
-	}
-
-	taskCfg := make([]plugin.TaskConfig, 0, len(cfg))
-	counts := make(map[string]int)
-
-	for _, tc := range cfg { //nolint:varnamelen
-		log.Trace(ctx, "finding task", "type", tc.Type)
-
-		tt := opts.Store.Task(tc.Type)
-		if tt == nil {
-			return nil, fmt.Errorf("%w: unknown task type %q", ErrInvalidConfig, tc.Type)
-		}
-
-		id := tc.ID //nolint:varnamelen
-		if id == "" {
-			id = tc.Type + "-" + strconv.Itoa(counts[tc.Type])
-		}
-
-		counts[tc.Type]++
-
-		defaults := opts.Defaults[tc.Type]
-		options := make(plugin.TaskOptions, len(tt.Config))
-
-		for _, kv := range tt.Config {
-			value := kv.Value
-
-			if kv.Type == api.IntValue {
-				var err error
-
-				if value, err = kv.Int(); err != nil {
-					return nil, fmt.Errorf(
-						"failed to convert value for %q in %q (%s) to int: %w",
-						kv.Key,
-						id,
-						tc.Type,
-						err,
-					)
-				}
-			}
-
-			if defaults != nil {
-				defaultsValue, ok := defaults[kv.Key]
-				if ok {
-					value = defaultsValue
-				}
-			}
-
-			fileValue, ok := tc.Options[kv.Key]
-			if ok {
-				value = fileValue
-			}
-
-			switch kv.Type {
-			case api.BoolValue:
-				if value == nil {
-					value = false
-				}
-
-				value, ok = value.(bool)
-			case api.IntValue:
-				if value == nil {
-					value = 0
-				}
-
-				value, ok = value.(int)
-			case api.PathValue:
-				if value == nil {
-					value = ""
-				}
-
-				var path fspath.Path
-
-				path, ok = value.(fspath.Path)
-				if !ok {
-					break
-				}
-
-				var err error
-
-				path, err = path.Expand()
-				if err != nil {
-					return nil, fmt.Errorf(
-						"failed expand path value %q for %q in %q (%s): %w",
-						path,
-						kv.Key,
-						id,
-						tc.Type,
-						err,
-					)
-				}
-
-				if !path.IsAbs() {
-					path = path.Join(string(opts.Dir), string(path))
-				}
-
-				value = path
-			case api.StringValue:
-				if value == nil {
-					value = ""
-				}
-
-				value, ok = value.(string)
-			default:
-				return nil, fmt.Errorf(
-					"%w: config entry %q in %q (%s) has invalid type: %s",
-					plugin.ErrInvalidConfig,
-					kv.Key,
-					id,
-					tc.Type,
-					kv.Type,
-				)
-			}
-
-			if !ok {
-				return nil, fmt.Errorf(
-					"%w: value of %q for %q (%s) has wrong type: want %s, got %T[6] (%[6]v)",
-					ErrInvalidConfig,
-					kv.Key,
-					tc.Type,
-					id,
-					kv.Type,
-					value,
-				)
-			}
-
-			log.Trace(
-				ctx,
-				"setting task value",
-				"key",
-				kv.Key,
-				"id",
-				id,
-				"task",
-				tc.Type,
-				"kvType",
-				kv.Type,
-				"value",
-				value,
-				"type",
-				fmt.Sprintf("%T", value),
-			)
-
-			options[kv.Key] = value
-		}
-
-		c := plugin.TaskConfig{
-			ID:           id,
-			Type:         tc.Type,
-			Options:      options,
-			Dependencies: tc.Dependencies,
-		}
-
-		taskCfg = append(taskCfg, c)
-	}
-
-	return taskCfg, nil
 }
 
 // Parse parses the configuration according to the configuration given with
@@ -591,8 +409,6 @@ func applyPluginCommands(ctx context.Context, cfg map[string]any, cmds []*plugin
 
 // applyPluginMap applies the config values from the environment variables and
 // the command-line flags to the given plugin configs map.
-//
-//nolint:gocognit // need for complexity when checking the config type
 func applyPluginMap(
 	ctx context.Context,
 	cfg map[string]any,
@@ -639,77 +455,7 @@ func applyPluginMap(
 			idents:  append(opts.idents, entry.Key),
 		}
 
-		switch entry.Type {
-		case api.BoolValue:
-			x, ok := raw.(bool)
-			if !ok {
-				err = fmt.Errorf(
-					"%w: value %[2]v for %q in %q (wanted bool, got %[2]T)",
-					errInvalidCast,
-					raw,
-					entry.Key,
-					parent,
-				)
-
-				break
-			}
-
-			x, err = boolValue(x, newOpts, &entry)
-			raw = x
-		case api.IntValue:
-			var x int
-
-			x, err = configInt(raw)
-			if err != nil {
-				err = fmt.Errorf("failed to convert value %v for %q in %q to int: %w", raw, entry.Key, parent, err)
-
-				break
-			}
-
-			x, err = intValue(x, newOpts, &entry)
-			raw = x
-		case api.PathValue:
-			x, ok := raw.(fspath.Path)
-			if !ok {
-				err = fmt.Errorf(
-					"%w: value %[2]v for %q in %q (wanted string, got %[2]T)",
-					errInvalidCast,
-					raw,
-					entry.Key,
-					parent,
-				)
-
-				break
-			}
-
-			x, err = pathValue(x, newOpts, &entry)
-			raw = x
-		case api.StringValue:
-			x, ok := raw.(string)
-			if !ok {
-				err = fmt.Errorf(
-					"%w: value %[2]v for %q in %q (wanted string, got %[2]T)",
-					errInvalidCast,
-					raw,
-					entry.Key,
-					parent,
-				)
-
-				break
-			}
-
-			x, err = stringValue(x, newOpts, &entry)
-			raw = x
-		default:
-			return fmt.Errorf(
-				"%w: config entry %q in %q has invalid type: %s",
-				plugin.ErrInvalidConfig,
-				entry.Key,
-				parent,
-				entry.Type,
-			)
-		}
-
+		raw, err = resolvePluginValue(raw, &entry, newOpts)
 		if err != nil {
 			return err
 		}
@@ -720,6 +466,146 @@ func applyPluginMap(
 	log.Trace(ctx, "map applied", "key", parent, "cfg", cfg)
 
 	return nil
+}
+
+// resolvePluginValue resolves the value of the given ConfigEntry.
+//
+//nolint:cyclop,funlen // need for complexity when checking the config type
+func resolvePluginValue(raw any, entry *api.ConfigEntry, opts ApplyOptions) (any, error) {
+	var (
+		err error
+		ok  bool
+	)
+
+	switch entry.Type {
+	case api.BoolListValue:
+		var x []bool
+
+		x, ok = raw.([]bool)
+		if !ok {
+			err = fmt.Errorf("%w: value %[2]v for %q (wanted []bool, got %[2]T)", errInvalidCast, raw, entry.Key)
+
+			break
+		}
+
+		x, err = boolSliceValue(x, opts, entry)
+		raw = x
+	case api.BoolValue:
+		var x bool
+
+		x, ok = raw.(bool)
+		if !ok {
+			err = fmt.Errorf("%w: value %[2]v for %q (wanted bool, got %[2]T)", errInvalidCast, raw, entry.Key)
+
+			break
+		}
+
+		x, err = boolValue(x, opts, entry)
+		raw = x
+	case api.IntListValue:
+		var y []any
+
+		y, ok = raw.([]any)
+		if !ok {
+			err = fmt.Errorf("%w: value %[2]v for %q (wanted []any, got %[2]T)", errInvalidCast, raw, entry.Key)
+
+			break
+		}
+
+		x := make([]int, len(y))
+		for i, v := range y {
+			x[i], err = configInt(v)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		x, err = intSliceValue(x, opts, entry)
+		raw = x
+	case api.IntValue:
+		var x int
+
+		x, err = configInt(raw)
+		if err != nil {
+			err = fmt.Errorf("failed to convert value %v for %q to int: %w", raw, entry.Key, err)
+
+			break
+		}
+
+		x, err = intValue(x, opts, entry)
+		raw = x
+	case api.MapValue:
+		var x map[string]any
+
+		x, ok = raw.(map[string]any)
+		if !ok {
+			err = fmt.Errorf(
+				"%w: value %[2]v for %q (wanted map[string]any, got %[2]T)",
+				errInvalidCast,
+				raw,
+				entry.Key,
+			)
+
+			break
+		}
+
+		// TODO: Is there more to do here?
+		raw = x
+	case api.PathListValue:
+		y, ok := raw.([]string)
+		if !ok {
+			err = fmt.Errorf("%w: value %[2]v for %q (wanted []string, got %[2]T)", errInvalidCast, raw, entry.Key)
+
+			break
+		}
+
+		x := make([]fspath.Path, len(y))
+		for i, p := range y {
+			x[i] = fspath.Path(p)
+		}
+
+		x, err = pathSliceValue(x, opts, entry)
+		raw = x
+	case api.PathValue:
+		x, ok := raw.(fspath.Path)
+		if !ok {
+			err = fmt.Errorf("%w: value %[2]v for %q (wanted string, got %[2]T)", errInvalidCast, raw, entry.Key)
+
+			break
+		}
+
+		x, err = pathValue(x, opts, entry)
+		raw = x
+	case api.StringListValue:
+		x, ok := raw.([]string)
+		if !ok {
+			err = fmt.Errorf("%w: value %[2]v for %q (wanted []string, got %[2]T)", errInvalidCast, raw, entry.Key)
+
+			break
+		}
+
+		x, err = stringSliceValue(x, opts, entry)
+		raw = x
+	case api.StringValue:
+		x, ok := raw.(string)
+		if !ok {
+			err = fmt.Errorf("%w: value %[2]v for %q (wanted string, got %[2]T)", errInvalidCast, raw, entry.Key)
+
+			break
+		}
+
+		x, err = stringValue(x, opts, entry)
+		raw = x
+	default:
+		return nil, fmt.Errorf(
+			"%w: config entry %q has invalid type: %s",
+			plugin.ErrInvalidConfig,
+			entry.Key,
+			entry.Type,
+		)
+	}
+
+	return raw, err
 }
 
 // applyString sets a string value from the environment variables and
@@ -810,6 +696,39 @@ func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) erro
 	}
 
 	return nil
+}
+
+// boolSliceValue resolves a slice of bools from the environment variables and
+// the command-line flags to be used in the config.
+func boolSliceValue(x []bool, opts ApplyOptions, entry *api.ConfigEntry) ([]bool, error) {
+	var err error
+
+	env := pluginEnvValue(opts.idents, entry)
+
+	// TODO: There might be a more robust way to parse the paths, but this is
+	// fine for now.
+	if env != "" && (entry == nil || !entry.FlagOnly) {
+		parts := strings.Split(env, ",")
+		x = make([]bool, len(parts))
+
+		for i, part := range parts {
+			x[i], err = strconv.ParseBool(part)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse %q as a boolean: %w", parts, err)
+			}
+		}
+	}
+
+	flagName := pluginFlagName(opts.idents, entry)
+
+	if opts.FlagSet.Changed(flagName) {
+		x, err = opts.FlagSet.GetBoolSlice(flagName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get value for --%s: %w", flagName, err)
+		}
+	}
+
+	return x, nil
 }
 
 // boolValue resolves a boolean value from the environment variables and
@@ -924,6 +843,44 @@ func initIdents(opts ApplyOptions) ApplyOptions {
 	return opts
 }
 
+// intSliceValue resolves a slice of ints from the environment variables and
+// the command-line flags to be used in the config.
+func intSliceValue(x []int, opts ApplyOptions, entry *api.ConfigEntry) ([]int, error) {
+	var err error
+
+	env := pluginEnvValue(opts.idents, entry)
+
+	// TODO: There might be a more robust way to parse the paths, but this is
+	// fine for now.
+	if env != "" && (entry == nil || !entry.FlagOnly) {
+		parts := strings.Split(env, ",")
+		x = make([]int, len(parts))
+
+		for i, part := range parts {
+			var n int64
+
+			n, err = strconv.ParseInt(part, 10, 0)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse %q as an int: %w", parts, err)
+			}
+
+			// TODO: Unsafe?
+			x[i] = int(n)
+		}
+	}
+
+	flagName := pluginFlagName(opts.idents, entry)
+
+	if opts.FlagSet.Changed(flagName) {
+		x, err = opts.FlagSet.GetIntSlice(flagName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get value for --%s: %w", flagName, err)
+		}
+	}
+
+	return x, nil
+}
+
 // intValue resolves an integer value from the environment variables and
 // the command-line flags to be used in the config.
 func intValue(x int, opts ApplyOptions, entry *api.ConfigEntry) (int, error) {
@@ -939,6 +896,7 @@ func intValue(x int, opts ApplyOptions, entry *api.ConfigEntry) (int, error) {
 			return 0, fmt.Errorf("failed to parse %q as an integer: %w", env, err)
 		}
 
+		// TODO: Unsafe?
 		x = int(i)
 	}
 
@@ -1213,6 +1171,25 @@ func setDir(ctx context.Context, cfg reflect.Value, opts ApplyOptions) (ApplyOpt
 	log.Trace(ctx, "set config field", "key", field.Name, "value", val)
 
 	return opts, nil
+}
+
+// string resolves a slice of strings from the environment variables and
+// the command-line flags to be used in the config.
+func stringSliceValue(x []string, opts ApplyOptions, entry *api.ConfigEntry) ([]string, error) {
+	var err error
+
+	// TODO: Right now, we do not read the environment variable for this type.
+
+	flagName := pluginFlagName(opts.idents, entry)
+
+	if opts.FlagSet.Changed(flagName) {
+		x, err = opts.FlagSet.GetStringSlice(flagName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get value for --%s: %w", flagName, err)
+		}
+	}
+
+	return x, nil
 }
 
 // stringValue resolves a string value from the environment variables and

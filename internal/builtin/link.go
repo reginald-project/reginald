@@ -21,6 +21,14 @@ import (
 
 // linkManifest returns the manifest for the link plugin.
 func linkManifest() *api.Manifest {
+	//nolint:lll
+	force := api.KeyValue{
+		Key:         "force",
+		Value:       false,
+		Type:        api.BoolValue,
+		Description: "If enabled, any existing file that has the same name as the link that is created will be removed.",
+	}
+
 	return &api.Manifest{
 		Name:    "reginald-link",
 		Version: version.Version().String(),
@@ -35,7 +43,41 @@ func linkManifest() *api.Manifest {
 			{
 				Type:        "create",
 				Description: "TODO",
-				Config:      nil,
+				Config: []any{
+					force,
+					api.UnionValue{
+						Alternatives: []any{
+							api.KeyValue{
+								Key:   "links",
+								Value: []string{},
+								Type:  api.PathListValue,
+								//nolint:lll
+								Description: "List of symbolic links to create where the key is link file to create. The file that the link points to is created from the path of the link as described in the task's documentation.",
+							},
+							//nolint:lll
+							api.MappedValue{
+								Key:         "links",
+								KeyType:     api.PathValue,
+								Description: "List of symbolic links to create where the key is link file to create. If no `src` is given, the file that the link points to is created from the path of the link as described in the task's documentation.",
+								Values: []api.KeyValue{
+									force,
+									{
+										Key:         "src",
+										Description: "The file that the created link points to. If omitted, it will be resolved from the path given as the key for this table entry as described in the task's documentation.",
+										Value:       "",
+										Type:        "path",
+									},
+									{
+										Key:         "contents",
+										Description: "If the resolved `src` file is a directory, create the links for each file in the directory into the destination directory instead of creating a link of the directory.",
+										Value:       false,
+										Type:        "bool",
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 		},
 	}

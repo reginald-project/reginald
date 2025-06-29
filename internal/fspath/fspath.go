@@ -31,14 +31,19 @@ type Path string
 
 // New returns a new path by joining the given string using [filepath.Join].
 // Clean is called on the result.
-func New(elem ...string) Path {
-	return Path(filepath.Join(elem...))
+func New[E ~string](elem ...E) Path {
+	e := make([]string, len(elem))
+	for i, s := range elem {
+		e[i] = string(s)
+	}
+
+	return Path(filepath.Join(e...))
 }
 
 // NewAbs returns a new path by joining the given string using [filepath.Join]
 // and by converting the result to an absolute path. Clean is called on
 // the result.
-func NewAbs(elem ...string) (Path, error) {
+func NewAbs[E ~string](elem ...E) (Path, error) {
 	p, err := New(elem...).Abs()
 	if err != nil {
 		return "", fmt.Errorf("%w", err)
@@ -258,6 +263,23 @@ func ExpandEnv(p Path) Path {
 // ExpandUser calls [Path.ExpandUser].
 func ExpandUser(p Path) (Path, error) {
 	return p.ExpandUser()
+}
+
+// Join joins any number of path elements into a single path, starting with
+// Path p and separating the elements with an OS specific [os.PathSeparator].
+// Empty elements are ignored. The result is Cleaned. However, if the argument
+// list is empty or all its elements are empty, Join returns an empty string. On
+// Windows, the result will only be a UNC path if the first non-empty element is
+// a UNC path.
+//
+// Join wraps [filepath.Join].
+func Join[E ~string](elem ...E) Path {
+	all := make([]string, len(elem))
+	for i, s := range elem {
+		all[i] = string(s)
+	}
+
+	return Path(filepath.Join(all...))
 }
 
 // expandOtherUser tries to replace "~username" in path to match the

@@ -16,8 +16,10 @@ package plugin
 
 import (
 	"log/slog"
+	"strings"
 
 	"github.com/reginald-project/reginald-sdk-go/api"
+	"github.com/reginald-project/reginald/internal/platform"
 )
 
 // A Task is the program representation of a plugin task type that is defined in
@@ -43,7 +45,11 @@ type TaskConfig struct {
 	Options TaskOptions `mapstructure:",remain"` //nolint:tagliatelle // linter doesn't know about "remain"
 
 	// Dependencies are the task IDs or types that this task depends on.
-	Dependencies []string `mapstructure:"dependencies"`
+	Requires TaskRequirements `mapstructure:"requires"`
+
+	// Platforms contains the platforms to run the task on. Empty slice means
+	// that the task is run on every platform.
+	Platforms platform.Platforms `mapstructure:"platforms"`
 }
 
 // TaskDefaults is the type for the default config values set for the tasks.
@@ -51,6 +57,9 @@ type TaskDefaults map[string]map[string]any
 
 // TaskOptions is the type for the config options in a task config entry.
 type TaskOptions map[string]any
+
+// TaskRequirements is list of tasks a task depends on.
+type TaskRequirements []string
 
 // logTasks is a helper type for logging a slice of tasks.
 type logTasks []*Task
@@ -67,6 +76,25 @@ func (o TaskOptions) IsBool(key string) bool {
 	}
 
 	return true
+}
+
+// UnmarshalText implements [encoding.TextUnmarshaler]. It decodes a single
+// string into TaskRequirements.
+func (r *TaskRequirements) UnmarshalText(data []byte) error { //nolint:unparam // implements interface
+	if len(data) == 0 {
+		*r = make(TaskRequirements, 0)
+
+		return nil
+	}
+
+	parts := strings.Split(string(data), ",")
+	out := make(TaskRequirements, len(parts))
+
+	copy(out, parts)
+
+	*r = out
+
+	return nil
 }
 
 // LogValue implements [slog.LogValuer] for logTasks. It formats the slice of

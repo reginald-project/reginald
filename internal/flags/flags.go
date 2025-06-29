@@ -105,6 +105,8 @@ func (f *FlagSet) AddFlagSet(newSet *FlagSet) {
 // AddPluginFlag adds a flag to the flag set according to the given ConfigEntry
 // specification from a plugin. If the flag in the config entry does not define
 // a name, the name will be generated from prefix and the key of cfg.
+//
+//nolint:cyclop // need for complexity when checking the config type
 func (f *FlagSet) AddPluginFlag(cfg *api.ConfigEntry, prefix string) error {
 	if cfg == nil {
 		panic("nil config entry in AddPluginFlag")
@@ -132,6 +134,13 @@ func (f *FlagSet) AddPluginFlag(cfg *api.ConfigEntry, prefix string) error {
 
 	// TODO: Add inverted flags.
 	switch cfg.Type {
+	case api.BoolListValue:
+		defVal, ok := cfg.Value.([]bool)
+		if !ok {
+			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cfg.Value)
+		}
+
+		f.BoolSliceP(name, flag.Shorthand, defVal, description)
 	case api.BoolValue:
 		defVal, ok := cfg.Value.(bool)
 		if !ok {
@@ -139,6 +148,13 @@ func (f *FlagSet) AddPluginFlag(cfg *api.ConfigEntry, prefix string) error {
 		}
 
 		f.BoolP(name, flag.Shorthand, defVal, description, "")
+	case api.IntListValue:
+		defVal, ok := cfg.Value.([]int)
+		if !ok {
+			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cfg.Value)
+		}
+
+		f.IntSliceP(name, flag.Shorthand, defVal, description)
 	case api.IntValue:
 		defVal, err := cfg.Int()
 		if err != nil {
@@ -146,6 +162,15 @@ func (f *FlagSet) AddPluginFlag(cfg *api.ConfigEntry, prefix string) error {
 		}
 
 		f.IntP(name, flag.Shorthand, defVal, description, "")
+	case api.MapValue:
+		// no-op
+	case api.PathListValue:
+		defVal, ok := cfg.Value.([]fspath.Path)
+		if !ok {
+			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cfg.Value)
+		}
+
+		f.PathSliceP(name, flag.Shorthand, defVal, description, "")
 	case api.PathValue:
 		defVal, ok := cfg.Value.(fspath.Path)
 		if !ok {
@@ -153,6 +178,13 @@ func (f *FlagSet) AddPluginFlag(cfg *api.ConfigEntry, prefix string) error {
 		}
 
 		f.PathP(name, flag.Shorthand, defVal, description, "")
+	case api.StringListValue:
+		defVal, ok := cfg.Value.([]string)
+		if !ok {
+			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cfg.Value)
+		}
+
+		f.StringSliceP(name, flag.Shorthand, defVal, description)
 	case api.StringValue:
 		defVal, ok := cfg.Value.(string)
 		if !ok {
