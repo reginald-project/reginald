@@ -30,7 +30,6 @@ import (
 
 // Errors returned from flag operations.
 var (
-	errDefaultValueType  = errors.New("failed to cast the plugin flag value to correct type")
 	errDuplicateFlag     = errors.New("trying to add a flag that already exists")
 	errInvalidFlagType   = errors.New("plugin has a flag with an invalid type")
 	errMutuallyExclusive = errors.New("two mutually exclusive flags set at the same time")
@@ -106,7 +105,7 @@ func (f *FlagSet) AddFlagSet(newSet *FlagSet) {
 // specification from a plugin. If the flag in the config entry does not define
 // a name, the name will be generated from prefix and the key of cfg.
 //
-//nolint:cyclop // need for complexity when checking the config type
+//nolint:cyclop,funlen // need to check all of the types
 func (f *FlagSet) AddPluginFlag(cfg *api.ConfigEntry, prefix string) error {
 	if cfg == nil {
 		panic("nil config entry in AddPluginFlag")
@@ -135,60 +134,67 @@ func (f *FlagSet) AddPluginFlag(cfg *api.ConfigEntry, prefix string) error {
 	// TODO: Add inverted flags.
 	switch cfg.Type {
 	case api.BoolListValue:
-		defVal, ok := cfg.Value.([]bool)
-		if !ok {
-			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cfg.Value)
+		defVal, err := cfg.BoolSlice()
+		if err != nil {
+			return fmt.Errorf("invalid default value for flag --%s: %w", name, err)
 		}
 
 		f.BoolSliceP(name, flag.Shorthand, defVal, description)
 	case api.BoolValue:
-		defVal, ok := cfg.Value.(bool)
-		if !ok {
-			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cfg.Value)
+		defVal, err := cfg.Bool()
+		if err != nil {
+			return fmt.Errorf("invalid default value for flag --%s: %w", name, err)
 		}
 
 		f.BoolP(name, flag.Shorthand, defVal, description, "")
+	case api.ConfigSliceValue:
+		return fmt.Errorf("%w: flag %q: %v (%T)", errInvalidFlagType, name, cfg.Type, cfg.Value)
 	case api.IntListValue:
-		defVal, ok := cfg.Value.([]int)
-		if !ok {
-			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cfg.Value)
+		defVal, err := cfg.IntSlice()
+		if err != nil {
+			return fmt.Errorf("invalid default value for flag --%s: %w", name, err)
 		}
 
 		f.IntSliceP(name, flag.Shorthand, defVal, description)
 	case api.IntValue:
 		defVal, err := cfg.Int()
 		if err != nil {
-			return fmt.Errorf("failed to convert default value of %q: %w", cfg.Key, err)
+			return fmt.Errorf("invalid default value for flag --%s: %w", name, err)
 		}
 
 		f.IntP(name, flag.Shorthand, defVal, description, "")
-	case api.MapValue:
-		// no-op
 	case api.PathListValue:
-		defVal, ok := cfg.Value.([]fspath.Path)
-		if !ok {
-			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cfg.Value)
+		slice, err := cfg.StringSlice()
+		if err != nil {
+			return fmt.Errorf("invalid default value for flag --%s: %w", name, err)
+		}
+
+		defVal := make([]fspath.Path, len(slice))
+		for i, s := range slice {
+			defVal[i] = fspath.Path(s)
 		}
 
 		f.PathSliceP(name, flag.Shorthand, defVal, description, "")
 	case api.PathValue:
-		defVal, ok := cfg.Value.(fspath.Path)
-		if !ok {
-			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cfg.Value)
+		s, err := cfg.String()
+		if err != nil {
+			return fmt.Errorf("invalid default value for flag --%s: %w", name, err)
 		}
+
+		defVal := fspath.Path(s)
 
 		f.PathP(name, flag.Shorthand, defVal, description, "")
 	case api.StringListValue:
-		defVal, ok := cfg.Value.([]string)
-		if !ok {
-			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cfg.Value)
+		defVal, err := cfg.StringSlice()
+		if err != nil {
+			return fmt.Errorf("invalid default value for flag --%s: %w", name, err)
 		}
 
 		f.StringSliceP(name, flag.Shorthand, defVal, description)
 	case api.StringValue:
-		defVal, ok := cfg.Value.(string)
-		if !ok {
-			return fmt.Errorf("%w: %[2]v (%[2]T)", errDefaultValueType, cfg.Value)
+		defVal, err := cfg.String()
+		if err != nil {
+			return fmt.Errorf("invalid default value for flag --%s: %w", name, err)
 		}
 
 		f.StringP(name, flag.Shorthand, defVal, description, "")

@@ -50,6 +50,7 @@ all: reginald plugins
 # CODE QUALITY & CHECKS
 
 audit: license-check test lint
+	golangci-lint config verify
 	"$(GO)" mod tidy -diff
 	"$(GO)" mod verify
 
@@ -60,7 +61,6 @@ license-check: go-licenses
 
 lint: addlicense golangci-lint
 	addlicense -check -c "$(COPYRIGHT_HOLDER)" -l "$(LICENSE)" $(ADDLICENSE_PATTERNS)
-	golangci-lint config verify
 	golangci-lint run
 
 test: FORCE

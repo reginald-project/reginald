@@ -42,7 +42,7 @@ type TaskConfig struct {
 	ID string
 
 	// Config contains the parsed config values for the task.
-	Config []api.KeyVal
+	Config api.KeyValues
 
 	// Requires contains the task IDs or types that this task depends on.
 	Requires TaskRequirements

@@ -98,7 +98,7 @@ func ApplyPlugins(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 	}
 
 	rawPlugins := cfg.RawPlugins
-	cfgs := make([]api.KeyVal, 0, len(opts.Store.Commands))
+	cfgs := make(api.KeyValues, 0, len(opts.Store.Commands))
 
 	// At this point, all of the plugins have been converted to commands.
 	for _, cmd := range opts.Store.Commands {
@@ -406,8 +406,13 @@ func applyPathSlice(value reflect.Value, opts ApplyOptions) error {
 // applyPluginCommands applies the config values for the given subcommands from
 // the environment variables and the command-line flags to the plugin configs
 // map.
-func applyPluginCommands(ctx context.Context, rawMap map[string]any, cmds []*plugin.Command, opts ApplyOptions) ([]api.KeyVal, error) {
-	result := make([]api.KeyVal, len(cmds))
+func applyPluginCommands(
+	ctx context.Context,
+	rawMap map[string]any,
+	cmds []*plugin.Command,
+	opts ApplyOptions,
+) (api.KeyValues, error) {
+	result := make(api.KeyValues, len(cmds))
 	parent := opts.idents[len(opts.idents)-1]
 
 	log.Trace(ctx, "applying plugin commands", "parent", parent)
@@ -424,7 +429,11 @@ func applyPluginCommands(ctx context.Context, rawMap map[string]any, cmds []*plu
 
 		raw, ok := a.(map[string]any)
 		if !ok {
-			return nil, fmt.Errorf("%w: config for command %[2]q with config key %[2]q is not a map", ErrInvalidConfig, name)
+			return nil, fmt.Errorf(
+				"%w: config for command %[2]q with config key %[2]q is not a map",
+				ErrInvalidConfig,
+				name,
+			)
 		}
 
 		log.Trace(ctx, "initial config map resolved", "parent", parent, "cmd", name, "map", raw)
@@ -460,8 +469,8 @@ func applyPluginMap(
 	entries []api.ConfigEntry,
 	cmds []*plugin.Command,
 	opts ApplyOptions,
-) ([]api.KeyVal, error) {
-	result := make([]api.KeyVal, 0, len(entries)+len(cmds))
+) (api.KeyValues, error) {
+	result := make(api.KeyValues, 0, len(entries)+len(cmds))
 
 	log.Trace(ctx, "applying plugin map", "idents", opts.idents)
 
@@ -496,7 +505,7 @@ func applyPluginMap(
 					return nil, fmt.Errorf("failed to convert value for %q in %q to int: %w", entry.Key, parent, err)
 				}
 			} else {
-				raw = entry.Value
+				raw = entry.Val
 			}
 		}
 
@@ -518,171 +527,6 @@ func applyPluginMap(
 	log.Trace(ctx, "map applied", "key", parent, "cfg", rawMap)
 
 	return result, nil
-}
-
-// resolvePluginValue resolves the value of the given ConfigEntry and returns
-// the parsed KeyVal.
-//
-//nolint:cyclop,funlen // need for complexity when checking the config type
-func resolvePluginValue(raw any, entry *api.ConfigEntry, opts ApplyOptions) (api.KeyVal, error) {
-	switch entry.Type {
-	case api.BoolListValue:
-		a, ok := raw.([]any)
-		if !ok {
-			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to []any", typeconv.ErrConv, raw, entry.Key)
-		}
-
-		x, err := typeconv.ToBoolSlice(a)
-		if err != nil {
-			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
-		}
-
-		x, err = boolSliceValue(x, opts, entry)
-		if err != nil {
-			return api.KeyVal{}, err
-		}
-
-		return api.KeyVal{
-			Value: api.Value{Val: x, Type: entry.Type},
-			Key:   entry.Key,
-		}, nil
-	case api.BoolValue:
-		x, ok := raw.(bool)
-		if !ok {
-			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to bool", typeconv.ErrConv, raw, entry.Key)
-		}
-
-		x, err := boolValue(x, opts, entry)
-		if err != nil {
-			return api.KeyVal{}, err
-		}
-
-		return api.KeyVal{
-			Value: api.Value{Val: x, Type: entry.Type},
-			Key:   entry.Key,
-		}, nil
-	case api.ConfigSliceValue:
-		return api.KeyVal{}, fmt.Errorf(
-			"%w: config entry %q has invalid type: %s",
-			plugin.ErrInvalidConfig,
-			entry.Key,
-			entry.Type,
-		)
-	case api.IntListValue:
-		a, ok := raw.([]any)
-		if !ok {
-			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to []any", typeconv.ErrConv, raw, entry.Key)
-		}
-
-		x, err := typeconv.ToIntSlice(a)
-		if err != nil {
-			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
-		}
-
-		x, err = intSliceValue(x, opts, entry)
-		if err != nil {
-			return api.KeyVal{}, err
-		}
-
-		return api.KeyVal{
-			Value: api.Value{Val: x, Type: entry.Type},
-			Key:   entry.Key,
-		}, nil
-	case api.IntValue:
-		x, err := typeconv.ToInt(raw)
-		if err != nil {
-			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
-		}
-
-		x, err = intValue(x, opts, entry)
-		if err != nil {
-			return api.KeyVal{}, err
-		}
-
-		return api.KeyVal{
-			Value: api.Value{Val: x, Type: entry.Type},
-			Key:   entry.Key,
-		}, nil
-	case api.PathListValue:
-		a, ok := raw.([]any)
-		if !ok {
-			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to []any", typeconv.ErrConv, raw, entry.Key)
-		}
-
-		x, err := typeconv.ToPathSlice(a)
-		if err != nil {
-			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
-		}
-
-		x, err = pathSliceValue(x, opts, entry)
-		if err != nil {
-			return api.KeyVal{}, err
-		}
-
-		return api.KeyVal{
-			Value: api.Value{Val: x, Type: entry.Type},
-			Key:   entry.Key,
-		}, nil
-	case api.PathValue:
-		s, ok := raw.(string)
-		if !ok {
-			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to string", typeconv.ErrConv, raw, entry.Key)
-		}
-
-		x := fspath.Path(s)
-
-		x, err := pathValue(x, opts, entry)
-		if err != nil {
-			return api.KeyVal{}, err
-		}
-
-		return api.KeyVal{
-			Value: api.Value{Val: x, Type: entry.Type},
-			Key:   entry.Key,
-		}, nil
-	case api.StringListValue:
-		a, ok := raw.([]any)
-		if !ok {
-			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to []any", typeconv.ErrConv, raw, entry.Key)
-		}
-
-		x, err := typeconv.ToStringSlice(a)
-		if err != nil {
-			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
-		}
-
-		x, err = stringSliceValue(x, opts, entry)
-		if err != nil {
-			return api.KeyVal{}, err
-		}
-
-		return api.KeyVal{
-			Value: api.Value{Val: x, Type: entry.Type},
-			Key:   entry.Key,
-		}, nil
-	case api.StringValue:
-		x, ok := raw.(string)
-		if !ok {
-			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to string", typeconv.ErrConv, raw, entry.Key)
-		}
-
-		x, err := stringValue(x, opts, entry)
-		if err != nil {
-			return api.KeyVal{}, err
-		}
-
-		return api.KeyVal{
-			Value: api.Value{Val: x, Type: entry.Type},
-			Key:   entry.Key,
-		}, nil
-	default:
-		return api.KeyVal{}, fmt.Errorf(
-			"%w: config entry %q has invalid type: %s",
-			plugin.ErrInvalidConfig,
-			entry.Key,
-			entry.Type,
-		)
-	}
 }
 
 // applyString sets a string value from the environment variables and
@@ -1143,6 +987,171 @@ func pluginFlagName(idents []string, entry *api.ConfigEntry) string {
 	key := configKey(idents)
 
 	return FlagName(key)
+}
+
+// resolvePluginValue resolves the value of the given ConfigEntry and returns
+// the parsed KeyVal.
+//
+//nolint:cyclop,funlen,gocognit,maintidx // need to check all of the types
+func resolvePluginValue(raw any, entry *api.ConfigEntry, opts ApplyOptions) (api.KeyVal, error) {
+	switch entry.Type {
+	case api.BoolListValue:
+		a, ok := raw.([]any)
+		if !ok {
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to []any", typeconv.ErrConv, raw, entry.Key)
+		}
+
+		x, err := typeconv.ToBoolSlice(a)
+		if err != nil {
+			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
+		}
+
+		x, err = boolSliceValue(x, opts, entry)
+		if err != nil {
+			return api.KeyVal{}, err
+		}
+
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
+	case api.BoolValue:
+		x, ok := raw.(bool)
+		if !ok {
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to bool", typeconv.ErrConv, raw, entry.Key)
+		}
+
+		x, err := boolValue(x, opts, entry)
+		if err != nil {
+			return api.KeyVal{}, err
+		}
+
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
+	case api.ConfigSliceValue:
+		return api.KeyVal{}, fmt.Errorf(
+			"%w: config entry %q has invalid type: %s",
+			plugin.ErrInvalidConfig,
+			entry.Key,
+			entry.Type,
+		)
+	case api.IntListValue:
+		a, ok := raw.([]any)
+		if !ok {
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to []any", typeconv.ErrConv, raw, entry.Key)
+		}
+
+		x, err := typeconv.ToIntSlice(a)
+		if err != nil {
+			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
+		}
+
+		x, err = intSliceValue(x, opts, entry)
+		if err != nil {
+			return api.KeyVal{}, err
+		}
+
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
+	case api.IntValue:
+		x, err := typeconv.ToInt(raw)
+		if err != nil {
+			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
+		}
+
+		x, err = intValue(x, opts, entry)
+		if err != nil {
+			return api.KeyVal{}, err
+		}
+
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
+	case api.PathListValue:
+		a, ok := raw.([]any)
+		if !ok {
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to []any", typeconv.ErrConv, raw, entry.Key)
+		}
+
+		x, err := typeconv.ToPathSlice(a)
+		if err != nil {
+			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
+		}
+
+		x, err = pathSliceValue(x, opts, entry)
+		if err != nil {
+			return api.KeyVal{}, err
+		}
+
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
+	case api.PathValue:
+		s, ok := raw.(string)
+		if !ok {
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to string", typeconv.ErrConv, raw, entry.Key)
+		}
+
+		x := fspath.Path(s)
+
+		x, err := pathValue(x, opts, entry)
+		if err != nil {
+			return api.KeyVal{}, err
+		}
+
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
+	case api.StringListValue:
+		a, ok := raw.([]any)
+		if !ok {
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to []any", typeconv.ErrConv, raw, entry.Key)
+		}
+
+		x, err := typeconv.ToStringSlice(a)
+		if err != nil {
+			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
+		}
+
+		x, err = stringSliceValue(x, opts, entry)
+		if err != nil {
+			return api.KeyVal{}, err
+		}
+
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
+	case api.StringValue:
+		x, ok := raw.(string)
+		if !ok {
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to string", typeconv.ErrConv, raw, entry.Key)
+		}
+
+		x, err := stringValue(x, opts, entry)
+		if err != nil {
+			return api.KeyVal{}, err
+		}
+
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
+	default:
+		return api.KeyVal{}, fmt.Errorf(
+			"%w: config entry %q has invalid type: %s",
+			plugin.ErrInvalidConfig,
+			entry.Key,
+			entry.Type,
+		)
+	}
 }
 
 // setDir sets the correct config value for "Dir" at the start of the config

@@ -22,10 +22,14 @@ import (
 // linkManifest returns the manifest for the link plugin.
 func linkManifest() *api.Manifest {
 	//nolint:lll
-	force := api.KeyValue{
-		Key:         "force",
-		Value:       false,
-		Type:        api.BoolValue,
+	force := api.ConfigValue{
+		KeyVal: api.KeyVal{
+			Value: api.Value{
+				Val:  false,
+				Type: api.BoolValue,
+			},
+			Key: "force",
+		},
 		Description: "If enabled, any existing file that has the same name as the link that is created will be removed.",
 	}
 
@@ -43,14 +47,19 @@ func linkManifest() *api.Manifest {
 			{
 				Type:        "create",
 				Description: "TODO",
+				RawConfig:   nil,
 				Config: []api.ConfigType{
 					force,
 					api.UnionValue{
 						Alternatives: []api.ConfigType{
-							api.KeyValue{
-								Key:   "links",
-								Value: []string{},
-								Type:  api.PathListValue,
+							api.ConfigValue{
+								KeyVal: api.KeyVal{
+									Value: api.Value{
+										Val:  []string{},
+										Type: api.PathListValue,
+									},
+									Key: "links",
+								},
 								//nolint:lll
 								Description: "List of symbolic links to create where the key is link file to create. The file that the link points to is created from the path of the link as described in the task's documentation.",
 							},
@@ -59,19 +68,27 @@ func linkManifest() *api.Manifest {
 								Key:         "links",
 								KeyType:     api.PathValue,
 								Description: "List of symbolic links to create where the key is link file to create. If no `src` is given, the file that the link points to is created from the path of the link as described in the task's documentation.",
-								Values: []api.KeyValue{
+								Values: []api.ConfigValue{
 									force,
 									{
-										Key:         "src",
+										KeyVal: api.KeyVal{
+											Value: api.Value{
+												Val:  "",
+												Type: "path",
+											},
+											Key: "src",
+										},
 										Description: "The file that the created link points to. If omitted, it will be resolved from the path given as the key for this table entry as described in the task's documentation.",
-										Value:       "",
-										Type:        "path",
 									},
 									{
-										Key:         "contents",
+										KeyVal: api.KeyVal{
+											Value: api.Value{
+												Val:  false,
+												Type: "bool",
+											},
+											Key: "contents",
+										},
 										Description: "If the resolved `src` file is a directory, create the links for each file in the directory into the destination directory instead of creating a link of the directory.",
-										Value:       false,
-										Type:        "bool",
 									},
 								},
 							},

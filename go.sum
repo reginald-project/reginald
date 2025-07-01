@@ -10,8 +10,6 @@ github.com/go-viper/mapstructure/v2 v2.3.0 h1:27XbWsHIqhbdR5TIC911OfYvgSaW93HM+d
 github.com/go-viper/mapstructure/v2 v2.3.0/go.mod h1:oJDH3BJKyqBA2TXFhDsKDGDTlndYOZ6rGS0BRZIxGhM=
 github.com/pelletier/go-toml/v2 v2.2.4 h1:mye9XuhQ6gvn5h28+VilKrrPoQVanw5PMw/TB0t5Ec4=
 github.com/pelletier/go-toml/v2 v2.2.4/go.mod h1:2gIqNv+qfxSVS7cM2xJQKtLSTLUE9V8t9Stt+h56mCY=
-github.com/reginald-project/reginald-sdk-go v0.0.0-20250630053345-7b4db6835bb8 h1:R2O0JF7OS1BeHDSi1EFBvhcwRcfpZJF3/dZXy1USLEU=
-github.com/reginald-project/reginald-sdk-go v0.0.0-20250630053345-7b4db6835bb8/go.mod h1:IghbM3Z0/7nnun3QL0OpgBwotHxv3YHLa1DkYq0byOc=
 github.com/reginald-project/reginald-sdk-go v0.0.0-20250630072515-b934af2d77d2 h1:46Xa+NwcelWmNQBkotVDQGU0imC0IDVyz83kemPMBXg=
 github.com/reginald-project/reginald-sdk-go v0.0.0-20250630072515-b934af2d77d2/go.mod h1:IghbM3Z0/7nnun3QL0OpgBwotHxv3YHLa1DkYq0byOc=
 github.com/spf13/pflag v1.0.6 h1:jFzHGLGAlb3ruxLB8MhbI6A8+AQX/2eW4qeyNZXNp2o=

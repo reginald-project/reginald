@@ -16,14 +16,21 @@ package config
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
 	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/log"
+	"github.com/reginald-project/reginald/internal/platform"
 	"github.com/reginald-project/reginald/internal/plugin"
+	"github.com/reginald-project/reginald/internal/typeconv"
 )
+
+// errNoUnionMatch is returned by the union value resolver when the current
+// alternative does not match the variable in the config.
+var errNoUnionMatch = errors.New("union value does not match")
 
 // TaskApplyOptions is the type for the options for the ApplyTasks function.
 type TaskApplyOptions struct {
@@ -37,7 +44,7 @@ type TaskApplyOptions struct {
 // ApplyTasks applies the default values for tasks from the given defaults,
 // assigns the IDs and other missing values, and normalizes paths. It returns
 // new configs for the tasks.
-func ApplyTasks(ctx context.Context, cfg []plugin.TaskConfig, opts TaskApplyOptions) ([]plugin.TaskConfig, error) {
+func ApplyTasks(ctx context.Context, rawCfg []map[string]any, opts TaskApplyOptions) ([]plugin.TaskConfig, error) {
 	log.Debug(ctx, "applying task configs")
 
 	if opts.Store == nil {
@@ -49,317 +56,365 @@ func ApplyTasks(ctx context.Context, cfg []plugin.TaskConfig, opts TaskApplyOpti
 		return nil, fmt.Errorf("cannot apply task config: %w", errNilPlugins)
 	}
 
-	taskCfg := make([]plugin.TaskConfig, 0, len(cfg))
+	result := make([]plugin.TaskConfig, 0, len(rawCfg))
 	counts := make(map[string]int)
 
-	for _, tc := range cfg { //nolint:varnamelen
+	for _, rawEntry := range rawCfg {
 		// TODO: Remove the tasks that are not run on the current platform.
-		log.Trace(ctx, "finding task", "type", tc.Type)
+		log.Trace(ctx, "checking raw task map entry", "entry", rawEntry)
 
-		tt := opts.Store.Task(tc.Type)
-		if tt == nil {
-			return nil, fmt.Errorf("%w: unknown task type %q", ErrInvalidConfig, tc.Type)
+		rawType, ok := rawEntry["type"]
+		if !ok {
+			return nil, fmt.Errorf("%w: task without a type", ErrInvalidConfig)
 		}
 
-		id := tc.ID //nolint:varnamelen
-		if id == "" {
-			id = tc.Type + "-" + strconv.Itoa(counts[tc.Type])
+		ttName, ok := rawType.(string)
+		if !ok {
+			return nil, fmt.Errorf("%w: task type is not a string (%v)", ErrInvalidConfig, rawType)
 		}
 
-		counts[tc.Type]++
+		log.Trace(ctx, "finding task", "type", ttName)
 
-		options := make(plugin.TaskOptions, len(tt.Config))
+		task := opts.Store.Task(ttName)
+		if task == nil {
+			return nil, fmt.Errorf("%w: unknown task type %q", ErrInvalidConfig, ttName)
+		}
 
-		for _, config := range tt.Config {
-			switch cfgValue := config.(type) {
-			case api.KeyValue:
-				log.Trace(
-					ctx,
-					"parsing task config value as KeyValue",
-					"id",
-					id,
-					"task",
-					tc.Type,
-					"key",
-					cfgValue.Key,
-					"kvType",
-					cfgValue.Type,
-				)
+		c, err := newTaskConfig(task, rawEntry, counts)
+		if err != nil {
+			return nil, err
+		}
 
-				value, err := parseTaskKeyValue(cfgValue, tc.Options, opts)
-				if err != nil {
-					return nil, fmt.Errorf("failed to parse value for %q (%s): %w", id, tc.Type, err)
-				}
+		c.Config, err = resolveTaskConfigs(ctx, task, c.ID, rawEntry, opts)
+		if err != nil {
+			return nil, err
+		}
 
-				log.Trace(
-					ctx,
-					"setting task value",
-					"key",
-					cfgValue.Key,
-					"id",
-					id,
-					"task",
-					tc.Type,
-					"kvType",
-					cfgValue.Type,
-					"value",
-					value,
-					"type",
-					fmt.Sprintf("%T", value),
-				)
+		log.Trace(ctx, "parsed task config", "cfg", c)
 
-				options[cfgValue.Key] = value
-			case api.UnionValue:
-				log.Trace(
-					ctx,
-					"parsing task config value as UnionValue",
-					"id",
-					id,
-					"task",
-					tc.Type,
-					"alternatives",
-					cfgValue.Alternatives,
-				)
+		result = append(result, c)
+	}
 
-				value, key, err := parseTaskUnionValue(cfgValue, tc.Options, opts)
-				if err != nil {
-					return nil, fmt.Errorf("failed to parse value for %q (%s): %w", id, tc.Type, err)
-				}
+	return result, nil
+}
 
-				options[key] = value
-			case api.MappedValue:
-				log.Trace(
-					ctx,
-					"parsing task config value as MappedValue",
-					"id",
-					id,
-					"task",
-					tc.Type,
-					"key",
-					cfgValue.Key,
-					"keyType",
-					cfgValue.KeyType,
-				)
+// newTaskConfig creates a new TaskConfig for a config entry.
+func newTaskConfig(task *plugin.Task, rawEntry map[string]any, counts map[string]int) (plugin.TaskConfig, error) {
+	var taskID string
 
-				topValue := tc.Options[cfgValue.Key]
-				if topValue == nil {
-					continue
-				}
+	ttName := task.Type
 
-				log.Trace(ctx, "got the top map", "key", cfgValue, "map", topValue)
+	rawID, ok := rawEntry["id"]
+	if ok {
+		taskID, ok = rawID.(string)
+		if !ok {
+			return plugin.TaskConfig{}, fmt.Errorf("%w: task ID is not a string (%v)", ErrInvalidConfig, rawID)
+		}
+	} else {
+		taskID = ttName + "-" + strconv.Itoa(counts[ttName])
+	}
 
-				value, err := parseTaskMappedValue(topValue, cfgValue, opts)
-				if err != nil {
-					return nil, fmt.Errorf("failed to parse value for %q (%s): %w", id, tc.Type, err)
-				}
+	counts[ttName]++
 
-				log.Trace(
-					ctx,
-					"setting MappedValue to options",
-					"key",
-					cfgValue.Key,
-					"id",
-					id,
-					"task",
-					tc.Type,
-					"map", value,
-				)
+	var strPlatforms []string
 
-				options[cfgValue.Key] = value
-			default:
-				return nil, fmt.Errorf(
-					"%w: config entry defined by task %q has invalid type: %[3]T (%[3]v)",
-					plugin.ErrInvalidConfig,
-					tc.Type,
-					config,
+	rawPlatforms, ok := rawEntry["platforms"]
+	if ok {
+		var p string
+
+		p, ok = rawPlatforms.(string)
+		if ok {
+			strPlatforms = append(strPlatforms, p)
+		} else {
+			strPlatforms, ok = rawPlatforms.([]string)
+			if !ok {
+				return plugin.TaskConfig{}, fmt.Errorf(
+					"%w: platforms for task %q is not a list of strings",
+					ErrInvalidConfig,
+					taskID,
 				)
 			}
 		}
-
-		c := plugin.TaskConfig{
-			ID:        id,
-			Type:      tc.Type,
-			Options:   options,
-			Platforms: tc.Platforms,
-			Requires:  tc.Requires,
-		}
-
-		taskCfg = append(taskCfg, c)
 	}
 
-	return taskCfg, nil
+	platforms := make(platform.Platforms, len(strPlatforms))
+
+	for i, s := range strPlatforms {
+		platforms[i] = platform.Platform(s)
+	}
+
+	var requires []string
+
+	rawRequires, ok := rawEntry["requires"]
+	if ok {
+		r, ok := rawRequires.(string)
+		if ok {
+			requires = append(requires, r)
+		} else {
+			requires, ok = rawRequires.([]string)
+			if !ok {
+				return plugin.TaskConfig{}, fmt.Errorf(
+					"%w: requires for task %q is not a list of strings",
+					ErrInvalidConfig,
+					taskID,
+				)
+			}
+		}
+	}
+
+	return plugin.TaskConfig{
+		Config:    nil,
+		ID:        taskID,
+		Platforms: platforms,
+		Requires:  requires,
+		Type:      ttName,
+	}, nil
 }
 
-// parseTaskKeyValue parses the value of the given KeyValue from the task
+// parseTaskConfigValue parses the value of the given KeyValue from the task
 // options and the defaults. It returns the parsed value and any errors it
 // encounters.
 //
-//nolint:cyclop,funlen,gocognit,gocyclo // need for complexity when checking the config type
-func parseTaskKeyValue(kv api.KeyValue, taskOptions plugin.TaskOptions, opts TaskApplyOptions) (any, error) {
-	value := kv.Value
+//nolint:cyclop,funlen,gocognit,gocyclo,maintidx // need for complexity when checking the config type
+func parseTaskConfigValue(entry api.ConfigValue, rawMap map[string]any, opts TaskApplyOptions) (api.KeyVal, error) {
+	var err error
 
-	if kv.Type == api.IntValue {
-		var err error
+	raw := entry.Val
 
-		if value, err = kv.Int(); err != nil {
-			return nil, fmt.Errorf("failed to convert %v to int: %w", value, err)
+	if entry.Type == api.IntValue {
+		if raw, err = entry.Int(); err != nil {
+			return api.KeyVal{}, fmt.Errorf("type conversion for %q failed: %w", entry.Key, err)
 		}
 	}
 
 	if opts.Defaults != nil {
-		defaultsValue, ok := opts.Defaults[kv.Key]
+		defaultsValue, ok := opts.Defaults[entry.Key]
 		if ok {
-			value = defaultsValue
+			raw = defaultsValue
 		}
 	}
 
-	fileValue, ok := taskOptions[kv.Key]
+	fileValue, ok := rawMap[entry.Key]
 	if ok {
-		value = fileValue
+		raw = fileValue
 	}
 
-	switch kv.Type {
+	switch entry.Type {
 	case api.BoolListValue:
-		if value == nil {
-			value = []bool{}
+		if raw == nil {
+			raw = []bool{}
 		}
 
-		value, ok = value.([]bool)
-	case api.BoolValue:
-		if value == nil {
-			value = false
-		}
+		var a []any
 
-		value, ok = value.(bool)
-	case api.IntListValue:
-		if value == nil {
-			value = []int{}
-		}
-
-		value, ok = value.([]int)
-	case api.IntValue:
-		if value == nil {
-			value = 0
-		}
-
-		value, ok = value.(int)
-	case api.MapValue:
-		if value == nil {
-			value = make(map[string]any)
-		}
-
-		value, ok = value.(map[string]any)
-	case api.PathListValue:
-		if value == nil {
-			value = []fspath.Path{}
-		}
-
-		var a []string
-
-		a, ok = value.([]string)
+		a, ok = raw.([]any)
 		if !ok {
-			break
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to []any", typeconv.ErrConv, raw, entry.Key)
 		}
 
-		paths := make([]fspath.Path, len(a))
+		var x []bool
 
-		for i, s := range a {
-			path := fspath.Path(s)
+		x, err = typeconv.ToBoolSlice(a)
+		if err != nil {
+			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
+		}
 
-			var err error
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
+	case api.BoolValue:
+		if raw == nil {
+			raw = false
+		}
 
+		var x bool
+
+		x, ok = raw.(bool)
+		if !ok {
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to bool", typeconv.ErrConv, raw, entry.Key)
+		}
+
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
+	case api.ConfigSliceValue:
+		return api.KeyVal{}, fmt.Errorf("%w: %q has invalid type %q", plugin.ErrInvalidConfig, entry.Key, entry.Type)
+	case api.IntListValue:
+		if raw == nil {
+			raw = []int{}
+		}
+
+		var a []any
+
+		a, ok = raw.([]any)
+		if !ok {
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to []any", typeconv.ErrConv, raw, entry.Key)
+		}
+
+		var x []int
+
+		x, err = typeconv.ToIntSlice(a)
+		if err != nil {
+			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
+		}
+
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
+	case api.IntValue:
+		if raw == nil {
+			raw = 0
+		}
+
+		var x int
+
+		x, err = typeconv.ToInt(raw)
+		if err != nil {
+			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
+		}
+
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
+	case api.PathListValue:
+		if raw == nil {
+			raw = []string{}
+		}
+
+		var a []any
+
+		a, ok = raw.([]any)
+		if !ok {
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to []any", typeconv.ErrConv, raw, entry.Key)
+		}
+
+		var paths []fspath.Path
+
+		paths, err = typeconv.ToPathSlice(a)
+		if err != nil {
+			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
+		}
+
+		x := make([]fspath.Path, len(paths))
+
+		for i, path := range paths {
 			path, err = path.Expand()
 			if err != nil {
-				return nil, fmt.Errorf("failed to expand %q: %w", path, err)
+				return api.KeyVal{}, fmt.Errorf("failed to expand %q: %w", path, err)
 			}
 
 			if !path.IsAbs() {
 				path = fspath.Join(opts.Dir, path)
 			}
 
-			paths[i] = path
+			x[i] = path
 		}
 
-		value = paths
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
 	case api.PathValue:
-		if value == nil {
-			value = ""
+		if raw == nil {
+			raw = ""
 		}
 
 		var s string
 
-		s, ok = value.(string)
+		s, ok = raw.(string)
 		if !ok {
-			break
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to string", typeconv.ErrConv, raw, entry.Key)
 		}
 
-		path := fspath.Path(s)
+		x := fspath.Path(s)
 
-		var err error
-
-		path, err = path.Expand()
+		x, err = x.Expand()
 		if err != nil {
-			return nil, fmt.Errorf("failed to expand %q: %w", path, err)
+			return api.KeyVal{}, fmt.Errorf("failed to expand %q: %w", x, err)
 		}
 
-		if !path.IsAbs() {
-			path = fspath.Join(opts.Dir, path)
+		if !x.IsAbs() {
+			x = fspath.Join(opts.Dir, x)
 		}
 
-		value = path
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
 	case api.StringListValue:
-		if value == nil {
-			value = []string{}
+		if raw == nil {
+			raw = []string{}
 		}
 
-		value, ok = value.([]string)
+		var a []any
+
+		a, ok = raw.([]any)
+		if !ok {
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to []any", typeconv.ErrConv, raw, entry.Key)
+		}
+
+		var x []string
+
+		x, err = typeconv.ToStringSlice(a)
+		if err != nil {
+			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
+		}
+
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
 	case api.StringValue:
-		if value == nil {
-			value = ""
+		if raw == nil {
+			raw = ""
 		}
 
-		value, ok = value.(string)
+		var x string
+
+		x, ok = raw.(string)
+		if !ok {
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to string", typeconv.ErrConv, raw, entry.Key)
+		}
+
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
 	default:
-		return nil, fmt.Errorf("%w: %q has invalid type %q", plugin.ErrInvalidConfig, kv.Key, kv.Type)
+		return api.KeyVal{}, fmt.Errorf("%w: %q has invalid type %q", plugin.ErrInvalidConfig, entry.Key, entry.Type)
 	}
-
-	if !ok {
-		return nil, fmt.Errorf(
-			"%w: value in %q has wrong type: want %s, got %[4]T (%[4]v)",
-			ErrInvalidConfig,
-			kv.Key,
-			kv.Type,
-			value,
-		)
-	}
-
-	return value, nil
 }
 
 // parseTaskMappedValue parses the value of the given MappedValue from the task
 // options and the defaults. It returns the parsed value and any errors it
 // encounters.
-func parseTaskMappedValue(top any, cfg api.MappedValue, opts TaskApplyOptions) (map[string]any, error) {
+func parseTaskMappedValue(top any, entry api.MappedValue, opts TaskApplyOptions) (api.KeyVal, error) {
 	topMap, ok := top.(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("%w: failed to convert to a map: %[2]v (%[2]T)", ErrInvalidConfig, top)
+		return api.KeyVal{}, fmt.Errorf("%w: failed to convert to a map: %[2]v (%[2]T)", ErrInvalidConfig, top)
 	}
 
+	kvs := make(api.KeyValues, 0, len(topMap))
+
 	// The key is the dymanic value and the value should be a map.
-	for topMapKey, topMapValues := range topMap {
-		valueMap, ok := topMapValues.(map[string]any)
+	for topMapKey, topMapValue := range topMap {
+		origKey := topMapKey //nolint:copyloopvar // we modify the value later and need to preserve the original
+
+		rawValueMap, ok := topMapValue.(map[string]any)
 		if !ok {
-			return nil, fmt.Errorf(
+			return api.KeyVal{}, fmt.Errorf(
 				"%w: failed to convert value for %q to a map: %[3]v (%[3]T)",
 				ErrInvalidConfig,
 				topMapKey,
-				topMapValues,
+				topMapValue,
 			)
 		}
 
-		delete(topMap, topMapKey)
-
-		switch cfg.KeyType { //nolint:exhaustive // other types are not supported
+		switch entry.KeyType { //nolint:exhaustive // other types are not supported
 		case api.PathValue:
 			path := fspath.Path(topMapKey)
 
@@ -367,7 +422,7 @@ func parseTaskMappedValue(top any, cfg api.MappedValue, opts TaskApplyOptions) (
 
 			path, err = path.Expand()
 			if err != nil {
-				return nil, fmt.Errorf("failed to expand %q: %w", path, err)
+				return api.KeyVal{}, fmt.Errorf("failed to expand %q: %w", origKey, err)
 			}
 
 			if !path.IsAbs() {
@@ -378,22 +433,35 @@ func parseTaskMappedValue(top any, cfg api.MappedValue, opts TaskApplyOptions) (
 		case api.StringValue:
 			// no-op
 		default:
-			return nil, fmt.Errorf("%w: keys in %q have invalid type %q", plugin.ErrInvalidConfig, cfg.Key, cfg.KeyType)
+			return api.KeyVal{}, fmt.Errorf(
+				"%w: keys in %q have invalid type %q",
+				plugin.ErrInvalidConfig,
+				entry.Key,
+				entry.KeyType,
+			)
 		}
 
-		for _, kv := range cfg.Values {
-			value, err := parseTaskKeyValue(kv, valueMap, opts)
+		values := make(api.KeyValues, 0, len(entry.Values))
+
+		for _, configValue := range entry.Values {
+			kv, err := parseTaskConfigValue(configValue, rawValueMap, opts)
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse value in %q: %w", topMapKey, err)
+				return api.KeyVal{}, fmt.Errorf("failed to parse value %q in %q: %w", configValue.Key, origKey, err)
 			}
 
-			valueMap[kv.Key] = value
+			values = append(values, kv)
 		}
 
-		topMap[topMapKey] = topMapValues
+		kvs = append(kvs, api.KeyVal{
+			Value: api.Value{Val: values, Type: api.ConfigSliceValue},
+			Key:   topMapKey,
+		})
 	}
 
-	return topMap, nil
+	return api.KeyVal{
+		Value: api.Value{Val: kvs, Type: api.ConfigSliceValue},
+		Key:   entry.Key,
+	}, nil
 }
 
 // parseTaskUnionValue resolves and parses the value of the given UnionValue
@@ -401,83 +469,257 @@ func parseTaskMappedValue(top any, cfg api.MappedValue, opts TaskApplyOptions) (
 // the config file, the function uses the first alternative config type to
 // resolve the default value. It returns the parsed value, the resolved key, and
 // any errors it encounters.
-func parseTaskUnionValue(cfg api.UnionValue, cfgOptions map[string]any, opts TaskApplyOptions) (any, string, error) {
-	var (
-		err   error
-		key   string
-		value any
-	)
+func parseTaskUnionValue(
+	ctx context.Context,
+	entry api.UnionValue,
+	rawMap map[string]any,
+	opts TaskApplyOptions,
+) (api.KeyVal, error) {
+	for _, alt := range entry.Alternatives {
+		log.Trace(ctx, "checking union alternative", "alt", alt)
 
-AltLoop:
-	for _, alt := range cfg.Alternatives {
-		switch altTyped := alt.(type) {
+		kv, err := resolveUnionValue(ctx, alt, rawMap, opts)
+		if err != nil {
+			if errors.Is(err, errNoUnionMatch) {
+				continue
+			}
+
+			return api.KeyVal{}, err
+		}
+
+		return kv, nil
+	}
+
+	alt := entry.Alternatives[0]
+	switch firstTyped := alt.(type) {
+	case api.MappedValue:
+		entry, ok := rawMap[firstTyped.Key]
+		if !ok {
+			// No default is set for the MappedValues.
+			return api.KeyVal{
+				Value: api.Value{Val: nil, Type: api.ConfigSliceValue},
+				Key:   firstTyped.Key,
+			}, nil
+		}
+
+		kv, err := parseTaskMappedValue(entry, firstTyped, opts)
+		if err != nil {
+			return api.KeyVal{}, err
+		}
+
+		return kv, nil
+	case api.ConfigValue:
+		kv, err := parseTaskConfigValue(firstTyped, rawMap, opts)
+		if err != nil {
+			return api.KeyVal{}, err
+		}
+
+		return kv, nil
+	default:
+		return api.KeyVal{}, fmt.Errorf(
+			"%w: entry in UnionValue has invalid type: %[2]T (%[2]v)",
+			plugin.ErrInvalidConfig,
+			alt,
+		)
+	}
+}
+
+// resolveTaskConfigs resolves the values for a task instance.
+func resolveTaskConfigs(
+	ctx context.Context,
+	task *plugin.Task,
+	taskID string,
+	rawEntry map[string]any,
+	opts TaskApplyOptions,
+) (api.KeyValues, error) {
+	cfgs := make(api.KeyValues, 0, len(task.Config))
+	ttName := task.Type
+
+	// TODO: The defaults are now wrong, the functions try to check
+	// the top-level map instead of the values for the current task type.
+
+	for _, config := range task.Config {
+		switch cfgTyped := config.(type) {
+		case api.ConfigValue:
+			log.Trace(
+				ctx,
+				"parsing task config value as ConfigValue",
+				"id",
+				taskID,
+				"taskType",
+				ttName,
+				"key",
+				cfgTyped.Key,
+				"kvType",
+				cfgTyped.Type,
+			)
+
+			kv, err := parseTaskConfigValue(cfgTyped, rawEntry, opts)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"failed to parse value %q for %q (%s): %w",
+					cfgTyped.Key,
+					taskID,
+					ttName,
+					err,
+				)
+			}
+
+			log.Trace(
+				ctx,
+				"resolved task value",
+				"key",
+				cfgTyped.Key,
+				"id",
+				taskID,
+				"taskType",
+				ttName,
+				"value",
+				kv,
+			)
+
+			cfgs = append(cfgs, kv)
 		case api.MappedValue:
-			entry, ok := cfgOptions[altTyped.Key]
-			if !ok {
+			log.Trace(
+				ctx,
+				"parsing task config value as MappedValue",
+				"id",
+				taskID,
+				"taskType",
+				ttName,
+				"key",
+				cfgTyped.Key,
+				"keyType",
+				cfgTyped.KeyType,
+			)
+
+			topValue := rawEntry[cfgTyped.Key]
+			if topValue == nil {
+				cfgs = append(cfgs, api.KeyVal{
+					Value: api.Value{Val: nil, Type: api.ConfigSliceValue},
+					Key:   cfgTyped.Key,
+				})
+
 				continue
 			}
 
-			var v map[string]any
+			log.Trace(ctx, "got the top map", "key", cfgTyped.Key, "map", topValue)
 
-			v, err = parseTaskMappedValue(entry, altTyped, opts)
-			if len(v) == 0 || err != nil {
-				continue
+			kv, err := parseTaskMappedValue(topValue, cfgTyped, opts)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"failed to parse value %q for %q (%s): %w",
+					cfgTyped.Key,
+					taskID,
+					ttName,
+					err,
+				)
 			}
 
-			value = v
-			key = altTyped.Key
+			log.Trace(
+				ctx,
+				"resolved MappedValue",
+				"key",
+				cfgTyped.Key,
+				"id",
+				taskID,
+				"task",
+				ttName,
+				"value",
+				kv,
+			)
 
-			break AltLoop
-		case api.KeyValue:
-			value, err = parseTaskKeyValue(altTyped, cfgOptions, opts)
-			if value == nil || err != nil {
-				continue
+			cfgs = append(cfgs, kv)
+		case api.UnionValue:
+			log.Trace(
+				ctx,
+				"parsing task config value as UnionValue",
+				"id",
+				taskID,
+				"task",
+				ttName,
+				"alternatives",
+				cfgTyped.Alternatives,
+			)
+
+			kv, err := parseTaskUnionValue(ctx, cfgTyped, rawEntry, opts)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse value in UnionValue for %q (%s): %w", taskID, ttName, err)
 			}
 
-			key = altTyped.Key
+			log.Trace(ctx, "resolved UnionValue", "id", taskID, "task", ttName, "value", kv)
 
-			break AltLoop
+			cfgs = append(cfgs, kv)
 		default:
-			return nil, "", fmt.Errorf(
-				"%w: entry in UnionValue has invalid type: %[2]T (%[2]v)",
+			return nil, fmt.Errorf(
+				"%w: config entry defined by task %q has invalid type: %[3]T (%[3]v)",
 				plugin.ErrInvalidConfig,
-				alt,
+				ttName,
+				config,
 			)
 		}
 	}
 
-	if value == nil {
-		alt := cfg.Alternatives[0]
-		switch firstTyped := alt.(type) {
-		case api.MappedValue:
-			entry, ok := cfgOptions[firstTyped.Key]
-			if !ok {
-				// No default is set for the MappedValues, so we return a nil
-				// value but the right key.
-				return nil, firstTyped.Key, nil
-			}
+	return cfgs, nil
+}
 
-			value, err = parseTaskMappedValue(entry, firstTyped, opts)
-			if err != nil {
-				return nil, "", err
-			}
+// resolveUnionValue resolves a single alternative in a UnionValue. If
+// the alternative matches the config, the function returns the KeyVal. If
+// the alternative does not match, the function returns errNoUnionMatch.
+// Otherwise, it returns the encountered error.
+func resolveUnionValue(
+	ctx context.Context,
+	alternative api.ConfigType,
+	rawMap map[string]any,
+	opts TaskApplyOptions,
+) (api.KeyVal, error) {
+	switch altTyped := alternative.(type) {
+	case api.MappedValue:
+		log.Trace(ctx, "resolved union alternative to MappedValue", "key", altTyped.Key, "alt", altTyped)
 
-			key = firstTyped.Key
-		case api.KeyValue:
-			value, err = parseTaskKeyValue(firstTyped, cfgOptions, opts)
-			if err != nil {
-				return nil, "", err
-			}
-
-			key = firstTyped.Key
-		default:
-			return nil, "", fmt.Errorf(
-				"%w: entry in UnionValue has invalid type: %[2]T (%[2]v)",
-				plugin.ErrInvalidConfig,
-				alt,
-			)
+		entry, ok := rawMap[altTyped.Key]
+		if !ok {
+			return api.KeyVal{}, fmt.Errorf("%w: %q", errNoUnionMatch, altTyped.Key)
 		}
-	}
 
-	return value, key, nil
+		if _, ok = entry.(map[string]any); !ok {
+			return api.KeyVal{}, fmt.Errorf("%w: %q", errNoUnionMatch, altTyped.Key)
+		}
+
+		kv, err := parseTaskMappedValue(entry, altTyped, opts)
+		if err != nil {
+			return api.KeyVal{}, err
+		}
+
+		return kv, nil
+	case api.ConfigValue:
+		log.Trace(ctx, "resolved union alternative to ConfigValue", "key", altTyped.Key, "alt", altTyped)
+
+		if _, ok := rawMap[altTyped.Key]; !ok {
+			return api.KeyVal{}, fmt.Errorf("%w: %q", errNoUnionMatch, altTyped.Key)
+		}
+
+		if _, ok := rawMap[altTyped.Key].(map[string]any); ok {
+			log.Trace(ctx, "found map, config value does not match")
+
+			return api.KeyVal{}, fmt.Errorf("%w: %q", errNoUnionMatch, altTyped.Key)
+		}
+
+		kv, err := parseTaskConfigValue(altTyped, rawMap, opts)
+		if err != nil {
+			if errors.Is(err, ErrInvalidConfig) {
+				return api.KeyVal{}, fmt.Errorf("%w: %q", errNoUnionMatch, altTyped.Key)
+			}
+
+			return api.KeyVal{}, err
+		}
+
+		return kv, nil
+	default:
+		return api.KeyVal{}, fmt.Errorf(
+			"%w: entry in UnionValue has invalid type: %[2]T (%[2]v)",
+			plugin.ErrInvalidConfig,
+			alternative,
+		)
+	}
 }

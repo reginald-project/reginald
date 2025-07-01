@@ -36,10 +36,14 @@ func main() {
 		Executable:  "reginald-go",
 		Config: []api.ConfigEntry{
 			{ //nolint:exhaustruct // omit default values
-				KeyValue: api.KeyValue{ //nolint:exhaustruct // omit default values
-					Key:   "version",
-					Value: "1.23",
-					Type:  api.StringValue,
+				ConfigValue: api.ConfigValue{ //nolint:exhaustruct // omit default values
+					KeyVal: api.KeyVal{
+						Value: api.Value{
+							Val:  "1.23",
+							Type: api.StringValue,
+						},
+						Key: "version",
+					},
 				},
 			},
 		},

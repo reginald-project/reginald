@@ -157,6 +157,8 @@ func initialize(ctx context.Context) (*runInfo, error) {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
+	info.cfg.RawPlugins = nil
+
 	taskOpts := config.TaskApplyOptions{
 		Dir:      info.cfg.Directory,
 		Store:    info.store,
@@ -165,12 +167,13 @@ func initialize(ctx context.Context) (*runInfo, error) {
 
 	var taskCfgs []plugin.TaskConfig
 
-	taskCfgs, err = config.ApplyTasks(ctx, info.cfg.Tasks, taskOpts)
+	taskCfgs, err = config.ApplyTasks(ctx, info.cfg.RawTasks, taskOpts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
 	info.cfg.Tasks = taskCfgs
+	info.cfg.RawTasks = nil
 
 	log.Info(ctx, "full config parsed and applied", "cfg", info.cfg, "args", info.args)
 

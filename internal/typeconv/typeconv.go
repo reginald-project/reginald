@@ -1,3 +1,17 @@
+// Copyright 2025 The Reginald Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // Package typeconv contains utilities for safely converting between built-in
 // types in Go.
 package typeconv
@@ -30,12 +44,14 @@ func ToBoolSlice(a []any) ([]bool, error) {
 }
 
 // ToInt converts any integer, unsigned integer, or float value to int safely.
+//
+//nolint:cyclop // need to check all of the types
 func ToInt(a any) (int, error) {
 	if a == nil {
 		return 0, fmt.Errorf("%w: nil to int", ErrConv)
 	}
 
-	switch v := a.(type) {
+	switch v := a.(type) { //nolint:varnamelen
 	case int:
 		return v, nil
 	case int8:
@@ -55,7 +71,7 @@ func ToInt(a any) (int, error) {
 			return 0, fmt.Errorf("%w: %d out of range", ErrConv, v)
 		}
 
-		return int(v), nil
+		return int(v), nil // #nosec G115 -- bounds checked above
 	case uint8:
 		return int(v), nil
 	case uint16:
@@ -67,11 +83,11 @@ func ToInt(a any) (int, error) {
 
 		return int(v), nil
 	case uint64:
-		if math.MaxInt < uint64(v) {
+		if math.MaxInt < v {
 			return 0, fmt.Errorf("%w: %d out of range", ErrConv, v)
 		}
 
-		return int(v), nil
+		return int(v), nil // #nosec G115 -- bounds checked above
 	case float32:
 		if math.IsNaN(float64(v)) {
 			return 0, fmt.Errorf("%w: NaN to int", ErrConv)

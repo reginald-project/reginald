@@ -57,12 +57,12 @@ func NewStore(ctx context.Context, builtin []*api.Manifest, wd fspath.Path, path
 	// loaded so by loading the built-in plugins first, we can make sure that no
 	// external plugin collides with them.
 	manifests := slices.Clone(builtin)
-	plugins := make([]Plugin, len(manifests))
+	plugins := make([]Plugin, 0, len(manifests))
 
-	for i, m := range manifests {
-		plugins[i] = &builtinPlugin{
+	for _, m := range manifests {
+		plugins = append(plugins, &builtinPlugin{
 			manifest: m,
-		}
+		})
 	}
 
 	var pathErrs PathErrors

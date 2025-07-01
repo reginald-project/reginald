@@ -68,7 +68,7 @@ type Config struct {
 
 	// RawTasks contains the raw config values for the tasks as given in
 	// the config file.
-	RawTasks map[string]any `mapstructure:"tasks"`
+	RawTasks []map[string]any `mapstructure:"tasks"`
 
 	// Plugins contains the parsed config values for the plugins.
 	Plugins []api.KeyVal `mapstructure:"-"`
@@ -124,8 +124,8 @@ func DefaultConfig() *Config {
 		PluginPaths: pluginPaths,
 		Plugins:     nil,
 		Quiet:       false,
-		RawPlugins:  map[string]any{},
-		RawTasks:    map[string]any{},
+		RawPlugins:  nil,
+		RawTasks:    nil,
 		Tasks:       nil,
 		Verbose:     false,
 		Strict:      false,
