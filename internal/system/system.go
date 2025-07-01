@@ -40,7 +40,7 @@ type OS string
 // OSes is a list of operating systems for convenience. As there are config
 // options that define a list of OSes but can accept a single string as their
 // value, OSes can be unmarshaled from a single string.
-type OSes []OS
+type OSes []OS //nolint:recvcheck // unmarshaling requires a pointer receiver
 
 // Current reports whether o matches the current platform.
 func (o OS) Current() bool {
@@ -84,6 +84,17 @@ func (o OS) Current() bool {
 // String returns the string representation of the platform.
 func (o OS) String() string {
 	return string(o)
+}
+
+// Current reports if one of the OSes in o matches the current system.
+func (o OSes) Current() bool {
+	for _, p := range o {
+		if p.Current() {
+			return true
+		}
+	}
+
+	return false
 }
 
 // UnmarshalText implements [encoding.TextUnmarshaler]. It decodes a single

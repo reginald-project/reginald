@@ -38,7 +38,7 @@ GOLINES_VERSION = 0.12.2
 ALLOWED_LICENSES = Apache-2.0,BSD-2-Clause,BSD-3-Clause,MIT
 COPYRIGHT_HOLDER = The Reginald Authors
 LICENSE = apache
-ADDLICENSE_PATTERNS = *.go internal plugins tools
+ADDLICENSE_PATTERNS = *.go internal plugins scripts
 
 GO_MODULE = github.com/reginald-project/reginald
 
@@ -105,14 +105,14 @@ clean: FORCE
 
 # TOOL HELPERS
 
-addlicense delve gci go-licenses gofumpt golangci-lint golines: FORCE installtool
-	@./installtool $@ $(TOOLFLAGS)
+addlicense delve gci go-licenses gofumpt golangci-lint golines: FORCE installer
+	@./installer $@ $(TOOLFLAGS)
 
-buildtask: tools/buildtask/tool.go
-	"$(GO)" build -o $@ -tags tool $<
+buildtask: scripts/buildtask/script.go
+	"$(GO)" build -o $@ -tags script $<
 
-installtool: tools/installtool/tool.go
-	"$(GO)" build -o $@ -tags tool $<
+installer: scripts/installer/script.go
+	"$(GO)" build -o $@ -tags script $<
 
 # SPECIAL TARGET
 

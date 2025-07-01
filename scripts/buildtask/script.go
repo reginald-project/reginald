@@ -12,8 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build tool
+//go:build script
 
+/*
+Buildtask performs a build task. The build target must be given as the first
+argument.
+
+The tools supports the following environment variables:
+
+	GOFLAGS
+	  Additional flags to pass to the Go compiler.
+
+	OUTPUT
+	  The name of the output binary. Defaults to the name of the project.
+
+	VERSION
+	  The version of the project. Defaults to the current date and time.
+
+	VERSION_PACKAGE
+	  The package to use for writing the version information. Defaults to
+	  "main".
+*/
 package main
 
 import (
@@ -26,7 +45,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reginald-project/reginald/tools"
+	"github.com/reginald-project/reginald/scripts/internal"
 )
 
 const versionPackage = "github.com/reginald-project/reginald/internal/version"
@@ -88,7 +107,7 @@ func main() {
 			args = append(args, "-ldflags", "-X "+versionPackage+".buildVersion="+version)
 			args = append(args, "-o", output)
 
-			if err := tools.Run(args...); err != nil {
+			if err := internal.Run(args...); err != nil {
 				return fmt.Errorf("%w", err)
 			}
 

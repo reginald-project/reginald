@@ -12,8 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build tool
+//go:build script
 
+/*
+Installer installs a tool in the current project. The tool must be given as the
+first argument.
+
+The tools supports the following environment variables:
+
+	GO
+	  The path to the Go compiler. Defaults to "go".
+*/
 package main
 
 import (
@@ -31,7 +40,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reginald-project/reginald/tools"
+	"github.com/reginald-project/reginald/scripts/internal"
 )
 
 var errNoVersion = errors.New("no version found")
@@ -47,10 +56,10 @@ func main() {
 		tool = os.Args[1]
 	}
 
-	flagSet := flag.NewFlagSet("installtool", flag.ExitOnError)
+	flagSet := flag.NewFlagSet("installer", flag.ExitOnError)
 	force := flagSet.Bool("f", false, "reinstall the tool if it is already installed")
 	flagSet.Usage = func() {
-		fmt.Fprintln(flagSet.Output(), "Usage: installtool [flags]")
+		fmt.Fprintln(flagSet.Output(), "Usage: installer tool [flags]")
 		flagSet.PrintDefaults()
 	}
 
@@ -64,8 +73,8 @@ func main() {
 	}
 
 	self := filepath.Base(os.Args[0])
-	if self == "installtool" {
-		self = "installtool.go"
+	if self == "installer" {
+		self = "installer.go"
 	}
 
 	version, err := readVersion(tool)
@@ -125,7 +134,7 @@ func goEnv(exe, key string) string {
 }
 
 func goInstall(exe, mod, version string) {
-	err := tools.Run(exe, "install", mod+"@v"+version)
+	err := internal.Run(exe, "install", mod+"@v"+version)
 	if err != nil {
 		log.Fatalf("Failed to install %s: %v", mod, err)
 	}
@@ -142,7 +151,7 @@ func installGolangciLint(exe, version string) {
 	}
 	defer resp.Body.Close()
 
-	err = tools.Run("sh", "-s", "--", "-b", installDir, "v"+version)
+	err = internal.Run("sh", "-s", "--", "-b", installDir, "v"+version)
 	if err != nil {
 		log.Fatalf("Failed to install golangci-lint: %v", err)
 	}
@@ -188,7 +197,7 @@ func installGolines(exe, version string) {
 		log.Fatalf("Failed to parse golines ref sha")
 	}
 
-	err = tools.Run(
+	err = internal.Run(
 		exe,
 		"install",
 		"-ldflags",

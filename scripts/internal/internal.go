@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build tool
+//go:build script
 
-// Package tools contains the utilities for the tools used by Reginald.
-package tools
+// Package internal provides helpers for the scripts.
+package internal
