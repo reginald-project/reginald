@@ -23,8 +23,8 @@ import (
 	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/log"
-	"github.com/reginald-project/reginald/internal/platform"
 	"github.com/reginald-project/reginald/internal/plugin"
+	"github.com/reginald-project/reginald/internal/system"
 	"github.com/reginald-project/reginald/internal/typeconv"
 )
 
@@ -137,10 +137,10 @@ func newTaskConfig(task *plugin.Task, rawEntry map[string]any, counts map[string
 		}
 	}
 
-	platforms := make(platform.Platforms, len(strPlatforms))
+	platforms := make(system.OSes, len(strPlatforms))
 
 	for i, s := range strPlatforms {
-		platforms[i] = platform.Platform(s)
+		platforms[i] = system.OS(s)
 	}
 
 	var requires []string

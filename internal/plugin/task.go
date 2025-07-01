@@ -19,7 +19,7 @@ import (
 	"strings"
 
 	"github.com/reginald-project/reginald-sdk-go/api"
-	"github.com/reginald-project/reginald/internal/platform"
+	"github.com/reginald-project/reginald/internal/system"
 )
 
 // A Task is the program representation of a plugin task type that is defined in
@@ -47,9 +47,9 @@ type TaskConfig struct {
 	// Requires contains the task IDs or types that this task depends on.
 	Requires TaskRequirements
 
-	// Platforms contains the platforms to run the task on. Empty slice means
-	// that the task is run on every platform.
-	Platforms platform.Platforms
+	// Platforms contains the operating systems to run the task on. Empty slice
+	// means that the task is run on every operating system.
+	Platforms system.OSes
 }
 
 // TaskDefaults is the type for the default config values set for the tasks.

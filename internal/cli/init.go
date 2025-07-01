@@ -28,6 +28,7 @@ import (
 	"github.com/reginald-project/reginald/internal/log"
 	"github.com/reginald-project/reginald/internal/log/logger"
 	"github.com/reginald-project/reginald/internal/plugin"
+	"github.com/reginald-project/reginald/internal/system"
 	"github.com/reginald-project/reginald/internal/terminal"
 	"github.com/reginald-project/reginald/internal/version"
 	"github.com/spf13/pflag"
@@ -85,7 +86,7 @@ func initialize(ctx context.Context) (*runInfo, error) {
 	// Just to be sure.
 	debugging.SetDebug(cfg.Debug)
 
-	log.Info(ctx, "executing Reginald", "version", version.Version())
+	log.Info(ctx, "executing Reginald", "version", version.Version(), "os", system.This())
 
 	var pathErrs plugin.PathErrors
 
