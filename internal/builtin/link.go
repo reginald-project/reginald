@@ -43,10 +43,10 @@ func linkManifest() *api.Manifest {
 			{
 				Type:        "create",
 				Description: "TODO",
-				Config: []any{
+				Config: []api.ConfigType{
 					force,
 					api.UnionValue{
-						Alternatives: []any{
+						Alternatives: []api.ConfigType{
 							api.KeyValue{
 								Key:   "links",
 								Value: []string{},

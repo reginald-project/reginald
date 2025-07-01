@@ -28,7 +28,6 @@ import (
 
 	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald-sdk-go/logs"
-	"github.com/reginald-project/reginald/internal/builtin"
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/fsutil"
 	"github.com/reginald-project/reginald/internal/log"
@@ -52,18 +51,18 @@ type Store struct {
 // NewStore finds the available built-in and external plugin manifests from
 // the given search paths, loads and decodes them, and returns a new Store with
 // the plugins created from them.
-func NewStore(ctx context.Context, wd fspath.Path, paths []fspath.Path) (*Store, error) {
+func NewStore(ctx context.Context, builtin []*api.Manifest, wd fspath.Path, paths []fspath.Path) (*Store, error) {
 	// The built-in plugins should be added first as they are already included
 	// with the program. The external plugins are validated while they are being
 	// loaded so by loading the built-in plugins first, we can make sure that no
 	// external plugin collides with them.
-	manifests := slices.Clone(builtin.Manifests())
-	plugins := make([]Plugin, 0, len(manifests))
+	manifests := slices.Clone(builtin)
+	plugins := make([]Plugin, len(manifests))
 
-	for _, m := range manifests {
-		plugins = append(plugins, &builtinPlugin{
+	for i, m := range manifests {
+		plugins[i] = &builtinPlugin{
 			manifest: m,
-		})
+		}
 	}
 
 	var pathErrs PathErrors

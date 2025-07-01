@@ -34,12 +34,12 @@ import (
 	"github.com/reginald-project/reginald/internal/log"
 	"github.com/reginald-project/reginald/internal/plugin"
 	"github.com/reginald-project/reginald/internal/terminal"
+	"github.com/reginald-project/reginald/internal/typeconv"
 )
 
 // Errors returned from the configuration parser.
 var (
 	ErrInvalidConfig = errors.New("invalid config")
-	errInvalidCast   = errors.New("cannot convert type")
 	errNilFlag       = errors.New("no flag found")
 	errNilPlugins    = errors.New("no plugins found")
 )
@@ -56,7 +56,7 @@ var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem(
 // loaded.
 //
 //nolint:gochecknoglobals // used like constant
-var dynamicFields = []string{"Defaults", "Directory", "Plugins", "Tasks"}
+var dynamicFields = []string{"Defaults", "Directory", "RawPlugins", "RawTasks", "Plugins", "Tasks"}
 
 // ApplyOptions is the type for the options for the Apply function.
 type ApplyOptions struct {
@@ -97,7 +97,8 @@ func ApplyPlugins(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 		return nil
 	}
 
-	pluginsMap := cfg.Plugins
+	rawPlugins := cfg.RawPlugins
+	cfgs := make([]api.KeyVal, 0, len(opts.Store.Commands))
 
 	// At this point, all of the plugins have been converted to commands.
 	for _, cmd := range opts.Store.Commands {
@@ -109,14 +110,14 @@ func ApplyPlugins(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 			domain = cmd.Name
 		}
 
-		a, ok := pluginsMap[domain]
+		a, ok := rawPlugins[domain]
 		if !ok {
 			log.Trace(ctx, "no map for plugin found", "name", name, "domain", domain)
 
 			a = make(map[string]any)
 		}
 
-		cfgMap, ok := a.(map[string]any)
+		rawMap, ok := a.(map[string]any)
 		if !ok {
 			return fmt.Errorf(
 				"%w: config for plugin %q with config key %q is not a map",
@@ -126,7 +127,7 @@ func ApplyPlugins(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 			)
 		}
 
-		log.Trace(ctx, "initial config map resolved", "name", name, "domain", domain, "map", cfgMap)
+		log.Trace(ctx, "initial config map resolved", "name", name, "domain", domain, "map", rawMap)
 
 		newOpts := ApplyOptions{
 			Dir:     opts.Dir,
@@ -135,18 +136,55 @@ func ApplyPlugins(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 			idents:  append(opts.idents, domain),
 		}
 
-		if err := applyPluginMap(ctx, cfgMap, manifest.Config, cmd.Commands, newOpts); err != nil {
+		values, err := applyPluginMap(ctx, rawMap, manifest.Config, cmd.Commands, newOpts)
+		if err != nil {
 			return err
 		}
 
-		log.Trace(ctx, "values applied to map", "domain", domain, "map", cfgMap)
+		log.Trace(ctx, "values applied to map", "domain", domain, "map", rawMap)
 
-		pluginsMap[domain] = cfgMap
+		cfgs = append(cfgs, api.KeyVal{
+			Value: api.Value{Val: values, Type: api.ConfigSliceValue},
+			Key:   domain,
+		})
 	}
 
-	cfg.Plugins = pluginsMap
+	cfg.Plugins = cfgs
 
 	return nil
+}
+
+// NormalizeKeys checks the config value keys in the given raw config map and
+// changes them into the wanted format ("kebab-case") in case the config
+// contains something in "camel-case". This way the config file is able to
+// support JSON and YAML while allowing those files to have the keys more
+// idiomatic for those formats.
+func NormalizeKeys(cfg map[string]any) {
+	if cfg == nil {
+		return
+	}
+
+	for k, v := range cfg {
+		key := ""
+
+		for i, r := range k {
+			if i > 0 && unicode.IsUpper(r) {
+				key += "-"
+			}
+
+			key += strings.ToLower(string(r))
+		}
+
+		if k != key {
+			delete(cfg, k)
+
+			cfg[key] = v
+		}
+
+		if m, ok := v.(map[string]any); ok {
+			NormalizeKeys(m)
+		}
+	}
 }
 
 // Parse parses the configuration according to the configuration given with
@@ -202,7 +240,7 @@ func Validate(cfg *Config, store *plugin.Store) error {
 		return fmt.Errorf("%w: cannot be both interactive and strict", ErrInvalidConfig)
 	}
 
-	for k := range cfg.Plugins {
+	for k := range cfg.RawPlugins {
 		ok := false
 	PluginLoop:
 		for _, p := range store.Plugins {
@@ -368,7 +406,8 @@ func applyPathSlice(value reflect.Value, opts ApplyOptions) error {
 // applyPluginCommands applies the config values for the given subcommands from
 // the environment variables and the command-line flags to the plugin configs
 // map.
-func applyPluginCommands(ctx context.Context, cfg map[string]any, cmds []*plugin.Command, opts ApplyOptions) error {
+func applyPluginCommands(ctx context.Context, rawMap map[string]any, cmds []*plugin.Command, opts ApplyOptions) ([]api.KeyVal, error) {
+	result := make([]api.KeyVal, len(cmds))
 	parent := opts.idents[len(opts.idents)-1]
 
 	log.Trace(ctx, "applying plugin commands", "parent", parent)
@@ -376,19 +415,19 @@ func applyPluginCommands(ctx context.Context, cfg map[string]any, cmds []*plugin
 	for _, cmd := range cmds {
 		name := cmd.Name
 
-		a, ok := cfg[name]
+		a, ok := rawMap[name]
 		if !ok {
 			log.Trace(ctx, "no map for command found", "cmd", name)
 
 			a = make(map[string]any)
 		}
 
-		cfgMap, ok := a.(map[string]any)
+		raw, ok := a.(map[string]any)
 		if !ok {
-			return fmt.Errorf("%w: config for command %[2]q with config key %[2]q is not a map", ErrInvalidConfig, name)
+			return nil, fmt.Errorf("%w: config for command %[2]q with config key %[2]q is not a map", ErrInvalidConfig, name)
 		}
 
-		log.Trace(ctx, "initial config map resolved", "parent", parent, "cmd", name, "map", cfgMap)
+		log.Trace(ctx, "initial config map resolved", "parent", parent, "cmd", name, "map", raw)
 
 		newOpts := ApplyOptions{
 			Dir:     opts.Dir,
@@ -397,37 +436,48 @@ func applyPluginCommands(ctx context.Context, cfg map[string]any, cmds []*plugin
 			idents:  append(opts.idents, name),
 		}
 
-		if err := applyPluginMap(ctx, cfgMap, cmd.Config, cmd.Commands, newOpts); err != nil {
-			return err
+		values, err := applyPluginMap(ctx, raw, cmd.Config, cmd.Commands, newOpts)
+		if err != nil {
+			return nil, err
 		}
 
-		cfg[name] = cfgMap
+		kv := api.KeyVal{
+			Value: api.Value{Val: values, Type: api.ConfigSliceValue},
+			Key:   name,
+		}
+
+		result = append(result, kv)
 	}
 
-	return nil
+	return result, nil
 }
 
 // applyPluginMap applies the config values from the environment variables and
 // the command-line flags to the given plugin configs map.
 func applyPluginMap(
 	ctx context.Context,
-	cfg map[string]any,
+	rawMap map[string]any,
 	entries []api.ConfigEntry,
 	cmds []*plugin.Command,
 	opts ApplyOptions,
-) error {
+) ([]api.KeyVal, error) {
+	result := make([]api.KeyVal, 0, len(entries)+len(cmds))
+
 	log.Trace(ctx, "applying plugin map", "idents", opts.idents)
 
 	parent := opts.idents[len(opts.idents)-1]
 
-	if err := applyPluginCommands(ctx, cfg, cmds, opts); err != nil {
-		return err
+	values, err := applyPluginCommands(ctx, rawMap, cmds, opts)
+	if err != nil {
+		return nil, err
 	}
 
+	result = append(result, values...)
+
 	for _, entry := range entries {
-		raw, ok := cfg[entry.Key]
+		raw, ok := rawMap[entry.Key]
 		if ok && entry.FlagOnly {
-			return fmt.Errorf(
+			return nil, fmt.Errorf(
 				"%w: unknown entry %q in config file for %q (config setting can only be set via a command-line flag)",
 				ErrInvalidConfig,
 				entry.Key,
@@ -435,13 +485,15 @@ func applyPluginMap(
 			)
 		}
 
-		var err error
-
 		if !ok {
 			if entry.Type == api.IntValue {
+				var err error
+
+				// TODO: Is this conversion now done twice even for the default
+				// value?
 				raw, err = entry.Int()
 				if err != nil {
-					return fmt.Errorf("failed to convert value for %q in %q to int: %w", entry.Key, parent, err)
+					return nil, fmt.Errorf("failed to convert value for %q in %q to int: %w", entry.Key, parent, err)
 				}
 			} else {
 				raw = entry.Value
@@ -455,157 +507,182 @@ func applyPluginMap(
 			idents:  append(opts.idents, entry.Key),
 		}
 
-		raw, err = resolvePluginValue(raw, &entry, newOpts)
+		kv, err := resolvePluginValue(raw, &entry, newOpts)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		cfg[entry.Key] = raw
+		result = append(result, kv)
 	}
 
-	log.Trace(ctx, "map applied", "key", parent, "cfg", cfg)
+	log.Trace(ctx, "map applied", "key", parent, "cfg", rawMap)
 
-	return nil
+	return result, nil
 }
 
-// resolvePluginValue resolves the value of the given ConfigEntry.
+// resolvePluginValue resolves the value of the given ConfigEntry and returns
+// the parsed KeyVal.
 //
 //nolint:cyclop,funlen // need for complexity when checking the config type
-func resolvePluginValue(raw any, entry *api.ConfigEntry, opts ApplyOptions) (any, error) {
-	var (
-		err error
-		ok  bool
-	)
-
+func resolvePluginValue(raw any, entry *api.ConfigEntry, opts ApplyOptions) (api.KeyVal, error) {
 	switch entry.Type {
 	case api.BoolListValue:
-		var x []bool
-
-		x, ok = raw.([]bool)
+		a, ok := raw.([]any)
 		if !ok {
-			err = fmt.Errorf("%w: value %[2]v for %q (wanted []bool, got %[2]T)", errInvalidCast, raw, entry.Key)
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to []any", typeconv.ErrConv, raw, entry.Key)
+		}
 
-			break
+		x, err := typeconv.ToBoolSlice(a)
+		if err != nil {
+			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
 		}
 
 		x, err = boolSliceValue(x, opts, entry)
-		raw = x
+		if err != nil {
+			return api.KeyVal{}, err
+		}
+
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
 	case api.BoolValue:
-		var x bool
-
-		x, ok = raw.(bool)
+		x, ok := raw.(bool)
 		if !ok {
-			err = fmt.Errorf("%w: value %[2]v for %q (wanted bool, got %[2]T)", errInvalidCast, raw, entry.Key)
-
-			break
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to bool", typeconv.ErrConv, raw, entry.Key)
 		}
 
-		x, err = boolValue(x, opts, entry)
-		raw = x
+		x, err := boolValue(x, opts, entry)
+		if err != nil {
+			return api.KeyVal{}, err
+		}
+
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
+	case api.ConfigSliceValue:
+		return api.KeyVal{}, fmt.Errorf(
+			"%w: config entry %q has invalid type: %s",
+			plugin.ErrInvalidConfig,
+			entry.Key,
+			entry.Type,
+		)
 	case api.IntListValue:
-		var y []any
-
-		y, ok = raw.([]any)
+		a, ok := raw.([]any)
 		if !ok {
-			err = fmt.Errorf("%w: value %[2]v for %q (wanted []any, got %[2]T)", errInvalidCast, raw, entry.Key)
-
-			break
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to []any", typeconv.ErrConv, raw, entry.Key)
 		}
 
-		x := make([]int, len(y))
-		for i, v := range y {
-			x[i], err = configInt(v)
-			if err != nil {
-				return nil, err
-			}
+		x, err := typeconv.ToIntSlice(a)
+		if err != nil {
+			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
 		}
 
 		x, err = intSliceValue(x, opts, entry)
-		raw = x
-	case api.IntValue:
-		var x int
-
-		x, err = configInt(raw)
 		if err != nil {
-			err = fmt.Errorf("failed to convert value %v for %q to int: %w", raw, entry.Key, err)
+			return api.KeyVal{}, err
+		}
 
-			break
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
+	case api.IntValue:
+		x, err := typeconv.ToInt(raw)
+		if err != nil {
+			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
 		}
 
 		x, err = intValue(x, opts, entry)
-		raw = x
-	case api.MapValue:
-		var x map[string]any
-
-		x, ok = raw.(map[string]any)
-		if !ok {
-			err = fmt.Errorf(
-				"%w: value %[2]v for %q (wanted map[string]any, got %[2]T)",
-				errInvalidCast,
-				raw,
-				entry.Key,
-			)
-
-			break
+		if err != nil {
+			return api.KeyVal{}, err
 		}
 
-		// TODO: Is there more to do here?
-		raw = x
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
 	case api.PathListValue:
-		y, ok := raw.([]string)
+		a, ok := raw.([]any)
 		if !ok {
-			err = fmt.Errorf("%w: value %[2]v for %q (wanted []string, got %[2]T)", errInvalidCast, raw, entry.Key)
-
-			break
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to []any", typeconv.ErrConv, raw, entry.Key)
 		}
 
-		x := make([]fspath.Path, len(y))
-		for i, p := range y {
-			x[i] = fspath.Path(p)
+		x, err := typeconv.ToPathSlice(a)
+		if err != nil {
+			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
 		}
 
 		x, err = pathSliceValue(x, opts, entry)
-		raw = x
-	case api.PathValue:
-		x, ok := raw.(fspath.Path)
-		if !ok {
-			err = fmt.Errorf("%w: value %[2]v for %q (wanted string, got %[2]T)", errInvalidCast, raw, entry.Key)
-
-			break
+		if err != nil {
+			return api.KeyVal{}, err
 		}
 
-		x, err = pathValue(x, opts, entry)
-		raw = x
-	case api.StringListValue:
-		x, ok := raw.([]string)
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
+	case api.PathValue:
+		s, ok := raw.(string)
 		if !ok {
-			err = fmt.Errorf("%w: value %[2]v for %q (wanted []string, got %[2]T)", errInvalidCast, raw, entry.Key)
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to string", typeconv.ErrConv, raw, entry.Key)
+		}
 
-			break
+		x := fspath.Path(s)
+
+		x, err := pathValue(x, opts, entry)
+		if err != nil {
+			return api.KeyVal{}, err
+		}
+
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
+	case api.StringListValue:
+		a, ok := raw.([]any)
+		if !ok {
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to []any", typeconv.ErrConv, raw, entry.Key)
+		}
+
+		x, err := typeconv.ToStringSlice(a)
+		if err != nil {
+			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
 		}
 
 		x, err = stringSliceValue(x, opts, entry)
-		raw = x
+		if err != nil {
+			return api.KeyVal{}, err
+		}
+
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
 	case api.StringValue:
 		x, ok := raw.(string)
 		if !ok {
-			err = fmt.Errorf("%w: value %[2]v for %q (wanted string, got %[2]T)", errInvalidCast, raw, entry.Key)
-
-			break
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to string", typeconv.ErrConv, raw, entry.Key)
 		}
 
-		x, err = stringValue(x, opts, entry)
-		raw = x
+		x, err := stringValue(x, opts, entry)
+		if err != nil {
+			return api.KeyVal{}, err
+		}
+
+		return api.KeyVal{
+			Value: api.Value{Val: x, Type: entry.Type},
+			Key:   entry.Key,
+		}, nil
 	default:
-		return nil, fmt.Errorf(
+		return api.KeyVal{}, fmt.Errorf(
 			"%w: config entry %q has invalid type: %s",
 			plugin.ErrInvalidConfig,
 			entry.Key,
 			entry.Type,
 		)
 	}
-
-	return raw, err
 }
 
 // applyString sets a string value from the environment variables and
@@ -778,25 +855,6 @@ func canUnmarshal(value reflect.Value) bool {
 	return reflect.PointerTo(value.Type()).Implements(textUnmarshalerType)
 }
 
-// configInt converts the value decoded from the configuration to an int. It is
-// especially useful with the plugin configs as they are decoded from different
-// file formats and some of the decoders default to using float64 for number
-// values.
-func configInt(x any) (int, error) {
-	switch v := x.(type) {
-	case int:
-		return v, nil
-	case int64:
-		// TODO: Unsafe conversion.
-		return int(v), nil
-	case float64:
-		// TODO: Unsafe conversion.
-		return int(v), nil
-	default:
-		return 0, fmt.Errorf("%w: invalid type %T", errInvalidCast, v)
-	}
-}
-
 // configKey returns the key for the given config identifiers.
 func configKey(idents []string) string {
 	return strings.Join(idents[1:], ".")
@@ -912,39 +970,6 @@ func intValue(x int, opts ApplyOptions, entry *api.ConfigEntry) (int, error) {
 	return x, nil
 }
 
-// normalizeKeys checks the config value keys in the given raw config map and
-// changes them into the wanted format ("kebab-case") in case the config
-// contains something in "camel-case". This way the config file is able to
-// support JSON and YAML while allowing those files to have the keys more
-// idiomatic for those formats.
-func normalizeKeys(cfg map[string]any) {
-	if cfg == nil {
-		return
-	}
-
-	for k, v := range cfg {
-		key := ""
-
-		for i, r := range k {
-			if i > 0 && unicode.IsUpper(r) {
-				key += "-"
-			}
-
-			key += strings.ToLower(string(r))
-		}
-
-		if k != key {
-			delete(cfg, k)
-
-			cfg[key] = v
-		}
-
-		if m, ok := v.(map[string]any); ok {
-			normalizeKeys(m)
-		}
-	}
-}
-
 // parseFile finds and parses the config file and sets the values to cfg. It
 // modifies the pointed cfg in place.
 func parseFile(ctx context.Context, dir fspath.Path, flagSet *flags.FlagSet, cfg *Config) error {
@@ -973,7 +998,7 @@ func parseFile(ctx context.Context, dir fspath.Path, flagSet *flags.FlagSet, cfg
 	}
 
 	log.Trace(ctx, "unmarshaled config file", "cfg", rawCfg)
-	normalizeKeys(rawCfg)
+	NormalizeKeys(rawCfg)
 	log.Trace(ctx, "normalized keys", "cfg", rawCfg)
 
 	decoderConfig := &mapstructure.DecoderConfig{ //nolint:exhaustruct // use default values
@@ -1223,7 +1248,7 @@ func unmarshal(value reflect.Value, s string) (reflect.Value, error) {
 
 	unmarshaler, ok := ptr.Interface().(encoding.TextUnmarshaler)
 	if !ok {
-		return reflect.Value{}, fmt.Errorf("%w: type of %q to TextUnmarshaler", errInvalidCast, value)
+		return reflect.Value{}, fmt.Errorf("%w: type of %[2]q (%[2]T) to TextUnmarshaler", typeconv.ErrConv, value)
 	}
 
 	if err := unmarshaler.UnmarshalText([]byte(s)); err != nil {

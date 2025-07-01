@@ -25,6 +25,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/log"
@@ -60,13 +61,20 @@ type Config struct {
 	// Defaults contains the default options set for tasks.
 	Defaults plugin.TaskDefaults `mapstructure:"defaults"`
 
-	// Plugins contains the rest of the config options which should only be
-	// plugin-defined options.
-	Plugins map[string]any `mapstructure:",remain"` //nolint:tagliatelle // linter doesn't know about "remain"
+	// RawPlugins contains the rest of the config options which should only be
+	// plugin-defined options. They are parsed into the proper plugin options
+	// later.
+	RawPlugins map[string]any `mapstructure:",remain"` //nolint:tagliatelle // linter doesn't know about "remain"
 
-	// Tasks contains tasks and the configs for them as given in the config
-	// file.
-	Tasks []plugin.TaskConfig `mapstructure:"tasks"`
+	// RawTasks contains the raw config values for the tasks as given in
+	// the config file.
+	RawTasks map[string]any `mapstructure:"tasks"`
+
+	// Plugins contains the parsed config values for the plugins.
+	Plugins []api.KeyVal `mapstructure:"-"`
+
+	// Tasks contains the parsed configs for the task instances.
+	Tasks []plugin.TaskConfig `mapstructure:"-"`
 
 	// Logging contains the config values for logging.
 	Logging logconfig.Config `flag:"log" mapstructure:"logging"`
@@ -112,13 +120,15 @@ func DefaultConfig() *Config {
 		Defaults:    plugin.TaskDefaults{},
 		Directory:   fspath.Path(wd),
 		Interactive: false,
-		Strict:      false,
 		Logging:     logconfig.Default(),
 		PluginPaths: pluginPaths,
+		Plugins:     nil,
 		Quiet:       false,
-		Tasks:       []plugin.TaskConfig{},
+		RawPlugins:  map[string]any{},
+		RawTasks:    map[string]any{},
+		Tasks:       nil,
 		Verbose:     false,
-		Plugins:     map[string]any{},
+		Strict:      false,
 	}
 }
 

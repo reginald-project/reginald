@@ -35,48 +35,31 @@ type Task struct {
 type TaskConfig struct {
 	// Type is the type of this task. It defines which task implementation is
 	// called when this task is executed.
-	Type string `mapstructure:"type"`
+	Type string
 
 	// ID is the unique ID for this task. It must be unique. The ID must also be
 	// different from the provided task types.
-	ID string `mapstructure:"id,omitempty"`
+	ID string
 
-	// Options contains the rest of the config options for the task.
-	Options TaskOptions `mapstructure:",remain"` //nolint:tagliatelle // linter doesn't know about "remain"
+	// Config contains the parsed config values for the task.
+	Config []api.KeyVal
 
-	// Dependencies are the task IDs or types that this task depends on.
-	Requires TaskRequirements `mapstructure:"requires"`
+	// Requires contains the task IDs or types that this task depends on.
+	Requires TaskRequirements
 
 	// Platforms contains the platforms to run the task on. Empty slice means
 	// that the task is run on every platform.
-	Platforms platform.Platforms `mapstructure:"platforms"`
+	Platforms platform.Platforms
 }
 
 // TaskDefaults is the type for the default config values set for the tasks.
 type TaskDefaults map[string]map[string]any
-
-// TaskOptions is the type for the config options in a task config entry.
-type TaskOptions map[string]any
 
 // TaskRequirements is list of tasks a task depends on.
 type TaskRequirements []string
 
 // logTasks is a helper type for logging a slice of tasks.
 type logTasks []*Task
-
-// IsBool reports whether o has an entry with the given key that is a bool.
-func (o TaskOptions) IsBool(key string) bool {
-	v, ok := o[key]
-	if !ok {
-		return false
-	}
-
-	if _, ok := v.(bool); !ok {
-		return false
-	}
-
-	return true
-}
 
 // UnmarshalText implements [encoding.TextUnmarshaler]. It decodes a single
 // string into TaskRequirements.

@@ -21,6 +21,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/reginald-project/reginald/internal/builtin"
 	"github.com/reginald-project/reginald/internal/config"
 	"github.com/reginald-project/reginald/internal/debugging"
 	"github.com/reginald-project/reginald/internal/flags"
@@ -349,7 +350,7 @@ func initOut(ctx context.Context, cfg *config.Config) error {
 func initPlugins(ctx context.Context, cfg *config.Config) (*plugin.Store, error) {
 	var pathErrs plugin.PathErrors
 
-	store, err := plugin.NewStore(ctx, cfg.Directory, cfg.PluginPaths)
+	store, err := plugin.NewStore(ctx, builtin.Manifests(), cfg.Directory, cfg.PluginPaths)
 	if err != nil {
 		if !errors.As(err, &pathErrs) {
 			return nil, fmt.Errorf("failed to search for plugins: %w", err)
