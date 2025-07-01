@@ -111,7 +111,7 @@ func newTaskConfig(task *plugin.Task, rawEntry map[string]any, counts map[string
 			return plugin.TaskConfig{}, fmt.Errorf("%w: task ID is not a string (%v)", ErrInvalidConfig, rawID)
 		}
 	} else {
-		taskID = ttName + "-" + strconv.Itoa(counts[ttName])
+		taskID = task.Plugin.Manifest().Domain + "/" + ttName + "-" + strconv.Itoa(counts[ttName])
 	}
 
 	counts[ttName]++
