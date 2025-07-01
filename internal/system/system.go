@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package platform provides utilities for working with different platforms and
+// Package system provides utilities for working with different platforms and
 // operating systems.
 package system
 
@@ -27,6 +27,9 @@ import (
 
 	"github.com/reginald-project/reginald/internal/fspath"
 )
+
+// Linux is the name of the Linux GOOS for convenience.
+const Linux = "linux"
 
 // errNoID is returned by osRelease when it cannot find ID.
 var errNoID = errors.New("no OS ID")
@@ -45,12 +48,12 @@ func (o OS) Current() bool {
 	goos := runtime.GOOS
 
 	switch goos {
-	case "linux":
+	case Linux:
 		if t == "unix" {
 			return true
 		}
 
-		if t == "linux" {
+		if t == Linux {
 			return true
 		}
 
@@ -79,15 +82,15 @@ func (o OS) Current() bool {
 }
 
 // String returns the string representation of the platform.
-func (p OS) String() string {
-	return string(p)
+func (o OS) String() string {
+	return string(o)
 }
 
 // UnmarshalText implements [encoding.TextUnmarshaler]. It decodes a single
 // string into a slice of Platforms.
-func (p *OSes) UnmarshalText(data []byte) error { //nolint:unparam // implements interface
+func (o *OSes) UnmarshalText(data []byte) error { //nolint:unparam // implements interface
 	if len(data) == 0 {
-		*p = make(OSes, 0)
+		*o = make(OSes, 0)
 
 		return nil
 	}
@@ -99,7 +102,7 @@ func (p *OSes) UnmarshalText(data []byte) error { //nolint:unparam // implements
 		out[i] = OS(s)
 	}
 
-	*p = out
+	*o = out
 
 	return nil
 }
@@ -122,7 +125,7 @@ func OSRelease() (string, []string, error) {
 // This returns the current operating system.
 func This() OS {
 	goos := runtime.GOOS
-	if goos != "linux" {
+	if goos != Linux {
 		return OS(goos)
 	}
 
@@ -141,7 +144,7 @@ func checkOSRelease(path fspath.Path) (string, []string, error) {
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to open %q: %w", path, err)
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // no need to check
 
 	scanner := bufio.NewScanner(f)
 
