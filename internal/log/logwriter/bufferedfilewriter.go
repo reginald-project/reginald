@@ -88,12 +88,11 @@ func (w *BufferedFileWriter) Flush() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	dir := w.file.Dir()
-	if err := dir.MkdirAll(defaultBufFileWriterDirPerm); err != nil {
+	if err := os.MkdirAll(string(w.file.Dir()), defaultBufFileWriterDirPerm); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
-	f, err := w.file.OpenFile(os.O_CREATE|os.O_WRONLY|os.O_APPEND, defaultBufFileWriterPerm)
+	f, err := os.OpenFile(string(w.file), os.O_CREATE|os.O_WRONLY|os.O_APPEND, defaultBufFileWriterPerm)
 	if err != nil {
 		return fmt.Errorf("%w", err)
 	}

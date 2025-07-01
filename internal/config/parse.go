@@ -830,7 +830,7 @@ func parseFile(ctx context.Context, dir fspath.Path, flagSet *flags.FlagSet, cfg
 
 	log.Trace(ctx, "reading config file", "path", configFile)
 
-	data, err := configFile.Clean().ReadFile()
+	data, err := os.ReadFile(string(configFile.Clean()))
 	if err != nil {
 		return fmt.Errorf("failed to read config file: %w", err)
 	}

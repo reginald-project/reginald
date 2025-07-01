@@ -192,64 +192,6 @@ func (p Path) Join(elem ...string) Path {
 	return Path(filepath.Join(all...))
 }
 
-// MkdirAll creates a directory named path, along with any necessary parents,
-// and returns nil, or else returns an error. The permission bits perm (before
-// umask) are used for all directories that MkdirAll creates. If path is already
-// a directory, MkdirAll does nothing and returns nil.
-//
-// MkdirAll wraps [os.MkdirAll].
-func (p Path) MkdirAll(perm os.FileMode) error {
-	if err := os.MkdirAll(string(p), perm); err != nil {
-		return fmt.Errorf("%w", err)
-	}
-
-	return nil
-}
-
-// OpenFile opens the named file at p with specified flag (O_RDONLY etc.). If
-// the file does not exist, and the O_CREATE flag is passed, it is created with
-// mode perm (before umask); the containing directory must exist. If successful,
-// methods on the returned File can be used for I/O. If there is an error, it
-// will be of type *os.PathError.
-//
-// OpenFile wraps [os.OpenFile], and the caller must call
-// [os.File.Close] on the returned file.
-func (p Path) OpenFile(flag int, perm os.FileMode) (*os.File, error) {
-	f, err := os.OpenFile(string(p), flag, perm) // #nosec G304 -- utility function
-	if err != nil {
-		return nil, fmt.Errorf("%w", err)
-	}
-
-	return f, nil
-}
-
-// ReadDir reads the named directory, returning all its directory entries sorted
-// by filename.
-//
-// ReadDir wraps [os.ReadDir].
-func (p Path) ReadDir() ([]os.DirEntry, error) {
-	list, err := os.ReadDir(string(p))
-	if err != nil {
-		return nil, fmt.Errorf("%w", err)
-	}
-
-	return list, nil
-}
-
-// ReadFile reads the file at p and returns the contents. A successful call
-// returns err == nil, not err == EOF. Because ReadFile reads the whole file, it
-// does not treat an EOF from Read as an error to be reported.
-//
-// ReadFile wraps [os.ReadFile].
-func (p Path) ReadFile() ([]byte, error) {
-	data, err := os.ReadFile(string(p))
-	if err != nil {
-		return nil, fmt.Errorf("%w", err)
-	}
-
-	return data, nil
-}
-
 // String returns p as a string and implements [fmt.Stringer] for [Path].
 func (p Path) String() string {
 	return string(p)

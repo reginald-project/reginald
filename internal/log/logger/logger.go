@@ -35,8 +35,8 @@ import (
 
 // Default values for the logger.
 const (
-	defaultFilePerm       os.FileMode = 0o644                              // log file permissions
-	defaultDirPerm        os.FileMode = 0o755                              // log directory permissions
+	defaultFilePerm       os.FileMode = 0o600                              // log file permissions
+	defaultDirPerm        os.FileMode = 0o700                              // log directory permissions
 	defaultJSONTimeFormat             = "2006-01-02T15:04:05.000000-07:00" // time format for JSON output
 	defaultTextTimeFormat             = time.DateTime                      // time format for text output
 	defaultTimeFormat                 = "2006-01-02T15:04:05.000-07:00"    // default time format in Go
@@ -108,7 +108,7 @@ func Init(cfg logconfig.Config) error {
 	default:
 		path := fspath.Path(cfg.Output)
 
-		err := path.Dir().MkdirAll(defaultDirPerm)
+		err := os.MkdirAll(string(path.Dir()), defaultDirPerm)
 		if err != nil {
 			return fmt.Errorf("failed to create directory %q for log output: %w", path.Dir(), err)
 		}

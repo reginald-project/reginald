@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -364,7 +365,7 @@ func readSearchPath(ctx context.Context, path fspath.Path) ([]Plugin, error) {
 		plugins []Plugin
 	)
 
-	dir, err := path.Clean().ReadDir()
+	dir, err := os.ReadDir(string(path.Clean()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read directory %q: %w", path, err)
 	}
@@ -421,7 +422,7 @@ func readSearchPath(ctx context.Context, path fspath.Path) ([]Plugin, error) {
 // readExternalPlugin reads a plugin's manifest from path, decodes and validates
 // it, and returns an external plugin created from it.
 func readExternalPlugin(ctx context.Context, path fspath.Path) (*externalPlugin, error) {
-	data, err := path.ReadFile()
+	data, err := os.ReadFile(string(path))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read %q: %w", path, err)
 	}
