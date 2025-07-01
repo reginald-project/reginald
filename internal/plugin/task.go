@@ -42,7 +42,6 @@ var (
 type Task struct {
 	// Plugin is the plugin that this task is defined in.
 	Plugin Plugin
-
 	api.Task
 }
 
