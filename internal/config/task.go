@@ -56,11 +56,10 @@ func ApplyTasks(ctx context.Context, rawCfg []map[string]any, opts TaskApplyOpti
 		return nil, fmt.Errorf("cannot apply task config: %w", errNilPlugins)
 	}
 
-	result := make([]plugin.TaskConfig, 0, len(rawCfg))
+	result := make([]plugin.TaskConfig, 0)
 	counts := make(map[string]int)
 
 	for _, rawEntry := range rawCfg {
-		// TODO: Remove the tasks that are not run on the current platform.
 		log.Trace(ctx, "checking raw task map entry", "entry", rawEntry)
 
 		rawType, ok := rawEntry["type"]
@@ -83,6 +82,12 @@ func ApplyTasks(ctx context.Context, rawCfg []map[string]any, opts TaskApplyOpti
 		c, err := newTaskConfig(task, rawEntry, counts)
 		if err != nil {
 			return nil, err
+		}
+
+		if len(c.Platforms) > 0 && !c.Platforms.Current() {
+			log.Trace(ctx, "skipping task", "id", c.ID, "type", ttName, "platforms", c.Platforms)
+
+			continue
 		}
 
 		c.Config, err = resolveTaskConfigs(ctx, task, c.ID, rawEntry, opts)
