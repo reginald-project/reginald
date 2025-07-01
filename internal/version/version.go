@@ -32,14 +32,23 @@ var version *semver.Version
 
 func init() { //nolint:gochecknoinits // version must be parsed once at the start
 	if buildVersion == "dev" {
-		if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "(devel)" {
-			v := info.Main.Version
+		info, ok := debug.ReadBuildInfo()
+		if !ok {
+			panic("cannot get build info")
+		}
+
+		v := info.Main.Version
+		if v == "(devel)" {
+			// TODO: The version number should be read from the file.
+			v = "0.1.0-0.invalid." + Revision()
+		} else {
 			i := strings.IndexByte(v, '-')
 			v = v[:i+1] + "0.invalid." + v[i+1:]
-			version = semver.MustParse(v)
-
-			return
 		}
+
+		version = semver.MustParse(v)
+
+		return
 	}
 
 	version = semver.MustParse(buildVersion)
