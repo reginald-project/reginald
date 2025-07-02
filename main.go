@@ -22,6 +22,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"io"
@@ -35,7 +36,15 @@ import (
 	"github.com/reginald-project/reginald/internal/debugging"
 	"github.com/reginald-project/reginald/internal/panichandler"
 	"github.com/reginald-project/reginald/internal/terminal"
+	"github.com/reginald-project/reginald/internal/version"
 )
+
+//go:embed version
+var versionFile string
+
+func init() { //nolint:gochecknoinits // initializes the version information
+	version.Init(versionFile)
+}
 
 func main() {
 	code := run()

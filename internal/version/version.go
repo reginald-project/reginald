@@ -20,6 +20,7 @@ package version
 import (
 	"runtime/debug"
 	"strings"
+	"sync"
 
 	"github.com/anttikivi/semver"
 )
@@ -30,28 +31,36 @@ var buildVersion = "dev" //nolint:gochecknoglobals // set at build time
 // Version is the parsed version number of Reginald.
 var version *semver.Version
 
-func init() { //nolint:gochecknoinits // version must be parsed once at the start
-	if buildVersion == "dev" {
-		info, ok := debug.ReadBuildInfo()
-		if !ok {
-			panic("cannot get build info")
+// initOnce is used to ensure that the global version is initialized only once.
+var initOnce sync.Once //nolint:gochecknoglobals // must be global to persist
+
+// Init initializes the version. It should be called from the init function of
+// the main package and it takes the information embedded from the version file
+// as a parameter. The data read from the version file will be used to create
+// the version if no version information was supplied during build time.
+func Init(versionFile string) {
+	initOnce.Do(func() {
+		if buildVersion == "dev" {
+			info, ok := debug.ReadBuildInfo()
+			if !ok {
+				panic("cannot get build info")
+			}
+
+			v := info.Main.Version
+			if v == "(devel)" {
+				v = versionFile + "-0.invalid." + Revision()
+			} else {
+				i := strings.IndexByte(v, '-')
+				v = v[:i+1] + "0.invalid." + v[i+1:]
+			}
+
+			version = semver.MustParse(v)
+
+			return
 		}
 
-		v := info.Main.Version
-		if v == "(devel)" {
-			// TODO: The version number should be read from the file.
-			v = "0.1.0-0.invalid." + Revision()
-		} else {
-			i := strings.IndexByte(v, '-')
-			v = v[:i+1] + "0.invalid." + v[i+1:]
-		}
-
-		version = semver.MustParse(v)
-
-		return
-	}
-
-	version = semver.MustParse(buildVersion)
+		version = semver.MustParse(buildVersion)
+	})
 }
 
 // BuildVersion returns the version string for the program set during the build.
