@@ -85,11 +85,19 @@ func Run(ctx context.Context) error {
 		}
 	}
 
-	defer func() {
+	shutdownDone := false
+	shutdown := func() {
+		if shutdownDone {
+			return
+		}
+
 		if err = info.store.Shutdown(ctx); err != nil {
 			fmt.Fprintf(os.Stderr, "Error when shutting down plugins: %v\n", err)
 		}
-	}()
+
+		shutdownDone = true
+	}
+	defer shutdown()
 
 	var cfg api.KeyVal
 
@@ -126,6 +134,8 @@ func Run(ctx context.Context) error {
 			err:  fmt.Errorf("running command %q failed: %w", strings.Join(info.cmd.Names(), " "), err),
 		}
 	}
+
+	shutdown()
 
 	return nil
 }

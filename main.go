@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"sync"
@@ -98,6 +99,9 @@ func run() int {
 		cleanupCh <- nil
 	}()
 
+	// The logger is set to discard during checking if the debug mode is
+	// enabled.
+	slog.SetDefault(slog.New(slog.DiscardHandler))
 	debugging.Init(ctx)
 
 	exitCode := 0

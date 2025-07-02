@@ -340,13 +340,17 @@ func (e *externalPlugin) read(ctx context.Context, handlePanic func()) {
 	defer e.queue.closeAll()
 
 	reader := bufio.NewReader(e.conn)
+	done := false
 
-	for {
+	go func() {
+		<-ctx.Done()
+		done = true
+	}()
+
+	for !done {
 		msg, err := read(reader)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				log.Warn(ctx, "read EOF from plugin", "plugin", e.manifest.Name, "err", err)
-
 				return
 			}
 
