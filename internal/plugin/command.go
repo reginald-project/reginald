@@ -15,7 +15,10 @@
 package plugin
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/reginald-project/reginald-sdk-go/api"
 )
@@ -25,7 +28,6 @@ import (
 type Command struct {
 	// Plugin is the plugin that this command is defined in.
 	Plugin Plugin
-
 	*api.Command
 
 	// parent is the parent command of this command. It is nil for the root
@@ -38,22 +40,6 @@ type Command struct {
 
 // logCmds is a helper type for logging a slice of commands.
 type logCmds []*Command
-
-// LogValue implements [slog.LogValuer] for logCmds. It formats the slice of
-// commands as a group correctly for the different types of [slog.Handler] in
-// use.
-func (c logCmds) LogValue() slog.Value {
-	if len(c) == 0 {
-		return slog.StringValue("<nil>")
-	}
-
-	attrs := make([]slog.Attr, len(c))
-	for i, cmd := range c {
-		attrs[i] = slog.Any(cmd.Name, cmd)
-	}
-
-	return slog.GroupValue(attrs...)
-}
 
 // LogValue implements [slog.LogValuer] for Command. It returns a group value
 // for logging a Command.
@@ -69,6 +55,62 @@ func (c *Command) LogValue() slog.Value {
 		slog.Any("aliases", c.Aliases),
 		slog.Any("commands", logCmds(c.Commands)),
 	)
+}
+
+// Names returns the full qualified name of the command as slice. The return
+// value contains the names of all of the parents of the command and the command
+// name.
+func (c *Command) Names() []string {
+	if c == nil {
+		panic("calling Names on nil command")
+	}
+
+	var names []string
+
+	parent := c
+	for parent != nil {
+		names = append([]string{parent.Name}, names...)
+		parent = parent.Parent
+	}
+
+	return names
+}
+
+// Run runs the command by calling the correct plugin.
+func (c *Command) Run(ctx context.Context, cfg api.KeyValues) error {
+	if c == nil {
+		panic("calling Run on nil command")
+	}
+
+	if c.Plugin == nil {
+		panic(fmt.Sprintf("command %q has nil plugin", c.Name))
+	}
+
+	names := c.Names()
+
+	if c.Plugin.External() {
+		names = names[1:]
+	}
+
+	name := strings.Join(names, ".")
+
+	return runCommand(ctx, c.Plugin, name, cfg)
+}
+
+// LogValue implements [slog.LogValuer] for logCmds. It formats the slice of
+// commands as a group correctly for the different types of [slog.Handler] in
+// use.
+func (c logCmds) LogValue() slog.Value {
+	if len(c) == 0 {
+		return slog.StringValue("<nil>")
+	}
+
+	attrs := make([]slog.Attr, len(c))
+	for i, cmd := range c {
+		attrs[i] = slog.Any(cmd.Name, cmd)
+	}
+
+	return slog.GroupValue(attrs...)
 }
 
 // newCommand creates the internal command representation for the given command

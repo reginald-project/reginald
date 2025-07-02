@@ -49,10 +49,15 @@ func main() {
 		},
 	}
 
-	versionsCmd := Command{ //nolint:exhaustruct // omit default values
-		Name:  "version",
+	versionsCmd := &Command{ //nolint:exhaustruct // omit default values
+		Name:  "versions",
 		Usage: "versions [options]",
 		Args:  nil,
+		Run: func(_ api.KeyValues) error {
+			fmt.Fprintln(os.Stderr, "running versions")
+
+			return nil
+		},
 	}
 
 	server := NewServer(opts, versionsCmd)

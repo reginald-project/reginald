@@ -67,6 +67,23 @@ func handshake(ctx context.Context, plugin Plugin) error {
 	return nil
 }
 
+// runCommand makes a "runCommand" call to the given plugin.
+func runCommand(ctx context.Context, plugin Plugin, name string, cfg api.KeyValues) error {
+	params := api.RunCommandParams{
+		Cmd:    name,
+		Config: cfg,
+	}
+
+	var result struct{}
+	if err := plugin.call(ctx, api.MethodRunCommand, params, &result); err != nil {
+		return err
+	}
+
+	log.Trace(ctx, "runCommand call successful", "plugin", plugin.Manifest().Name, "result", result)
+
+	return nil
+}
+
 // shutdown makes a "shutdown" call to the given plugin.
 func shutdown(ctx context.Context, plugin Plugin) error {
 	var result bool

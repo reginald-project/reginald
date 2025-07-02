@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -30,10 +31,11 @@ import (
 
 // Errors returned by the server functions.
 var (
-	errInvalidLength = errors.New("number of bytes read does not match")
-	errInvalidParams = errors.New("invalid params")
-	errUnknownMethod = errors.New("unknown method")
-	errZeroLength    = errors.New("Content-Length is zero")
+	errInvalidLength  = errors.New("number of bytes read does not match")
+	errInvalidParams  = errors.New("invalid params")
+	errUnknownCommand = errors.New("unknown command")
+	errUnknownMethod  = errors.New("unknown method")
+	errZeroLength     = errors.New("Content-Length is zero")
 )
 
 // A Server is a Reginald plugin server implementation.
@@ -41,7 +43,7 @@ type Server struct {
 	jsonRPCVersion string
 	protocol       string
 	ServerOpts
-	commands        []*Command //nolint:unused // TODO: Implement commands.
+	commands        []*Command
 	protocolVersion int
 	exit            bool
 	shutdown        bool
@@ -65,6 +67,7 @@ type Command struct {
 	Description string
 	Help        string
 	Args        *api.Arguments
+	Run         func(api.KeyValues) error
 	Aliases     []string
 	Config      []api.ConfigEntry
 	Commands    []*Command
@@ -163,6 +166,8 @@ func (s *Server) method(req api.Request) error {
 	switch req.Method {
 	case api.MethodHandshake:
 		methodFunc = s.methodHandshake
+	case api.MethodRunCommand:
+		methodFunc = s.methodRunCommand
 	case api.MethodShutdown:
 		methodFunc = s.methodShutdown
 	default:
@@ -174,6 +179,8 @@ func (s *Server) method(req api.Request) error {
 		if err != nil {
 			return fmt.Errorf("failed to send error response: %w", err)
 		}
+
+		return nil
 	}
 
 	result, err := methodFunc(req.Params)
@@ -246,6 +253,85 @@ func (s *Server) methodHandshake(params json.RawMessage) (any, error) {
 			ProtocolVersion: s.protocolVersion,
 		},
 	}, nil
+}
+
+// methodRunCommand runs the "runCommand" method.
+func (s *Server) methodRunCommand(params json.RawMessage) (any, error) {
+	d := json.NewDecoder(bytes.NewReader(params))
+	d.DisallowUnknownFields()
+
+	var runParams api.RunCommandParams
+	if err := d.Decode(&runParams); err != nil {
+		return nil, &api.Error{
+			Code:    api.CodeInvalidParams,
+			Message: "invalid params",
+			Data:    fmt.Errorf("failed to unmarshal runCommand params: %w", err),
+		}
+	}
+
+	var (
+		cmd *Command
+		err error
+	)
+
+	parts := make([]string, 0, strings.Count(runParams.Cmd, ".")+1)
+
+	for name := range strings.SplitSeq(runParams.Cmd, ".") {
+		var cmds []*Command
+
+		parts = append(parts, name)
+
+		if cmd == nil {
+			cmds = s.commands
+		} else {
+			cmds = cmd.Commands
+		}
+
+		i := slices.IndexFunc(cmds, func(c *Command) bool {
+			return c.Name == name
+		})
+		if i == -1 {
+			err = fmt.Errorf("%w: %s", errUnknownCommand, strings.Join(parts, " "))
+
+			break
+		}
+
+		cmd = cmds[i]
+	}
+
+	if err != nil {
+		return nil, &api.Error{
+			Code:    api.CodeInvalidCommand,
+			Message: "invalid command",
+			Data:    err,
+		}
+	}
+
+	if cmd == nil {
+		return nil, &api.Error{
+			Code:    api.CodeInvalidCommand,
+			Message: "invalid command",
+			Data:    fmt.Errorf("%w: %s", errUnknownCommand, strings.ReplaceAll(runParams.Cmd, ".", " ")),
+		}
+	}
+
+	if cmd.Run == nil {
+		return nil, &api.Error{
+			Code:    api.CodeCommandNotRunnable,
+			Message: "command not runnable",
+			Data:    strings.ReplaceAll(runParams.Cmd, ".", " "),
+		}
+	}
+
+	if err = cmd.Run(runParams.Config); err != nil {
+		return nil, &api.Error{
+			Code:    api.CodeCommandError,
+			Message: "command error",
+			Data:    err,
+		}
+	}
+
+	return struct{}{}, nil
 }
 
 // methodShutdown runs the "shutdown" method.

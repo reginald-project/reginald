@@ -22,7 +22,9 @@ import (
 	"os"
 	"runtime"
 	"slices"
+	"strings"
 
+	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald/internal/config"
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/plugin"
@@ -84,10 +86,46 @@ func Run(ctx context.Context) error {
 	}
 
 	defer func() {
-		if err := info.store.Shutdown(ctx); err != nil {
+		if err = info.store.Shutdown(ctx); err != nil {
 			fmt.Fprintf(os.Stderr, "Error when shutting down plugins: %v\n", err)
 		}
 	}()
+
+	var cfg api.KeyVal
+
+	cfgs := info.cfg.Plugins
+	names := info.cmd.Names()
+
+	for len(names) > 0 {
+		s := names[0]
+
+		var ok bool
+
+		cfg, ok = cfgs.Get(s)
+		if !ok {
+			return &ExitError{
+				Code: 1,
+				err:  fmt.Errorf("%w: %s", errCmdConfig, s),
+			}
+		}
+
+		cfgs, err = cfg.Configs()
+		if err != nil {
+			return &ExitError{
+				Code: 1,
+				err:  err,
+			}
+		}
+
+		names = names[1:]
+	}
+
+	if err = info.cmd.Run(ctx, cfgs); err != nil {
+		return &ExitError{
+			Code: 1,
+			err:  fmt.Errorf("running command %q failed: %w", strings.Join(info.cmd.Names(), " "), err),
+		}
+	}
 
 	return nil
 }

@@ -21,6 +21,10 @@ import (
 	"github.com/reginald-project/reginald/internal/plugin"
 )
 
+// errCmdConfig is returned when the config for the command that is run is not
+// found.
+var errCmdConfig = errors.New("config for command not found")
+
 // An ExitError is an error returned by the CLI that wraps an error that is
 // causing the program to exit and associates an exit code with it. The program
 // will return the exit code once it ends its execution.

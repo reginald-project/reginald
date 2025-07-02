@@ -71,7 +71,7 @@ type Config struct {
 	RawTasks []map[string]any `mapstructure:"tasks"`
 
 	// Plugins contains the parsed config values for the plugins.
-	Plugins []api.KeyVal `mapstructure:"-"`
+	Plugins api.KeyValues `mapstructure:"-"`
 
 	// Tasks contains the parsed configs for the task instances.
 	Tasks []plugin.TaskConfig `mapstructure:"-"`
