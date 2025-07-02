@@ -59,7 +59,7 @@ func InitBootstrap() error {
 	if !isDebug {
 		// TODO: Come up with a reasonable default resolving maybe using
 		// `XDG_CACHE_HOME` and some other directory on Windows.
-		path, err := fspath.New("~/.cache/reginald/bootstrap.log").Abs()
+		path, err := fspath.NewAbs("~/.cache/reginald/bootstrap.log")
 		if err != nil {
 			return fmt.Errorf("failed to create path to bootstrap log file: %w", err)
 		}
@@ -145,8 +145,8 @@ func Init(cfg logconfig.Config) error {
 
 // debugHandler returns a handler that should be used when debugging is enabled.
 func debugHandler() slog.Handler {
-	return slog.NewTextHandler(
-		terminal.NewWriter(terminal.Default(), terminal.Stderr),
+	return slog.NewJSONHandler(
+		terminal.NewWriter(terminal.Default(), terminal.Stdout),
 		&slog.HandlerOptions{AddSource: true, Level: logs.LevelTrace, ReplaceAttr: replaceAttrFunc("")},
 	)
 }
