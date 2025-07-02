@@ -42,18 +42,13 @@ const (
 	defaultTimeFormat                 = "2006-01-02T15:04:05.000-07:00"    // default time format in Go
 )
 
-// Errors for logger.
-var (
-	errInvalidFormat = errors.New("given log format not supported")
-)
+// errInvalidFormat is returned when trying to create a logger with an invalid
+// format.
+var errInvalidFormat = errors.New("invalid log format")
 
 // InitBootstrap initializes the bootstrap logger and sets it as the default
 // logger in [log/slog].
 func InitBootstrap() error {
-	// The logger is set to discard during checking if the debug mode is
-	// enabled.
-	slog.SetDefault(slog.New(slog.DiscardHandler))
-
 	isDebug := debugging.IsDebug()
 
 	if !isDebug {
@@ -70,7 +65,7 @@ func InitBootstrap() error {
 			slog.New(
 				slog.NewJSONHandler(
 					logwriter.BootstrapWriter,
-					&slog.HandlerOptions{AddSource: true, Level: logs.LevelTrace, ReplaceAttr: replaceAttrFunc("")},
+					&slog.HandlerOptions{AddSource: true, Level: logs.LevelTrace, ReplaceAttr: replaceAttrFunc()},
 				),
 			),
 		)
@@ -124,7 +119,7 @@ func Init(cfg logconfig.Config) error {
 	opts := &slog.HandlerOptions{
 		AddSource:   true,
 		Level:       cfg.Level,
-		ReplaceAttr: replaceAttrFunc(""),
+		ReplaceAttr: replaceAttrFunc(),
 	}
 
 	var h slog.Handler
@@ -147,14 +142,19 @@ func Init(cfg logconfig.Config) error {
 func debugHandler() slog.Handler {
 	return slog.NewJSONHandler(
 		terminal.NewWriter(terminal.Default(), terminal.Stdout),
-		&slog.HandlerOptions{AddSource: true, Level: logs.LevelTrace, ReplaceAttr: replaceAttrFunc("")},
+		&slog.HandlerOptions{AddSource: true, Level: logs.LevelTrace, ReplaceAttr: replaceAttrFunc()},
 	)
 }
 
-func replaceAttrFunc(timeFormat string) func([]string, slog.Attr) slog.Attr {
+func replaceAttrFunc() func([]string, slog.Attr) slog.Attr {
 	return func(_ []string, a slog.Attr) slog.Attr {
-		if timeFormat != "" && a.Key == slog.TimeKey {
-			return slog.String(slog.TimeKey, a.Value.Time().Format(timeFormat))
+		if a.Key == slog.SourceKey {
+			src, ok := a.Value.Any().(*slog.Source)
+			// Make a guess whether this is a duplicate source attribute in
+			// the logging messages from the plugins.
+			if !ok || src == nil || src.Line == 0 {
+				return slog.Attr{}
+			}
 		}
 
 		if a.Key == slog.LevelKey {

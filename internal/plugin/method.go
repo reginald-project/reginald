@@ -16,7 +16,10 @@ package plugin
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald/internal/log"
@@ -29,6 +32,44 @@ func exit(ctx context.Context, plugin Plugin) error {
 	}
 
 	log.Trace(ctx, "exit notification successful", "plugin", plugin.Manifest().Name)
+
+	return nil
+}
+
+// handleLog handles running the "log" method request sent from a plugin.
+func handleLog(ctx context.Context, plugin Plugin, params *api.LogParams) error {
+	level := params.Level
+
+	if !slog.Default().Enabled(ctx, slog.Level(level)) {
+		return nil
+	}
+
+	msg := params.Message
+	src := params.Source
+	attrs := make([]slog.Attr, 0, len(params.Attrs)+1)
+
+	if src != nil {
+		attrs = append(attrs, slog.Any(slog.SourceKey, src))
+	}
+
+	for _, a := range params.Attrs {
+		attr, err := unmarshalAttr(a)
+		if err != nil {
+			return err
+		}
+
+		attrs = append(attrs, attr)
+	}
+
+	attrs = append(attrs, slog.String("plugin", plugin.Manifest().Name))
+	t := params.Time
+	r := slog.NewRecord(t, slog.Level(level), msg, 0)
+
+	r.AddAttrs(attrs...)
+
+	if err := slog.Default().Handler().Handle(ctx, r); err != nil {
+		panic(err)
+	}
 
 	return nil
 }
@@ -98,4 +139,46 @@ func shutdown(ctx context.Context, plugin Plugin) error {
 	log.Trace(ctx, "shutdown call successful", "plugin", plugin.Manifest().Name, "result", result)
 
 	return nil
+}
+
+func unmarshalAttr(attr api.LogAttr) (slog.Attr, error) {
+	var val any
+	if err := json.Unmarshal(attr.Value, &val); err != nil {
+		return slog.Attr{}, fmt.Errorf("failed to unmarshal attribute value: %w", err)
+	}
+
+	var value slog.Value
+
+	switch v := val.(type) {
+	case bool:
+		value = slog.BoolValue(v)
+	case float64:
+		value = slog.Float64Value(v)
+	case int64: // TODO: Might never be the case.
+		value = slog.Int64Value(v)
+	case string:
+		value = slog.StringValue(v)
+	case time.Time:
+		value = slog.TimeValue(v)
+	case []api.LogAttr:
+		var as []slog.Attr
+
+		for _, la := range v {
+			a, err := unmarshalAttr(la)
+			if err != nil {
+				return slog.Attr{}, err
+			}
+
+			as = append(as, a)
+		}
+
+		value = slog.GroupValue(as...)
+	default:
+		value = slog.AnyValue(v)
+	}
+
+	return slog.Attr{
+		Key:   attr.Key,
+		Value: value,
+	}, nil
 }

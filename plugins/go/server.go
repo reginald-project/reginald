@@ -25,6 +25,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/reginald-project/reginald-sdk-go/api"
 )
@@ -44,6 +45,7 @@ type Server struct {
 	protocol       string
 	ServerOpts
 	commands        []*Command
+	mu              sync.Mutex
 	protocolVersion int
 	exit            bool
 	shutdown        bool
@@ -102,6 +104,7 @@ func NewServer(opts *ServerOpts, impls ...any) *Server {
 		commands:        cmds,
 		exit:            false,
 		jsonRPCVersion:  api.JSONRPCVersion,
+		mu:              sync.Mutex{},
 		protocol:        api.Protocol,
 		protocolVersion: api.ProtocolVersion,
 		shutdown:        false,
@@ -376,6 +379,9 @@ func (s *Server) respond(id api.ID, result any) error {
 		return fmt.Errorf("failed to marshal result: %w", err)
 	}
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	err = write(api.Response{
 		JSONRPC: s.jsonRPCVersion,
 		ID:      id,
@@ -389,8 +395,45 @@ func (s *Server) respond(id api.ID, result any) error {
 	return nil
 }
 
+// notify sends a notification to the client.
+func (s *Server) notify(method string, params any) error {
+	rawParams, err := json.Marshal(params)
+	if err != nil {
+		return fmt.Errorf("failed to marshal params: %w", err)
+	}
+
+	req := api.Request{
+		JSONRPC: s.jsonRPCVersion,
+		ID:      nil,
+		Method:  method,
+		Params:  rawParams,
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	header := fmt.Sprintf("Content-Length: %d\r\n\r\n", len(data))
+	if _, err = os.Stdout.WriteString(header); err != nil {
+		return fmt.Errorf("failed to write request header: %w", err)
+	}
+
+	if _, err = os.Stdout.Write(data); err != nil {
+		return fmt.Errorf("failed to write request data: %w", err)
+	}
+
+	return nil
+}
+
 // respondError sends an error response to the client.
 func (s *Server) respondError(id api.ID, rpcErr *api.Error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	err := write(api.Response{
 		JSONRPC: s.jsonRPCVersion,
 		ID:      id,

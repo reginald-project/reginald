@@ -85,7 +85,7 @@ plugins: reginald-go
 reginald-go: FORCE
 	mkdir -p ./bin/go
 	cp ./plugins/go/manifest.json ./bin/go/manifest.json
-	"$(GO)" build -o ./bin/go/reginald-go ./plugins/go
+	"$(GO)" build -trimpath -o ./bin/go/reginald-go ./plugins/go
 
 clean: FORCE
 	@exe=""; \

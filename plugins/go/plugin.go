@@ -19,6 +19,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/reginald-project/reginald-sdk-go/api"
@@ -55,12 +56,15 @@ func main() {
 		Args:  nil,
 		Run: func(_ api.KeyValues) error {
 			fmt.Fprintln(os.Stderr, "running versions")
+			slog.Info("running command", "cmd", "versions")
 
 			return nil
 		},
 	}
 
 	server := NewServer(opts, versionsCmd)
+
+	slog.SetDefault(slog.New(NewRPCHandler(server, nil)))
 
 	if err := server.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "%s is going to exit with an error: %v", opts.Name, err)

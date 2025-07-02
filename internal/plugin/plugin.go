@@ -313,6 +313,21 @@ func (e *externalPlugin) kill(ctx context.Context) error {
 	return nil
 }
 
+// notification handles a notification request sent from the plugin.
+func (e *externalPlugin) notification(ctx context.Context, req api.Request) error {
+	switch req.Method {
+	case api.MethodLog:
+		var params api.LogParams
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			return fmt.Errorf("failed to unmarshal log params: %w", err)
+		}
+
+		return handleLog(ctx, e, &params)
+	default:
+		return fmt.Errorf("%w: %s", errUnknownMethod, req.Method)
+	}
+}
+
 // notify sends a notification request to the plugin.
 func (e *externalPlugin) notify(ctx context.Context, method string, params any) error {
 	rawParams, err := json.Marshal(params)
@@ -399,7 +414,11 @@ func (e *externalPlugin) read(ctx context.Context, handlePanic func()) {
 
 			log.Trace(ctx, "received notification", "plugin", e.manifest.Name, "req", req)
 
-			// TODO: Handle the notification.
+			if err := e.notification(ctx, req); err != nil {
+				log.Error(ctx, "error when handling notification from plugin", "plugin", e.manifest.Name, "err", err)
+
+				return
+			}
 
 			continue
 		}
