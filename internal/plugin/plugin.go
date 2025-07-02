@@ -359,6 +359,7 @@ func (e *externalPlugin) read(ctx context.Context, handlePanic func()) {
 
 	go func() {
 		<-ctx.Done()
+
 		done = true
 	}()
 

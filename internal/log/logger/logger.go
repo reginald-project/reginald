@@ -153,7 +153,7 @@ func replaceAttrFunc() func([]string, slog.Attr) slog.Attr {
 			// Make a guess whether this is a duplicate source attribute in
 			// the logging messages from the plugins.
 			if !ok || src == nil || src.Line == 0 {
-				return slog.Attr{}
+				return slog.Attr{} //nolint:exhaustruct // empty return value
 			}
 		}
 

@@ -86,6 +86,7 @@ func Run(ctx context.Context) error {
 	}
 
 	shutdownDone := false
+
 	shutdown := func() {
 		if shutdownDone {
 			return

@@ -31,11 +31,12 @@ import (
 // the client that handles writing the logs.
 type RPCHandler struct {
 	server *Server
-	opts   RPCHandlerOptions
 	groups []string    // all groups started from WithGroup
 	attrs  []slog.Attr // all attributes set with WithAttrs
+	opts   RPCHandlerOptions
 }
 
+// RPCHandlerOptions are the options for the RPCHandler.
 type RPCHandlerOptions struct {
 	// AddSource causes the handler to compute the source code position
 	// of the log statement and add a SourceKey attribute to the output.
@@ -65,7 +66,7 @@ func (*RPCHandler) Enabled(_ context.Context, _ slog.Level) bool {
 // Handle collects the level, attributes, and message in parameters and sends
 // a "log" notification to the client.
 //
-//nolint:gocognit,gocritic,varnamelen // no need to split up and implements interface
+//nolint:gocritic // implements interface
 func (h *RPCHandler) Handle(_ context.Context, r slog.Record) error {
 	var params api.LogParams
 

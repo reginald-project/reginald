@@ -18,6 +18,7 @@ Reginald plugin for Go.
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -56,7 +57,7 @@ func main() {
 		Args:  nil,
 		Run: func(_ api.KeyValues) error {
 			fmt.Fprintln(os.Stderr, "running versions")
-			slog.Info("running command", "cmd", "versions")
+			slog.InfoContext(context.TODO(), "running command", "cmd", "versions")
 
 			return nil
 		},
