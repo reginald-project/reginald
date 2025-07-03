@@ -86,7 +86,7 @@ func Execute(ctx context.Context) error {
 		}
 	}
 
-	if err = info.store.Init(ctx, info.cmd, &info.cfg.Tasks); err != nil {
+	if err = info.store.Init(ctx, info.cmd, info.cfg.Tasks); err != nil {
 		return &ExitError{
 			Code: 1,
 			err:  err,

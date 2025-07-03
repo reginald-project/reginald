@@ -166,17 +166,13 @@ func (s *Store) Command(prev *Command, name string) *Command {
 // Init loads the required plugins and performs a handshake with them. It uses
 // the command that should be run and the tasks to determine which plugins
 // should be loaded. It also resolves the execution order for the tasks, taking
-// the tasks that install the required runtimes into account. It takes in
-// a pointer to the task configs as it might modify them; if plugin that
-// provides a task requires a runtime that another task provides, the providing
-// task is added as an explicit dependency to keep the final, executed
-// configuration unambiguous.
-func (s *Store) Init(ctx context.Context, cmd *Command, tasks *[]TaskConfig) error {
+// the tasks that install the required runtimes into account.
+func (s *Store) Init(ctx context.Context, cmd *Command, tasks []TaskConfig) error {
 	plugins := []Plugin{cmd.Plugin}
 
 	// TODO: This is a hack, there might be a better way.
 	if cmd.Name == "attend" && cmd.Plugin.Manifest().Domain == "core" {
-		for _, tcfg := range *tasks {
+		for _, tcfg := range tasks {
 			task := s.Task(tcfg.TaskType)
 			if task == nil {
 				panic("task config has non-existent task type: " + tcfg.TaskType)
@@ -192,8 +188,8 @@ func (s *Store) Init(ctx context.Context, cmd *Command, tasks *[]TaskConfig) err
 		}
 	}
 
-	// for _, plugin := range plugins {
-	// }
+	// The provider tasks must also be started.
+	plugins = append(plugins, s.neededForProvider(plugins, tasks)...)
 
 	g, gctx := errgroup.WithContext(ctx)
 
@@ -243,7 +239,7 @@ func (s *Store) Init(ctx context.Context, cmd *Command, tasks *[]TaskConfig) err
 
 	var graph taskGraph
 
-	if graph, err = newTaskGraph(*tasks); err != nil {
+	if graph, err = newTaskGraph(tasks); err != nil {
 		return err
 	}
 
@@ -377,6 +373,58 @@ func (s *Store) deferStart(plugin Plugin) {
 	if !slices.Contains(s.deferredStart, plugin.Manifest().Name) {
 		s.deferredStart = append(s.deferredStart, plugin.Manifest().Name)
 	}
+}
+
+// neededForProvider returns the list plugins that are required by the given
+// plugins for providers. The return value only includes the newly resolved
+// plugins and not the ones that were passed in.
+func (s *Store) neededForProvider(plugins []Plugin, tasks []TaskConfig) []Plugin {
+	var result []Plugin //nolint:prealloc // we don't know the size
+
+	for _, plugin := range plugins {
+		tID, ok := s.providers[plugin.Manifest().Name]
+		if !ok {
+			continue
+		}
+
+		var tt string
+
+		for _, cfg := range tasks {
+			if cfg.ID == tID {
+				tt = cfg.TaskType
+
+				break
+			}
+		}
+
+		if tt == "" {
+			panic(fmt.Sprintf("provider task %q with no corresponding config", tID))
+		}
+
+		task := s.Task(tt)
+		p := task.Plugin
+
+		ok = slices.ContainsFunc(
+			append(plugins, result...),
+			func(o Plugin) bool { return o.Manifest().Name == p.Manifest().Name },
+		)
+		if ok {
+			continue
+		}
+
+		result = append(result, p)
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+
+	next := s.neededForProvider(result, tasks)
+	if len(next) > 0 {
+		result = append(result, next...)
+	}
+
+	return result
 }
 
 // readAllSearchPaths loads plugins from all of the given search paths.
