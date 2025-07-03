@@ -29,7 +29,7 @@ import (
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/log"
-	"github.com/reginald-project/reginald/internal/log/logconfig"
+	"github.com/reginald-project/reginald/internal/log/config"
 	"github.com/reginald-project/reginald/internal/plugin"
 	"github.com/reginald-project/reginald/internal/terminal"
 )
@@ -77,7 +77,7 @@ type Config struct {
 	Tasks []plugin.TaskConfig `mapstructure:"-"`
 
 	// Logging contains the config values for logging.
-	Logging logconfig.Config `flag:"log" mapstructure:"logging"`
+	Logging config.Config `flag:"log" mapstructure:"logging"`
 
 	// Color tells whether colors should be enabled in the user output.
 	Color terminal.ColorMode `mapstructure:"color"`
@@ -120,7 +120,7 @@ func DefaultConfig() *Config {
 		Defaults:    plugin.TaskDefaults{},
 		Directory:   fspath.Path(wd),
 		Interactive: false,
-		Logging:     logconfig.Default(),
+		Logging:     config.Default(),
 		PluginPaths: pluginPaths,
 		Plugins:     nil,
 		Quiet:       false,

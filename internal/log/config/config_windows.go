@@ -14,7 +14,7 @@
 
 //go:build windows
 
-package logconfig
+package config
 
 import (
 	"fmt"

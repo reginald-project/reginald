@@ -27,8 +27,8 @@ import (
 
 	"github.com/reginald-project/reginald/internal/debugging"
 	"github.com/reginald-project/reginald/internal/fspath"
-	"github.com/reginald-project/reginald/internal/log/logconfig"
-	"github.com/reginald-project/reginald/internal/log/logwriter"
+	"github.com/reginald-project/reginald/internal/log/config"
+	"github.com/reginald-project/reginald/internal/log/writer"
 	"github.com/reginald-project/reginald/internal/terminal"
 )
 
@@ -58,13 +58,13 @@ func InitBootstrap() error {
 			return fmt.Errorf("failed to create path to bootstrap log file: %w", err)
 		}
 
-		logwriter.BootstrapWriter = logwriter.NewBufferedFileWriter(path)
+		writer.BootstrapWriter = writer.NewBufferedFileWriter(path)
 
 		slog.SetDefault(
 			slog.New(
 				slog.NewJSONHandler(
-					logwriter.BootstrapWriter,
-					&slog.HandlerOptions{AddSource: true, Level: logconfig.LevelTrace, ReplaceAttr: replaceAttrFunc()},
+					writer.BootstrapWriter,
+					&slog.HandlerOptions{AddSource: true, Level: config.LevelTrace, ReplaceAttr: replaceAttrFunc()},
 				),
 			),
 		)
@@ -79,7 +79,7 @@ func InitBootstrap() error {
 
 // Init initializes the proper logger of the program and sets it as the default
 // logger in [log/slog].
-func Init(cfg logconfig.Config) error {
+func Init(cfg config.Config) error {
 	if debugging.IsDebug() {
 		slog.SetDefault(slog.New(debugHandler()))
 
@@ -141,7 +141,7 @@ func Init(cfg logconfig.Config) error {
 func debugHandler() slog.Handler {
 	return slog.NewJSONHandler(
 		terminal.NewWriter(terminal.Default(), terminal.Stdout),
-		&slog.HandlerOptions{AddSource: true, Level: logconfig.LevelTrace, ReplaceAttr: replaceAttrFunc()},
+		&slog.HandlerOptions{AddSource: true, Level: config.LevelTrace, ReplaceAttr: replaceAttrFunc()},
 	)
 }
 
@@ -162,7 +162,7 @@ func replaceAttrFunc() func([]string, slog.Attr) slog.Attr {
 				panic(fmt.Sprintf("failed to convert level value to slog.Level: %[1]v (%[1]T)", a.Value.Any()))
 			}
 
-			return slog.String(slog.LevelKey, logconfig.Level(level).String())
+			return slog.String(slog.LevelKey, config.Level(level).String())
 		}
 
 		return a

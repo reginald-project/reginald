@@ -27,7 +27,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/reginald-project/reginald/internal/log/logwriter"
+	"github.com/reginald-project/reginald/internal/log/writer"
 	"github.com/reginald-project/reginald/internal/terminal"
 	"github.com/reginald-project/reginald/internal/text"
 	"github.com/reginald-project/reginald/internal/version"
@@ -129,7 +129,7 @@ func handlePanic(r any, t []byte) {
 		buf.Write(t)
 	}
 
-	if w, ok := logwriter.BootstrapWriter.(*logwriter.BufferedFileWriter); ok {
+	if w, ok := writer.BootstrapWriter.(*writer.BufferedFileWriter); ok {
 		if err := w.Flush(); err != nil {
 			buf.WriteString(fmt.Sprintf("\nFailed to write the boostrap log to file: %v\n\n", err))
 			buf.WriteString("The bootstrap logs:\n")

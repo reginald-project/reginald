@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package logwriter defines and holds the writer for the bootstrap logger. It
-// is a separate package to avoid import cycles.
-package logwriter
+// Package writer defines and holds the special writers for the logger.
+package writer
 
 import (
 	"bytes"

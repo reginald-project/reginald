@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package logconfig defines the configuration options for the logger. It is
+// Package config defines the configuration options for the logger. It is
 // a separate pckage to avoid import cycles.
-package logconfig
+package config
 
 import (
 	"fmt"
