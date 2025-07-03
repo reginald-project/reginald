@@ -52,6 +52,9 @@ type Store struct {
 	// Tasks is the list of tasks that are defined in the plugins.
 	Tasks []*Task
 
+	// runtimes contains the registered runtimes for the plugins.
+	runtimes []runtime
+
 	// deferredStart is a list of plugin names whose startup should be postponed
 	// due to a missing runtime.
 	deferredStart []string
@@ -117,8 +120,9 @@ func NewStore(ctx context.Context, builtin []*api.Manifest, wd fspath.Path, path
 		Commands:      commands,
 		Tasks:         tasks,
 		deferredStart: nil,
-		sortedTasks:   nil,
 		providers:     nil,
+		runtimes:      nil,
+		sortedTasks:   nil,
 	}
 
 	if len(pathErrs) > 0 {
