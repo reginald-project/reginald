@@ -21,7 +21,7 @@ import (
 	"runtime"
 )
 
-// A handler is a wrapper for an [slog.handler] that is used with the logger in
+// A handler is a wrapper for an [slog.Handler] that is used with the logger in
 // Reginald.
 type handler struct {
 	slog.Handler
