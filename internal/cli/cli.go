@@ -28,6 +28,7 @@ import (
 	"github.com/reginald-project/reginald/internal/config"
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/plugin"
+	"github.com/reginald-project/reginald/internal/plugin/runtimes"
 	"github.com/reginald-project/reginald/internal/terminal"
 	"github.com/reginald-project/reginald/internal/version"
 )
@@ -50,8 +51,8 @@ type runInfo struct {
 	version bool            // whether the version flag was set
 }
 
-// Run runs the CLI application and returns any errors from the run.
-func Run(ctx context.Context) error {
+// Execute runs the CLI application and returns any errors from the run.
+func Execute(ctx context.Context) error {
 	info, err := initialize(ctx)
 	if err != nil {
 		var exitErr *ExitError
@@ -78,7 +79,14 @@ func Run(ctx context.Context) error {
 		return nil
 	}
 
-	if err = info.store.Init(ctx, info.cmd); err != nil {
+	if err = runtimes.Resolve(ctx, info.store, info.cfg); err != nil {
+		return &ExitError{
+			Code: 1,
+			err:  err,
+		}
+	}
+
+	if err = info.store.Init(ctx, info.cmd, &info.cfg.Tasks); err != nil {
 		return &ExitError{
 			Code: 1,
 			err:  err,
@@ -100,51 +108,10 @@ func Run(ctx context.Context) error {
 	}
 	defer shutdown()
 
-	var (
-		cfg       api.KeyVal
-		pluginCfg api.KeyValues
-	)
-
-	cfgs := info.cfg.Plugins
-
-	i := slices.IndexFunc(cfgs, func(kv api.KeyVal) bool { return kv.Key == info.cmd.Plugin.Manifest().Domain })
-	if i != -1 {
-		pluginCfg, err = cfgs[i].Configs()
-		if err != nil {
-			return fmt.Errorf("failed to get config for %q: %w", info.cmd.Plugin.Manifest().Name, err)
-		}
-	}
-
-	names := info.cmd.Names()
-
-	for len(names) > 0 {
-		s := names[0]
-
-		var ok bool
-
-		cfg, ok = cfgs.Get(s)
-		if !ok {
-			return &ExitError{
-				Code: 1,
-				err:  fmt.Errorf("%w: %s", errCmdConfig, s),
-			}
-		}
-
-		cfgs, err = cfg.Configs()
-		if err != nil {
-			return &ExitError{
-				Code: 1,
-				err:  err,
-			}
-		}
-
-		names = names[1:]
-	}
-
-	if err = info.cmd.Run(ctx, cfgs, pluginCfg); err != nil {
+	if err = run(ctx, info); err != nil {
 		return &ExitError{
 			Code: 1,
-			err:  fmt.Errorf("running command %q failed: %w", strings.Join(info.cmd.Names(), " "), err),
+			err:  err,
 		}
 	}
 
@@ -186,6 +153,51 @@ func rootCommand(cmd *plugin.Command) *plugin.Command {
 	}
 
 	return root
+}
+
+// run runs the requested command.
+func run(ctx context.Context, info *runInfo) error {
+	var (
+		err       error
+		cfg       api.KeyVal
+		pluginCfg api.KeyValues
+	)
+
+	cfgs := info.cfg.Plugins
+
+	i := slices.IndexFunc(cfgs, func(kv api.KeyVal) bool { return kv.Key == info.cmd.Plugin.Manifest().Domain })
+	if i != -1 {
+		pluginCfg, err = cfgs[i].Configs()
+		if err != nil {
+			return fmt.Errorf("failed to get config for %q: %w", info.cmd.Plugin.Manifest().Name, err)
+		}
+	}
+
+	names := info.cmd.Names()
+
+	for len(names) > 0 {
+		s := names[0]
+
+		var ok bool
+
+		cfg, ok = cfgs.Get(s)
+		if !ok {
+			return fmt.Errorf("%w: %s", errCmdConfig, s)
+		}
+
+		cfgs, err = cfg.Configs()
+		if err != nil {
+			return fmt.Errorf("failed to get configs from KeyVal %q: %w", cfg.Key, err)
+		}
+
+		names = names[1:]
+	}
+
+	if err = info.cmd.Run(ctx, cfgs, pluginCfg); err != nil {
+		return fmt.Errorf("running command %q failed: %w", strings.Join(info.cmd.Names(), " "), err)
+	}
+
+	return nil
 }
 
 // runVersion runs the version command or flag by resolving the place of

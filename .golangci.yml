@@ -196,6 +196,7 @@ linters:
         - kv api.KeyValue
         - mu sync.Mutex
         - ok bool
+        - rt *runtime
         - wg sync.WaitGroup
     wsl:
       force-err-cuddling: true

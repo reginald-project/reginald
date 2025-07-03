@@ -401,7 +401,7 @@ func newFlagSet() *flags.FlagSet {
 	flagSet.MarkMutuallyExclusive(quietName, verboseName)
 
 	flagSet.BoolP(config.FlagName("Interactive"), "i", defaults.Interactive, "run in interactive mode", "")
-	flagSet.Bool("strict", defaults.Strict, "enable strict mode", "")
+	flagSet.Bool(config.FlagName("Strict"), defaults.Strict, "enable strict mode", "")
 	flagSet.MarkMutuallyExclusive("interactive", "strict")
 
 	colorMode := defaults.Color

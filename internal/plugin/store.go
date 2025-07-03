@@ -38,6 +38,11 @@ import (
 // A Store stores the plugins, provides information on them, and has functions
 // for using the plugins within the program.
 type Store struct {
+	// providers contains the resolved and required provider tasks for
+	// the plugins for this run. The keys of the map are the plugin names and
+	// the values are the task IDs that provide the runtimes for those plugins.
+	providers map[string]string
+
 	// Plugins is the list of plugins.
 	Plugins []Plugin
 
@@ -46,6 +51,15 @@ type Store struct {
 
 	// Tasks is the list of tasks that are defined in the plugins.
 	Tasks []*Task
+
+	// deferredStart is a list of plugin names whose startup should be postponed
+	// due to a missing runtime.
+	deferredStart []string
+
+	// sortedTasks contains the tasks sorted into the correct execution order.
+	// Each member slice of the slice contains tasks that can be executed in
+	// parallel after the tasks in the slice before them are executed.
+	sortedTasks [][]*taskNode
 }
 
 // NewStore finds the available built-in and external plugin manifests from
@@ -99,9 +113,12 @@ func NewStore(ctx context.Context, builtin []*api.Manifest, wd fspath.Path, path
 	slog.Log(ctx, slog.Level(logger.LevelTrace), "created tasks", "tasks", logTasks(tasks))
 
 	store := &Store{
-		Plugins:  plugins,
-		Commands: commands,
-		Tasks:    tasks,
+		Plugins:       plugins,
+		Commands:      commands,
+		Tasks:         tasks,
+		deferredStart: nil,
+		sortedTasks:   nil,
+		providers:     nil,
 	}
 
 	if len(pathErrs) > 0 {
@@ -109,6 +126,20 @@ func NewStore(ctx context.Context, builtin []*api.Manifest, wd fspath.Path, path
 	}
 
 	return store, nil
+}
+
+// AddProvider registers a provider task for the given plugin.
+func (s *Store) AddProvider(taskID string, plugin Plugin) {
+	if s.providers == nil {
+		s.providers = make(map[string]string)
+	}
+
+	if _, ok := s.providers[plugin.Manifest().Name]; ok {
+		panic("provider already registered for " + plugin.Manifest().Name)
+	}
+
+	s.providers[plugin.Manifest().Name] = taskID
+	s.deferStart(plugin)
 }
 
 // Command returns the command with the given name from the store. If prev is
@@ -132,37 +163,105 @@ func (s *Store) Command(prev *Command, name string) *Command {
 	return nil
 }
 
-// Init loads the required plugins and performs a handshake with them.
-// The function uses the command that was run to determine which plugins should
-// be loaded.
-func (*Store) Init(ctx context.Context, cmd *Command) error {
-	// TODO: If the command uses tasks or there is some other reason for it,
-	// load more plugins.
+// Init loads the required plugins and performs a handshake with them. It uses
+// the command that should be run and the tasks to determine which plugins
+// should be loaded. It also resolves the execution order for the tasks, taking
+// the tasks that install the required runtimes into account. It takes in
+// a pointer to the task configs as it might modify them; if plugin that
+// provides a task requires a runtime that another task provides, the providing
+// task is added as an explicit dependency to keep the final, executed
+// configuration unambiguous.
+func (s *Store) Init(ctx context.Context, cmd *Command, tasks *[]TaskConfig) error {
 	plugins := []Plugin{cmd.Plugin}
-	eg, _ := errgroup.WithContext(ctx)
+
+	// TODO: This is a hack, there might be a better way.
+	if cmd.Name == "attend" && cmd.Plugin.Manifest().Domain == "core" {
+		for _, tcfg := range *tasks {
+			task := s.Task(tcfg.TaskType)
+			if task == nil {
+				panic("task config has non-existent task type: " + tcfg.TaskType)
+			}
+
+			plugin := task.Plugin
+			if !slices.ContainsFunc(
+				plugins,
+				func(p Plugin) bool { return plugin.Manifest().Name == p.Manifest().Name },
+			) {
+				plugins = append(plugins, plugin)
+			}
+		}
+	}
+
+	// for _, plugin := range plugins {
+	// }
+
+	g, gctx := errgroup.WithContext(ctx)
+
+	var err error
+
+	defer func() {
+		if err == nil {
+			return
+		}
+
+		slog.ErrorContext(ctx, "error when initializing the store, shutting down plugins")
+
+		if err = s.Shutdown(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "Error when shutting down plugins: %v\n", err)
+		}
+	}()
 
 	for _, plugin := range plugins {
+		if slices.Contains(s.deferredStart, plugin.Manifest().Name) {
+			slog.DebugContext(ctx, "plugin startup deferred", "plugin", plugin.Manifest().Name)
+
+			continue
+		}
+
 		handlePanic := panichandler.WithStackTrace()
 
-		eg.Go(func() error {
+		g.Go(func() error {
 			defer handlePanic()
 
-			if err := plugin.start(ctx); err != nil {
-				return fmt.Errorf("failed to start %q: %w", plugin.Manifest().Name, err)
+			if err2 := plugin.start(ctx); err2 != nil {
+				return fmt.Errorf("failed to start %q: %w", plugin.Manifest().Name, err2)
 			}
 
-			if err := handshake(ctx, plugin); err != nil {
-				return fmt.Errorf("handshake with %q failed: %w", plugin.Manifest().Name, err)
+			if err2 := handshake(gctx, plugin); err2 != nil {
+				return fmt.Errorf("handshake with %q failed: %w", plugin.Manifest().Name, err2)
 			}
 
-			slog.InfoContext(ctx, "plugin started", "plugin", plugin.Manifest().Name)
+			slog.InfoContext(gctx, "plugin started", "plugin", plugin.Manifest().Name)
 
 			return nil
 		})
 	}
 
-	if err := eg.Wait(); err != nil {
+	if err = g.Wait(); err != nil {
 		return fmt.Errorf("failed to init plugins: %w", err)
+	}
+
+	var graph taskGraph
+
+	if graph, err = newTaskGraph(*tasks); err != nil {
+		return err
+	}
+
+	if s.sortedTasks, err = graph.sorted(); err != nil {
+		return err
+	}
+
+	slog.Log(ctx, slog.Level(logger.LevelTrace), "task execution order computed")
+
+	// Stupidly wasteful but provides nicer messages.
+	for i, s := range s.sortedTasks {
+		ids := make([]string, len(s))
+
+		for j, n := range s {
+			ids[j] = n.id
+		}
+
+		slog.Log(ctx, slog.Level(logger.LevelTrace), "task stage", "n", i+1, "id", ids)
 	}
 
 	return nil
@@ -217,7 +316,7 @@ func (s *Store) Shutdown(ctx context.Context) error {
 		}
 
 		if external.cmd == nil {
-			slog.DebugContext(ctx, "skipping plugin shutdown as it was not started", "plugin", external.manifest.Name)
+			slog.DebugContext(ctx, "skipping plugin shutdown as it was never started", "plugin", external.manifest.Name)
 
 			continue
 		}
@@ -263,21 +362,21 @@ func (s *Store) Shutdown(ctx context.Context) error {
 // must be the full-qualified task type meaning that it must be specified as
 // "<domain>/<task>".
 func (s *Store) Task(tt string) *Task {
-	i := strings.IndexByte(tt, '/')
-	if i == -1 {
-		return nil
-	}
-
-	domain := tt[:i]
-	taskType := tt[i+1:]
-
 	for _, t := range s.Tasks {
-		if t.Plugin.Manifest().Domain == domain && t.TaskType == taskType {
+		if t.TaskType == tt {
 			return t
 		}
 	}
 
 	return nil
+}
+
+// deferStart marks a plugin to be started later because it requires a runtime
+// that is not present.
+func (s *Store) deferStart(plugin Plugin) {
+	if !slices.Contains(s.deferredStart, plugin.Manifest().Name) {
+		s.deferredStart = append(s.deferredStart, plugin.Manifest().Name)
+	}
 }
 
 // readAllSearchPaths loads plugins from all of the given search paths.

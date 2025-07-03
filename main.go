@@ -102,8 +102,7 @@ func run() int {
 
 	exitCode := 0
 
-	err := cli.Run(ctx)
-	if err != nil {
+	if err := cli.Execute(ctx); err != nil {
 		var successErr *cli.SuccessError
 		if !errors.As(err, &successErr) {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -120,8 +119,7 @@ func run() int {
 	cancel()
 	wg.Wait()
 
-	err = <-cleanupCh
-	if err != nil {
+	if err := <-cleanupCh; err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, io.EOF) && !errors.Is(err, readline.ErrInterrupt) {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		}
