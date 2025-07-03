@@ -25,31 +25,32 @@ func coreManifest() *api.Manifest {
 		Name:    "reginald-core",
 		Version: version.Version().String(),
 		Domain:  "core",
-		// TODO : Add a description.
-		Description: "TODO",
+		//nolint:lll
+		Description: "The \"reginald-core\" plugin contains the core command for Reginald. These commands are used for running the basic operations of Reginald, like executing the tasks.",
 		Help:        "",
 		Executable:  "",
+		Runtime:     nil,
 		Config:      nil,
 		Commands: []*api.Command{
 			{
-				Name:  "attend",
-				Usage: "attend",
-				// TODO : Add a description.
-				Description: "TODO",
-				Help:        "TODO",
-				Manual:      "TODO",
-				Aliases:     []string{"apply", "tend"},
-				Config:      nil,
-				Commands:    nil,
-				Args:        nil,
+				Name:        "attend",
+				Usage:       "attend",
+				Description: "Execute the tasks.",
+				//nolint:lll
+				Help:     "Executes the tasks defined in the Reginald config file. The order of the tasks is not guaranteed; `attend` may run the tasks in parallel and in any order. However, tasks depending on other tasks are executed after the tasks they depend on. Task dependencies are declared in the `requires` field using the task IDs.",
+				Manual:   "TODO",
+				Aliases:  []string{"apply", "tend"},
+				Config:   nil,
+				Commands: nil,
+				Args:     nil,
 			},
 			{
 				Name:  "version",
 				Usage: "version",
 				// TODO : Add a description.
-				Description: "TODO",
-				Help:        "TODO",
-				Manual:      "TODO",
+				Description: "Print version.",
+				Help:        "Prints the version information to the standard output and exits.",
+				Manual:      "",
 				Aliases:     nil,
 				Config:      nil,
 				Commands:    nil,

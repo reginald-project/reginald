@@ -6,9 +6,17 @@
   "description": "A plugin for running Go commands.",
   "config": [
     {
+      "key": "remote",
+      "value": "https://go.dev/dl/?mode=json&include=all",
+      "type": "string",
+      "description": "The URL to fetch the Go version data from.",
+      "flag": {}
+    },
+    {
       "key": "version",
       "value": "1.23",
       "type": "string",
+      "description": "The default Go version to install.",
       "flag": {}
     }
   ],

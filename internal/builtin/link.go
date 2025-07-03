@@ -34,19 +34,20 @@ func linkManifest() *api.Manifest {
 	}
 
 	return &api.Manifest{
-		Name:    "reginald-link",
-		Version: version.Version().String(),
-		Domain:  "link",
-		// TODO : Add a description.
-		Description: "TODO",
+		Name:        "reginald-link",
+		Version:     version.Version().String(),
+		Domain:      "link",
+		Description: "The \"reginald-link\" plugin contains the tasks for creating links with Reginald.",
 		Help:        "",
 		Executable:  "",
+		Runtime:     nil,
 		Config:      nil,
 		Commands:    nil,
 		Tasks: []api.Task{
 			{
-				Type:        "create",
-				Description: "TODO",
+				TaskType:    "create",
+				Description: "Create links.",
+				Provides:    "",
 				RawConfig:   nil,
 				Config: []api.ConfigType{
 					force,

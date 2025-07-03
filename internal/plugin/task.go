@@ -214,7 +214,7 @@ func (t logTasks) LogValue() slog.Value {
 
 	attrs := make([]slog.Attr, len(t))
 	for i, task := range t {
-		attrs[i] = slog.Any(task.Plugin.Manifest().Domain+"/"+task.Type, task)
+		attrs[i] = slog.Any(task.Plugin.Manifest().Domain+"/"+task.TaskType, task)
 	}
 
 	return slog.GroupValue(attrs...)
@@ -227,7 +227,7 @@ func (t *Task) LogValue() slog.Value {
 		return slog.StringValue("<nil>")
 	}
 
-	return slog.GroupValue(slog.String("type", t.Type), slog.String("description", t.Description))
+	return slog.GroupValue(slog.String("type", t.TaskType), slog.String("description", t.Description))
 }
 
 // checkCycles checks if g contains cycles and returns an error if it does.

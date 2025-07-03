@@ -272,7 +272,7 @@ func (s *Store) Task(tt string) *Task {
 	taskType := tt[i+1:]
 
 	for _, t := range s.Tasks {
-		if t.Plugin.Manifest().Domain == domain && t.Type == taskType {
+		if t.Plugin.Manifest().Domain == domain && t.TaskType == taskType {
 			return t
 		}
 	}

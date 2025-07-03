@@ -100,9 +100,21 @@ func Run(ctx context.Context) error {
 	}
 	defer shutdown()
 
-	var cfg api.KeyVal
+	var (
+		cfg       api.KeyVal
+		pluginCfg api.KeyValues
+	)
 
 	cfgs := info.cfg.Plugins
+
+	i := slices.IndexFunc(cfgs, func(kv api.KeyVal) bool { return kv.Key == info.cmd.Plugin.Manifest().Domain })
+	if i != -1 {
+		pluginCfg, err = cfgs[i].Configs()
+		if err != nil {
+			return fmt.Errorf("failed to get config for %q: %w", info.cmd.Plugin.Manifest().Name, err)
+		}
+	}
+
 	names := info.cmd.Names()
 
 	for len(names) > 0 {
@@ -129,7 +141,7 @@ func Run(ctx context.Context) error {
 		names = names[1:]
 	}
 
-	if err = info.cmd.Run(ctx, cfgs); err != nil {
+	if err = info.cmd.Run(ctx, cfgs, pluginCfg); err != nil {
 		return &ExitError{
 			Code: 1,
 			err:  fmt.Errorf("running command %q failed: %w", strings.Join(info.cmd.Names(), " "), err),

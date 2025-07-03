@@ -44,8 +44,9 @@ func TestApplyTasks_UnionValue(t *testing.T) {
 			Commands:    nil,
 			Tasks: []api.Task{
 				{
-					Type:        "foo",
+					TaskType:    "foo",
 					Description: "does foo",
+					Provides:    "",
 					RawConfig:   nil,
 					Config: []api.ConfigType{
 						api.UnionValue{

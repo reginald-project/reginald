@@ -113,7 +113,7 @@ func ApplyTasks(ctx context.Context, rawCfg []map[string]any, opts TaskApplyOpti
 func newTaskConfig(task *plugin.Task, rawEntry map[string]any, counts map[string]int) (plugin.TaskConfig, error) {
 	var taskID string
 
-	ttName := task.Type
+	ttName := task.TaskType
 
 	rawID, ok := rawEntry["id"]
 	if ok {
@@ -536,7 +536,7 @@ func resolveTaskConfigs(
 	opts TaskApplyOptions,
 ) (api.KeyValues, error) {
 	cfgs := make(api.KeyValues, 0, len(task.Config))
-	ttName := task.Type
+	ttName := task.TaskType
 
 	// TODO: The defaults are now wrong, the functions try to check
 	// the top-level map instead of the values for the current task type.

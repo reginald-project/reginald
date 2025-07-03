@@ -117,10 +117,11 @@ func handshake(ctx context.Context, plugin Plugin) error {
 }
 
 // runCommand makes a "runCommand" call to the given plugin.
-func runCommand(ctx context.Context, plugin Plugin, name string, cfg api.KeyValues) error {
+func runCommand(ctx context.Context, plugin Plugin, name string, cfg, pluginCfg api.KeyValues) error {
 	params := api.RunCommandParams{
-		Cmd:    name,
-		Config: cfg,
+		Cmd:          name,
+		Config:       cfg,
+		PluginConfig: pluginCfg,
 	}
 
 	var result struct{}
