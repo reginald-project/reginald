@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package logger controls the default logger of Reginald. It is a separate
-// package to avoid import cycles.
+// Package logger controls the default logger of Reginald.
 package logger
 
 import (
@@ -25,10 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reginald-project/reginald/internal/debugging"
 	"github.com/reginald-project/reginald/internal/fspath"
-	"github.com/reginald-project/reginald/internal/log/config"
-	"github.com/reginald-project/reginald/internal/log/writer"
 	"github.com/reginald-project/reginald/internal/terminal"
 )
 
@@ -45,43 +41,18 @@ const (
 // format.
 var errInvalidFormat = errors.New("invalid log format")
 
-// InitBootstrap initializes the bootstrap logger and sets it as the default
+// Init initializes the proper logger of the program and sets it as the default
 // logger in [log/slog].
-func InitBootstrap() error {
-	isDebug := debugging.IsDebug()
-
-	if !isDebug {
-		// TODO: Come up with a reasonable default resolving maybe using
-		// `XDG_CACHE_HOME` and some other directory on Windows.
-		path, err := fspath.NewAbs("~/.cache/reginald/bootstrap.log")
-		if err != nil {
-			return fmt.Errorf("failed to create path to bootstrap log file: %w", err)
-		}
-
-		writer.BootstrapWriter = writer.NewBufferedFileWriter(path)
-
+func Init(cfg Config, debug bool) error {
+	if debug {
 		slog.SetDefault(
 			slog.New(
 				slog.NewJSONHandler(
-					writer.BootstrapWriter,
-					&slog.HandlerOptions{AddSource: true, Level: config.LevelTrace, ReplaceAttr: replaceAttrFunc()},
+					os.Stdout,
+					&slog.HandlerOptions{AddSource: true, Level: LevelTrace, ReplaceAttr: replaceAttr},
 				),
 			),
 		)
-
-		return nil
-	}
-
-	slog.SetDefault(slog.New(debugHandler()).With("bootstrap", "true"))
-
-	return nil
-}
-
-// Init initializes the proper logger of the program and sets it as the default
-// logger in [log/slog].
-func Init(cfg config.Config) error {
-	if debugging.IsDebug() {
-		slog.SetDefault(slog.New(debugHandler()))
 
 		return nil
 	}
@@ -118,7 +89,7 @@ func Init(cfg config.Config) error {
 	opts := &slog.HandlerOptions{
 		AddSource:   true,
 		Level:       cfg.Level,
-		ReplaceAttr: replaceAttrFunc(),
+		ReplaceAttr: replaceAttr,
 	}
 
 	var h slog.Handler
@@ -137,34 +108,24 @@ func Init(cfg config.Config) error {
 	return nil
 }
 
-// debugHandler returns a handler that should be used when debugging is enabled.
-func debugHandler() slog.Handler {
-	return slog.NewJSONHandler(
-		terminal.NewWriter(terminal.Default(), terminal.Stdout),
-		&slog.HandlerOptions{AddSource: true, Level: config.LevelTrace, ReplaceAttr: replaceAttrFunc()},
-	)
-}
-
-func replaceAttrFunc() func([]string, slog.Attr) slog.Attr {
-	return func(_ []string, a slog.Attr) slog.Attr {
-		if a.Key == slog.SourceKey {
-			src, ok := a.Value.Any().(*slog.Source)
-			// Make a guess whether this is a duplicate source attribute in
-			// the logging messages from the plugins.
-			if !ok || src == nil || src.Line == 0 {
-				return slog.Attr{} //nolint:exhaustruct // empty return value
-			}
+func replaceAttr(_ []string, a slog.Attr) slog.Attr {
+	if a.Key == slog.SourceKey {
+		src, ok := a.Value.Any().(*slog.Source)
+		// Make a guess whether this is a duplicate source attribute in
+		// the logging messages from the plugins.
+		if !ok || src == nil || src.Line == 0 {
+			return slog.Attr{} //nolint:exhaustruct // empty return value
 		}
-
-		if a.Key == slog.LevelKey {
-			level, ok := a.Value.Any().(slog.Level)
-			if !ok {
-				panic(fmt.Sprintf("failed to convert level value to slog.Level: %[1]v (%[1]T)", a.Value.Any()))
-			}
-
-			return slog.String(slog.LevelKey, config.Level(level).String())
-		}
-
-		return a
 	}
+
+	if a.Key == slog.LevelKey {
+		level, ok := a.Value.Any().(slog.Level)
+		if !ok {
+			panic(fmt.Sprintf("failed to convert level value to slog.Level: %[1]v (%[1]T)", a.Value.Any()))
+		}
+
+		return slog.String(slog.LevelKey, Level(level).String())
+	}
+
+	return a
 }

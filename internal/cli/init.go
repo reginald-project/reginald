@@ -18,15 +18,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
 	"github.com/reginald-project/reginald/internal/builtin"
 	"github.com/reginald-project/reginald/internal/config"
-	"github.com/reginald-project/reginald/internal/debugging"
 	"github.com/reginald-project/reginald/internal/flags"
-	"github.com/reginald-project/reginald/internal/log"
-	"github.com/reginald-project/reginald/internal/log/logger"
+	"github.com/reginald-project/reginald/internal/logger"
 	"github.com/reginald-project/reginald/internal/plugin"
 	"github.com/reginald-project/reginald/internal/system"
 	"github.com/reginald-project/reginald/internal/terminal"
@@ -46,139 +45,6 @@ func addFlags(flagSet *flags.FlagSet, cmd *plugin.Command) error {
 	}
 
 	return nil
-}
-
-// initialize initializes the program run by creating the logger and output
-// streams, loading the plugin information, and parsing the command-line
-// arguments.
-func initialize(ctx context.Context) (*runInfo, error) {
-	if err := logger.InitBootstrap(); err != nil {
-		return nil, fmt.Errorf("failed to init bootstrap logger: %w", err)
-	}
-
-	log.Debug(ctx, "bootstrap logger initialized")
-	log.Info(ctx, "initializing Reginald", "version", version.Version(), "commit", version.Revision())
-
-	strictErr := &strictError{
-		errs: nil,
-	}
-
-	cfg, err := initConfig(ctx)
-	if err != nil {
-		var fileErr *config.FileError
-		if !errors.As(err, &fileErr) {
-			return nil, &ExitError{
-				Code: 1,
-				err:  err,
-			}
-		}
-
-		strictErr.errs = append(strictErr.errs, fileErr)
-	}
-
-	if err = initOut(ctx, cfg); err != nil {
-		return nil, &ExitError{
-			Code: 1,
-			err:  err,
-		}
-	}
-
-	// Just to be sure.
-	debugging.SetDebug(cfg.Debug)
-
-	log.Info(ctx, "executing Reginald", "version", version.Version(), "os", system.This())
-
-	var pathErrs plugin.PathErrors
-
-	store, err := initPlugins(ctx, cfg)
-	if err != nil {
-		if !errors.As(err, &pathErrs) {
-			return nil, &ExitError{
-				Code: 1,
-				err:  err,
-			}
-		}
-
-		strictErr.errs = append(strictErr.errs, err)
-	}
-
-	if len(strictErr.errs) > 0 && cfg.Strict {
-		return nil, &ExitError{
-			Code: 1,
-			err:  strictErr,
-		}
-	}
-
-	info := &runInfo{
-		cmd:     nil,
-		cfg:     cfg,
-		store:   store,
-		flagSet: nil,
-		args:    nil,
-		help:    false,
-		version: false,
-	}
-
-	if err = parseArgs(ctx, info); err != nil {
-		return nil, &ExitError{
-			Code: 1,
-			err:  err,
-		}
-	}
-
-	// Best to skip printing if "--help" or "--version" was used.
-	if info.help || info.version {
-		return info, nil
-	}
-
-	switch {
-	case cfg.HasFile():
-		// no-op
-	case !cfg.Interactive:
-		terminal.Warnln("No config file was found")
-	case !terminal.Confirm(ctx, "No config file was found. Continue?", true):
-		return nil, &SuccessError{}
-	}
-
-	switch {
-	case pathErrs == nil:
-		// no-op
-	case !cfg.Interactive:
-		terminal.Warnln("Plugin directory not found")
-	case !terminal.Confirm(ctx, "Plugin directory not found. Continue?", true):
-		return nil, &SuccessError{}
-	}
-
-	opts := config.ApplyOptions{
-		Dir:     info.cfg.Directory,
-		FlagSet: info.flagSet,
-		Store:   info.store,
-	}
-	if err = config.ApplyPlugins(ctx, info.cfg, opts); err != nil {
-		return nil, fmt.Errorf("failed to parse config: %w", err)
-	}
-
-	info.cfg.RawPlugins = nil
-
-	taskOpts := config.TaskApplyOptions{
-		Dir:      info.cfg.Directory,
-		Store:    info.store,
-		Defaults: info.cfg.Defaults,
-	}
-
-	var taskCfgs []plugin.TaskConfig
-
-	taskCfgs, err = config.ApplyTasks(ctx, info.cfg.RawTasks, taskOpts)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse config: %w", err)
-	}
-
-	info.cfg.Tasks = taskCfgs
-	info.cfg.RawTasks = nil
-
-	log.Info(ctx, "full config parsed and applied", "cfg", info.cfg, "args", info.args)
-
-	return info, nil
 }
 
 // collectFlags removes all of the known flags from the arguments list and
@@ -305,6 +171,129 @@ func hasShortNoOptDefVal(name string, fs *flags.FlagSet) bool {
 	return f.NoOptDefVal != ""
 }
 
+// initialize initializes the program run by creating the logger and output
+// streams, loading the plugin information, and parsing the command-line
+// arguments.
+func initialize(ctx context.Context) (*runInfo, error) {
+	strictErr := &strictError{
+		errs: nil,
+	}
+
+	cfg, err := initConfig(ctx)
+	if err != nil {
+		var fileErr *config.FileError
+		if !errors.As(err, &fileErr) {
+			return nil, &ExitError{
+				Code: 1,
+				err:  err,
+			}
+		}
+
+		strictErr.errs = append(strictErr.errs, fileErr)
+	}
+
+	if err = initOut(ctx, cfg); err != nil {
+		return nil, &ExitError{
+			Code: 1,
+			err:  err,
+		}
+	}
+
+	slog.InfoContext(ctx, "executing Reginald", "version", version.Version(), "os", system.This())
+
+	var pathErrs plugin.PathErrors
+
+	store, err := initPlugins(ctx, cfg)
+	if err != nil {
+		if !errors.As(err, &pathErrs) {
+			return nil, &ExitError{
+				Code: 1,
+				err:  err,
+			}
+		}
+
+		strictErr.errs = append(strictErr.errs, err)
+	}
+
+	if len(strictErr.errs) > 0 && cfg.Strict {
+		return nil, &ExitError{
+			Code: 1,
+			err:  strictErr,
+		}
+	}
+
+	info := &runInfo{
+		cmd:     nil,
+		cfg:     cfg,
+		store:   store,
+		flagSet: nil,
+		args:    nil,
+		help:    false,
+		version: false,
+	}
+
+	if err = parseArgs(ctx, info); err != nil {
+		return nil, &ExitError{
+			Code: 1,
+			err:  err,
+		}
+	}
+
+	// Best to skip printing if "--help" or "--version" was used.
+	if info.help || info.version {
+		return info, nil
+	}
+
+	switch {
+	case cfg.HasFile():
+		// no-op
+	case !cfg.Interactive:
+		terminal.Warnln("No config file was found")
+	case !terminal.Confirm(ctx, "No config file was found. Continue?", true):
+		return nil, &SuccessError{}
+	}
+
+	switch {
+	case pathErrs == nil:
+		// no-op
+	case !cfg.Interactive:
+		terminal.Warnln("Plugin directory not found")
+	case !terminal.Confirm(ctx, "Plugin directory not found. Continue?", true):
+		return nil, &SuccessError{}
+	}
+
+	opts := config.ApplyOptions{
+		Dir:     info.cfg.Directory,
+		FlagSet: info.flagSet,
+		Store:   info.store,
+	}
+	if err = config.ApplyPlugins(ctx, info.cfg, opts); err != nil {
+		return nil, fmt.Errorf("failed to parse config: %w", err)
+	}
+
+	info.cfg.RawPlugins = nil
+
+	taskOpts := config.TaskApplyOptions{
+		Dir:      info.cfg.Directory,
+		Store:    info.store,
+		Defaults: info.cfg.Defaults,
+	}
+
+	var taskCfgs []plugin.TaskConfig
+
+	taskCfgs, err = config.ApplyTasks(ctx, info.cfg.RawTasks, taskOpts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse config: %w", err)
+	}
+
+	info.cfg.Tasks = taskCfgs
+	info.cfg.RawTasks = nil
+
+	slog.DebugContext(ctx, "config parsed", "cfg", info.cfg, "args", info.args)
+
+	return info, nil
+}
+
 // initConfig creates the initial config instance by locating the config file
 // and parsing it with the basic set of flags provided by the CLI.
 func initConfig(ctx context.Context) (*config.Config, error) {
@@ -314,8 +303,11 @@ func initConfig(ctx context.Context) (*config.Config, error) {
 	// Ignore errors for now as we want to get all of the flags from plugins
 	// first.
 	err := flagSet.Parse(os.Args[1:])
-	if err != nil {
-		log.Warn(ctx, "initial flag parsing yielded an error", "err", err.Error())
+	if err != nil && !strings.Contains(err.Error(), "unknown flag") {
+		// We aren't aware of all of the flags yet, so if the error is for
+		// an unknown flag, ignore it. Unfortunately pflag doesn't offer any
+		// actual error type that could be checked for.
+		return nil, fmt.Errorf("failed to parse command-arguments: %w", err)
 	}
 
 	var fileErr *config.FileError
@@ -326,8 +318,6 @@ func initConfig(ctx context.Context) (*config.Config, error) {
 			return nil, fmt.Errorf("failed to parse config: %w", err)
 		}
 	}
-
-	log.Info(ctx, "built-in config values parsed and applied", "cfg", cfg)
 
 	if fileErr != nil {
 		return cfg, fileErr
@@ -340,11 +330,11 @@ func initConfig(ctx context.Context) (*config.Config, error) {
 func initOut(ctx context.Context, cfg *config.Config) error {
 	terminal.Default().Init(cfg.Quiet, cfg.Verbose, cfg.Interactive, cfg.Color)
 
-	if err := logger.Init(cfg.Logging); err != nil {
+	if err := logger.Init(cfg.Logging, cfg.Debug); err != nil {
 		return fmt.Errorf("failed to initialize logging: %w", err)
 	}
 
-	log.Debug(ctx, "logging initialized")
+	slog.Log(ctx, slog.Level(logger.LevelTrace), "logger initialized")
 
 	return nil
 }
@@ -360,10 +350,10 @@ func initPlugins(ctx context.Context, cfg *config.Config) (*plugin.Store, error)
 			return nil, fmt.Errorf("failed to search for plugins: %w", err)
 		}
 
-		log.Error(ctx, "failed to search for plugins", "err", pathErrs)
+		slog.WarnContext(ctx, "failed to search for plugins", "err", pathErrs)
 	}
 
-	log.Debug(ctx, "created plugins", "store", store)
+	slog.Log(ctx, slog.Level(logger.LevelTrace), "created plugins", "store", store)
 
 	if len(pathErrs) > 0 {
 		return store, pathErrs
@@ -430,9 +420,13 @@ func newFlagSet() *flags.FlagSet {
 		panic(fmt.Sprintf("failed to mark --%s hidden: %v", hiddenLogFlag, err))
 	}
 
-	debugFlagSet := debugging.FlagSet()
+	debugFlag := config.FlagName("Debug")
 
-	flagSet.AddFlagSet(debugFlagSet)
+	flagSet.Bool(debugFlag, config.DefaultConfig().Debug, "print debug output", "")
+
+	if err := flagSet.MarkHidden(debugFlag); err != nil {
+		panic(fmt.Sprintf("failed to mark --%s hidden: %v", debugFlag, err))
+	}
 
 	return flagSet
 }
@@ -451,14 +445,14 @@ func parseArgs(ctx context.Context, info *runInfo) error {
 	pflag.CommandLine.VisitAll(func(f *pflag.Flag) {
 		panic(fmt.Sprintf("flag %q is set in the CommandLine flag set", f.Name))
 	})
-	log.Debug(ctx, "parsing command-line arguments", "args", info.args)
+	slog.Log(ctx, slog.Level(logger.LevelTrace), "parsing command-line arguments", "args", info.args)
 
 	flagSet := newFlagSet()
-	if err := parseCommands(ctx, flagSet, info); err != nil {
+	if err := parseCommands(flagSet, info); err != nil {
 		return err
 	}
 
-	log.Debug(ctx, "commands parsed", "cmd", info.cmd, "args", info.args)
+	slog.Log(ctx, slog.Level(logger.LevelTrace), "commands parsed", "cmd", info.cmd, "args", info.args)
 
 	if err := flagSet.Parse(info.args); err != nil {
 		return fmt.Errorf("failed to parse the command-line arguments: %w", err)
@@ -470,7 +464,7 @@ func parseArgs(ctx context.Context, info *runInfo) error {
 		return fmt.Errorf("%w", err)
 	}
 
-	log.Trace(ctx, "flags parsed", "args", info.args)
+	slog.Log(ctx, slog.Level(logger.LevelTrace), "flags parsed", "args", info.args)
 
 	info.flagSet = flagSet
 
@@ -507,7 +501,7 @@ func parseArgs(ctx context.Context, info *runInfo) error {
 // root command. It sets the arguments and the command to run in the run info.
 // The function adds the flags from the subcommand to the flag set. The flag set
 // is modified in-place.
-func parseCommands(ctx context.Context, flagSet *flags.FlagSet, info *runInfo) error {
+func parseCommands(flagSet *flags.FlagSet, info *runInfo) error {
 	if len(info.args) == 0 {
 		panic("no command-line arguments")
 	}
@@ -522,18 +516,12 @@ func parseCommands(ctx context.Context, flagSet *flags.FlagSet, info *runInfo) e
 	info.args = info.args[1:]
 
 	for len(info.args) >= 1 {
-		log.Trace(ctx, "checking args", "cmd", info.cmd, "args", info.args, "flags", flagsFound)
-
 		if len(info.args) > 1 {
 			info.args, flagsFound = collectFlags(flagSet, info.args, flagsFound)
-
-			log.Trace(ctx, "collected flags", "args", info.args, "flags", flagsFound)
 		}
 
 		if len(info.args) >= 1 {
 			next := info.store.Command(info.cmd, info.args[0])
-
-			log.Trace(ctx, "next command", "cmd", next)
 
 			if next == nil {
 				break
@@ -543,9 +531,6 @@ func parseCommands(ctx context.Context, flagSet *flags.FlagSet, info *runInfo) e
 			info.args = info.args[1:]
 
 			if err := addFlags(flagSet, info.cmd); err != nil {
-				// TODO: This should be handled better.
-				log.Error(ctx, "failed to add flags from commands", "err", err)
-
 				return err
 			}
 		}

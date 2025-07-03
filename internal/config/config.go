@@ -18,7 +18,6 @@
 package config
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"reflect"
@@ -28,8 +27,7 @@ import (
 	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/fspath"
-	"github.com/reginald-project/reginald/internal/log"
-	"github.com/reginald-project/reginald/internal/log/config"
+	"github.com/reginald-project/reginald/internal/logger"
 	"github.com/reginald-project/reginald/internal/plugin"
 	"github.com/reginald-project/reginald/internal/terminal"
 )
@@ -77,7 +75,7 @@ type Config struct {
 	Tasks []plugin.TaskConfig `mapstructure:"-"`
 
 	// Logging contains the config values for logging.
-	Logging config.Config `flag:"log" mapstructure:"logging"`
+	Logging logger.Config `flag:"log" mapstructure:"logging"`
 
 	// Color tells whether colors should be enabled in the user output.
 	Color terminal.ColorMode `mapstructure:"color"`
@@ -120,7 +118,7 @@ func DefaultConfig() *Config {
 		Defaults:    plugin.TaskDefaults{},
 		Directory:   fspath.Path(wd),
 		Interactive: false,
-		Logging:     config.Default(),
+		Logging:     logger.DefaultConfig(),
 		PluginPaths: pluginPaths,
 		Plugins:     nil,
 		Quiet:       false,
@@ -321,7 +319,7 @@ func genFlagName(s string, invert bool) string {
 // returns the first one that contains a file with a valid name. The returned
 // path is absolute. If no configuration file is found, the function returns an
 // empty string and an error.
-func resolveFile(ctx context.Context, dir fspath.Path, flagSet *flags.FlagSet) (fspath.Path, error) {
+func resolveFile(dir fspath.Path, flagSet *flags.FlagSet) (fspath.Path, error) {
 	var (
 		err       error
 		fileValue string
@@ -339,8 +337,6 @@ func resolveFile(ctx context.Context, dir fspath.Path, flagSet *flags.FlagSet) (
 	}
 
 	file := fspath.Path(fileValue)
-
-	log.Trace(ctx, "checking config file", "file", file)
 
 	if file.IsAbs() {
 		var ok bool
@@ -372,8 +368,6 @@ func resolveFile(ctx context.Context, dir fspath.Path, flagSet *flags.FlagSet) (
 
 	file = wd.Join(string(file))
 
-	log.Trace(ctx, "checking config file", "file", file)
-
 	if ok, err := file.IsFile(); err != nil {
 		return "", fmt.Errorf("failed to check if %q is a file: %w", file, err)
 	} else if ok {
@@ -404,8 +398,6 @@ func resolveFile(ctx context.Context, dir fspath.Path, flagSet *flags.FlagSet) (
 		for _, n := range configNames {
 			for _, e := range extensions {
 				file = d.Join(fmt.Sprintf("%s.%s", n, e))
-
-				log.Trace(ctx, "checking config file", "path", file)
 
 				if ok, err := file.IsFile(); err != nil {
 					return "", fmt.Errorf("failed to check if %q is a file: %w", file, err)

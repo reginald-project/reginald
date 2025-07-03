@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/reginald-project/reginald-sdk-go/api"
-	"github.com/reginald-project/reginald/internal/log"
+	"github.com/reginald-project/reginald/internal/logger"
 )
 
 // exit sends the "exit" notification to the given plugin.
@@ -31,7 +31,7 @@ func exit(ctx context.Context, plugin Plugin) error {
 		return err
 	}
 
-	log.Trace(ctx, "exit notification successful", "plugin", plugin.Manifest().Name)
+	slog.Log(ctx, slog.Level(logger.LevelTrace), "exit notification successful", "plugin", plugin.Manifest().Name)
 
 	return nil
 }
@@ -103,7 +103,15 @@ func handshake(ctx context.Context, plugin Plugin) error {
 		)
 	}
 
-	log.Trace(ctx, "handshake successful", "plugin", plugin.Manifest().Name, "result", result)
+	slog.Log(
+		ctx,
+		slog.Level(logger.LevelTrace),
+		"handshake successful",
+		"plugin",
+		plugin.Manifest().Name,
+		"result",
+		result,
+	)
 
 	return nil
 }
@@ -120,7 +128,15 @@ func runCommand(ctx context.Context, plugin Plugin, name string, cfg api.KeyValu
 		return err
 	}
 
-	log.Trace(ctx, "runCommand call successful", "plugin", plugin.Manifest().Name, "result", result)
+	slog.Log(
+		ctx,
+		slog.Level(logger.LevelTrace),
+		"runCommand successful",
+		"plugin",
+		plugin.Manifest().Name,
+		"result",
+		result,
+	)
 
 	return nil
 }
@@ -136,7 +152,15 @@ func shutdown(ctx context.Context, plugin Plugin) error {
 		return fmt.Errorf("%w: shutdown returned \"%t\"", errInvalidResponse, result)
 	}
 
-	log.Trace(ctx, "shutdown call successful", "plugin", plugin.Manifest().Name, "result", result)
+	slog.Log(
+		ctx,
+		slog.Level(logger.LevelTrace),
+		"shutdown call successful",
+		"plugin",
+		plugin.Manifest().Name,
+		"result",
+		result,
+	)
 
 	return nil
 }

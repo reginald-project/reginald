@@ -14,7 +14,7 @@
 
 //go:build !windows
 
-package config
+package logger
 
 import (
 	"fmt"

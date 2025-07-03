@@ -18,11 +18,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 
 	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald/internal/fspath"
-	"github.com/reginald-project/reginald/internal/log"
+	"github.com/reginald-project/reginald/internal/logger"
 	"github.com/reginald-project/reginald/internal/plugin"
 	"github.com/reginald-project/reginald/internal/system"
 	"github.com/reginald-project/reginald/internal/typeconv"
@@ -45,8 +46,6 @@ type TaskApplyOptions struct {
 // assigns the IDs and other missing values, and normalizes paths. It returns
 // new configs for the tasks.
 func ApplyTasks(ctx context.Context, rawCfg []map[string]any, opts TaskApplyOptions) ([]plugin.TaskConfig, error) {
-	log.Debug(ctx, "applying task configs")
-
 	if opts.Store == nil {
 		panic("nil plugin store")
 	}
@@ -60,7 +59,7 @@ func ApplyTasks(ctx context.Context, rawCfg []map[string]any, opts TaskApplyOpti
 	counts := make(map[string]int)
 
 	for _, rawEntry := range rawCfg {
-		log.Trace(ctx, "checking raw task map entry", "entry", rawEntry)
+		slog.Log(ctx, slog.Level(logger.LevelTrace), "checking task map entry", "entry", rawEntry)
 
 		rawType, ok := rawEntry["type"]
 		if !ok {
@@ -71,8 +70,6 @@ func ApplyTasks(ctx context.Context, rawCfg []map[string]any, opts TaskApplyOpti
 		if !ok {
 			return nil, fmt.Errorf("%w: task type is not a string (%v)", ErrInvalidConfig, rawType)
 		}
-
-		log.Trace(ctx, "finding task", "type", ttName)
 
 		task := opts.Store.Task(ttName)
 		if task == nil {
@@ -85,17 +82,26 @@ func ApplyTasks(ctx context.Context, rawCfg []map[string]any, opts TaskApplyOpti
 		}
 
 		if len(c.Platforms) > 0 && !c.Platforms.Current() {
-			log.Trace(ctx, "skipping task", "id", c.ID, "type", ttName, "platforms", c.Platforms)
+			slog.DebugContext(
+				ctx,
+				"task not enabled on platform",
+				"id",
+				c.ID,
+				"taskType",
+				ttName,
+				"platforms",
+				c.Platforms,
+			)
 
 			continue
 		}
 
-		c.Config, err = resolveTaskConfigs(ctx, task, c.ID, rawEntry, opts)
+		c.Config, err = resolveTaskConfigs(task, c.ID, rawEntry, opts)
 		if err != nil {
 			return nil, err
 		}
 
-		log.Trace(ctx, "parsed task config", "cfg", c)
+		slog.Log(ctx, slog.Level(logger.LevelTrace), "task config parsed", "cfg", c)
 
 		result = append(result, c)
 	}
@@ -474,16 +480,9 @@ func parseTaskMappedValue(top any, entry api.MappedValue, opts TaskApplyOptions)
 // the config file, the function uses the first alternative config type to
 // resolve the default value. It returns the parsed value, the resolved key, and
 // any errors it encounters.
-func parseTaskUnionValue(
-	ctx context.Context,
-	entry api.UnionValue,
-	rawMap map[string]any,
-	opts TaskApplyOptions,
-) (api.KeyVal, error) {
+func parseTaskUnionValue(entry api.UnionValue, rawMap map[string]any, opts TaskApplyOptions) (api.KeyVal, error) {
 	for _, alt := range entry.Alternatives {
-		log.Trace(ctx, "checking union alternative", "alt", alt)
-
-		kv, err := resolveUnionValue(ctx, alt, rawMap, opts)
+		kv, err := resolveUnionValue(alt, rawMap, opts)
 		if err != nil {
 			if errors.Is(err, errNoUnionMatch) {
 				continue
@@ -531,7 +530,6 @@ func parseTaskUnionValue(
 
 // resolveTaskConfigs resolves the values for a task instance.
 func resolveTaskConfigs(
-	ctx context.Context,
 	task *plugin.Task,
 	taskID string,
 	rawEntry map[string]any,
@@ -546,19 +544,6 @@ func resolveTaskConfigs(
 	for _, config := range task.Config {
 		switch cfgTyped := config.(type) {
 		case api.ConfigValue:
-			log.Trace(
-				ctx,
-				"parsing task config value as ConfigValue",
-				"id",
-				taskID,
-				"taskType",
-				ttName,
-				"key",
-				cfgTyped.Key,
-				"kvType",
-				cfgTyped.Type,
-			)
-
 			kv, err := parseTaskConfigValue(cfgTyped, rawEntry, opts)
 			if err != nil {
 				return nil, fmt.Errorf(
@@ -570,34 +555,8 @@ func resolveTaskConfigs(
 				)
 			}
 
-			log.Trace(
-				ctx,
-				"resolved task value",
-				"key",
-				cfgTyped.Key,
-				"id",
-				taskID,
-				"taskType",
-				ttName,
-				"value",
-				kv,
-			)
-
 			cfgs = append(cfgs, kv)
 		case api.MappedValue:
-			log.Trace(
-				ctx,
-				"parsing task config value as MappedValue",
-				"id",
-				taskID,
-				"taskType",
-				ttName,
-				"key",
-				cfgTyped.Key,
-				"keyType",
-				cfgTyped.KeyType,
-			)
-
 			topValue := rawEntry[cfgTyped.Key]
 			if topValue == nil {
 				cfgs = append(cfgs, api.KeyVal{
@@ -607,8 +566,6 @@ func resolveTaskConfigs(
 
 				continue
 			}
-
-			log.Trace(ctx, "got the top map", "key", cfgTyped.Key, "map", topValue)
 
 			kv, err := parseTaskMappedValue(topValue, cfgTyped, opts)
 			if err != nil {
@@ -621,38 +578,12 @@ func resolveTaskConfigs(
 				)
 			}
 
-			log.Trace(
-				ctx,
-				"resolved MappedValue",
-				"key",
-				cfgTyped.Key,
-				"id",
-				taskID,
-				"task",
-				ttName,
-				"value",
-				kv,
-			)
-
 			cfgs = append(cfgs, kv)
 		case api.UnionValue:
-			log.Trace(
-				ctx,
-				"parsing task config value as UnionValue",
-				"id",
-				taskID,
-				"task",
-				ttName,
-				"alternatives",
-				cfgTyped.Alternatives,
-			)
-
-			kv, err := parseTaskUnionValue(ctx, cfgTyped, rawEntry, opts)
+			kv, err := parseTaskUnionValue(cfgTyped, rawEntry, opts)
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse value in UnionValue for %q (%s): %w", taskID, ttName, err)
 			}
-
-			log.Trace(ctx, "resolved UnionValue", "id", taskID, "task", ttName, "value", kv)
 
 			cfgs = append(cfgs, kv)
 		default:
@@ -672,16 +603,9 @@ func resolveTaskConfigs(
 // the alternative matches the config, the function returns the KeyVal. If
 // the alternative does not match, the function returns errNoUnionMatch.
 // Otherwise, it returns the encountered error.
-func resolveUnionValue(
-	ctx context.Context,
-	alternative api.ConfigType,
-	rawMap map[string]any,
-	opts TaskApplyOptions,
-) (api.KeyVal, error) {
+func resolveUnionValue(alternative api.ConfigType, rawMap map[string]any, opts TaskApplyOptions) (api.KeyVal, error) {
 	switch altTyped := alternative.(type) {
 	case api.MappedValue:
-		log.Trace(ctx, "resolved union alternative to MappedValue", "key", altTyped.Key, "alt", altTyped)
-
 		entry, ok := rawMap[altTyped.Key]
 		if !ok {
 			return api.KeyVal{}, fmt.Errorf("%w: %q", errNoUnionMatch, altTyped.Key)
@@ -698,15 +622,11 @@ func resolveUnionValue(
 
 		return kv, nil
 	case api.ConfigValue:
-		log.Trace(ctx, "resolved union alternative to ConfigValue", "key", altTyped.Key, "alt", altTyped)
-
 		if _, ok := rawMap[altTyped.Key]; !ok {
 			return api.KeyVal{}, fmt.Errorf("%w: %q", errNoUnionMatch, altTyped.Key)
 		}
 
 		if _, ok := rawMap[altTyped.Key].(map[string]any); ok {
-			log.Trace(ctx, "found map, config value does not match")
-
 			return api.KeyVal{}, fmt.Errorf("%w: %q", errNoUnionMatch, altTyped.Key)
 		}
 

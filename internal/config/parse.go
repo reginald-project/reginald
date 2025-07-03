@@ -19,6 +19,7 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"reflect"
 	"slices"
@@ -31,7 +32,7 @@ import (
 	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/fspath"
-	"github.com/reginald-project/reginald/internal/log"
+	"github.com/reginald-project/reginald/internal/logger"
 	"github.com/reginald-project/reginald/internal/plugin"
 	"github.com/reginald-project/reginald/internal/terminal"
 	"github.com/reginald-project/reginald/internal/typeconv"
@@ -84,16 +85,12 @@ func Apply(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 func ApplyPlugins(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 	opts = initIdents(opts)
 
-	log.Debug(ctx, "applying plugins")
-
 	if opts.Store == nil {
 		panic("nil plugin store")
 	}
 
 	plugins := opts.Store.Plugins
 	if len(plugins) == 0 {
-		log.Trace(ctx, "no plugins found")
-
 		return nil
 	}
 
@@ -112,8 +109,6 @@ func ApplyPlugins(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 
 		a, ok := rawPlugins[domain]
 		if !ok {
-			log.Trace(ctx, "no map for plugin found", "name", name, "domain", domain)
-
 			a = make(map[string]any)
 		}
 
@@ -127,8 +122,6 @@ func ApplyPlugins(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 			)
 		}
 
-		log.Trace(ctx, "initial config map resolved", "name", name, "domain", domain, "map", rawMap)
-
 		newOpts := ApplyOptions{
 			Dir:     opts.Dir,
 			FlagSet: opts.FlagSet,
@@ -141,7 +134,7 @@ func ApplyPlugins(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 			return err
 		}
 
-		log.Trace(ctx, "values applied to map", "domain", domain, "map", rawMap)
+		slog.Log(ctx, slog.Level(logger.LevelTrace), "values parsed", "domain", domain)
 
 		cfgs = append(cfgs, api.KeyVal{
 			Value: api.Value{Val: values, Type: api.ConfigSliceValue},
@@ -202,13 +195,11 @@ func Parse(ctx context.Context, flagSet *flags.FlagSet) (*Config, error) {
 
 	var fileErr *FileError
 
-	if err := parseFile(ctx, dir, flagSet, cfg); err != nil {
+	if err := parseFile(dir, flagSet, cfg); err != nil {
 		if !errors.As(err, &fileErr) {
 			return nil, err
 		}
 	}
-
-	log.Debug(ctx, "read config file", "cfg", cfg)
 
 	opts := ApplyOptions{
 		idents:  nil,
@@ -413,17 +404,12 @@ func applyPluginCommands(
 	opts ApplyOptions,
 ) (api.KeyValues, error) {
 	result := make(api.KeyValues, len(cmds))
-	parent := opts.idents[len(opts.idents)-1]
-
-	log.Trace(ctx, "applying plugin commands", "parent", parent)
 
 	for _, cmd := range cmds {
 		name := cmd.Name
 
 		a, ok := rawMap[name]
 		if !ok {
-			log.Trace(ctx, "no map for command found", "cmd", name)
-
 			a = make(map[string]any)
 		}
 
@@ -435,8 +421,6 @@ func applyPluginCommands(
 				name,
 			)
 		}
-
-		log.Trace(ctx, "initial config map resolved", "parent", parent, "cmd", name, "map", raw)
 
 		newOpts := ApplyOptions{
 			Dir:     opts.Dir,
@@ -471,8 +455,6 @@ func applyPluginMap(
 	opts ApplyOptions,
 ) (api.KeyValues, error) {
 	result := make(api.KeyValues, 0, len(entries)+len(cmds))
-
-	log.Trace(ctx, "applying plugin map", "idents", opts.idents)
 
 	parent := opts.idents[len(opts.idents)-1]
 
@@ -524,8 +506,6 @@ func applyPluginMap(
 		result = append(result, kv)
 	}
 
-	log.Trace(ctx, "map applied", "key", parent, "cfg", rawMap)
-
 	return result, nil
 }
 
@@ -548,7 +528,7 @@ func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) erro
 	var err error
 
 	if len(opts.idents) == 1 {
-		opts, err = setDir(ctx, cfg, opts)
+		opts, err = setDir(cfg, opts)
 		if err != nil {
 			return err
 		}
@@ -558,16 +538,16 @@ func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) erro
 		field := cfg.Type().Field(i)
 		val := cfg.Field(i)
 
-		log.Trace(ctx, "checking config field", "key", field.Name, "value", val, "opts", opts)
+		slog.Log(ctx, slog.Level(logger.LevelTrace), "checking config field", "key", field.Name, "value", val)
 
 		if !val.CanSet() {
-			log.Trace(ctx, "skipping config field", "key", field.Name, "value", val)
+			slog.Log(ctx, slog.Level(logger.LevelTrace), "skipping config field", "key", field.Name)
 
 			continue
 		}
 
 		if slices.Contains(dynamicFields, field.Name) {
-			log.Trace(ctx, "skipping config field", "key", field.Name, "value", val)
+			slog.Log(ctx, slog.Level(logger.LevelTrace), "skipping config field", "key", field.Name)
 
 			continue
 		}
@@ -613,7 +593,7 @@ func applyStruct(ctx context.Context, cfg reflect.Value, opts ApplyOptions) erro
 			return err
 		}
 
-		log.Trace(ctx, "set config field", "key", field.Name, "value", val)
+		slog.Log(ctx, slog.Level(logger.LevelTrace), "set config field", "key", field.Name, "value", val)
 	}
 
 	return nil
@@ -816,8 +796,8 @@ func intValue(x int, opts ApplyOptions, entry *api.ConfigEntry) (int, error) {
 
 // parseFile finds and parses the config file and sets the values to cfg. It
 // modifies the pointed cfg in place.
-func parseFile(ctx context.Context, dir fspath.Path, flagSet *flags.FlagSet, cfg *Config) error {
-	configFile, err := resolveFile(ctx, dir, flagSet)
+func parseFile(dir fspath.Path, flagSet *flags.FlagSet, cfg *Config) error {
+	configFile, err := resolveFile(dir, flagSet)
 	if err != nil {
 		return err
 	}
@@ -827,8 +807,6 @@ func parseFile(ctx context.Context, dir fspath.Path, flagSet *flags.FlagSet, cfg
 	if configFile == "" {
 		return nil
 	}
-
-	log.Trace(ctx, "reading config file", "path", configFile)
 
 	data, err := os.ReadFile(string(configFile.Clean()))
 	if err != nil {
@@ -841,16 +819,12 @@ func parseFile(ctx context.Context, dir fspath.Path, flagSet *flags.FlagSet, cfg
 		return fmt.Errorf("failed to decode the config file: %w", err)
 	}
 
-	log.Trace(ctx, "unmarshaled config file", "cfg", rawCfg)
 	NormalizeKeys(rawCfg)
-	log.Trace(ctx, "normalized keys", "cfg", rawCfg)
 
 	decoderConfig := &mapstructure.DecoderConfig{ //nolint:exhaustruct // use default values
 		DecodeHook: mapstructure.TextUnmarshallerHookFunc(),
 		Result:     cfg,
 	}
-
-	log.Trace(ctx, "created default config", "cfg", cfg)
 
 	d, err := mapstructure.NewDecoder(decoderConfig)
 	if err != nil {
@@ -1156,7 +1130,7 @@ func resolvePluginValue(raw any, entry *api.ConfigEntry, opts ApplyOptions) (api
 
 // setDir sets the correct config value for "Dir" at the start of the config
 // struct parsing.
-func setDir(ctx context.Context, cfg reflect.Value, opts ApplyOptions) (ApplyOptions, error) {
+func setDir(cfg reflect.Value, opts ApplyOptions) (ApplyOptions, error) {
 	i := -1
 
 	for j := range cfg.NumField() {
@@ -1174,17 +1148,6 @@ func setDir(ctx context.Context, cfg reflect.Value, opts ApplyOptions) (ApplyOpt
 	field := cfg.Type().Field(i)
 	val := cfg.Field(i)
 
-	log.Trace(
-		ctx,
-		"checking config field",
-		"key",
-		field.Name,
-		"value",
-		val,
-		"opts",
-		opts,
-	)
-
 	if !val.CanSet() {
 		panic(fmt.Sprintf("cannot set Directory field in %q", cfg.Type().Name()))
 	}
@@ -1201,8 +1164,6 @@ func setDir(ctx context.Context, cfg reflect.Value, opts ApplyOptions) (ApplyOpt
 	}
 
 	opts.Dir = fspath.Path(val.String())
-
-	log.Trace(ctx, "set config field", "key", field.Name, "value", val)
 
 	return opts, nil
 }

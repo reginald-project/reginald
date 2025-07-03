@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package config defines the configuration options for the logger. It is
-// a separate pckage to avoid import cycles.
-package config
+package logger
 
 import (
 	"fmt"
@@ -35,8 +33,8 @@ type Config struct {
 	Enabled bool   `flag:"log,no-log" mapstructure:"enabled"` // whether logging is enabled
 }
 
-// Default returns the default logging configuration.
-func Default() Config {
+// DefaultConfig returns the default logging configuration.
+func DefaultConfig() Config {
 	logOutput, err := DefaultLogOutput()
 	if err != nil {
 		panic(fmt.Sprintf("failed to get the default log output: %v", err))

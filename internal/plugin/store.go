@@ -30,7 +30,7 @@ import (
 	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/fsutil"
-	"github.com/reginald-project/reginald/internal/log"
+	"github.com/reginald-project/reginald/internal/logger"
 	"github.com/reginald-project/reginald/internal/panichandler"
 	"golang.org/x/sync/errgroup"
 )
@@ -95,8 +95,8 @@ func NewStore(ctx context.Context, builtin []*api.Manifest, wd fspath.Path, path
 		}
 	}
 
-	log.Debug(ctx, "created plugin commands", "cmds", logCmds(commands))
-	log.Debug(ctx, "created plugin tasks", "tasks", logTasks(tasks))
+	slog.Log(ctx, slog.Level(logger.LevelTrace), "created commands", "cmds", logCmds(commands))
+	slog.Log(ctx, slog.Level(logger.LevelTrace), "created tasks", "tasks", logTasks(tasks))
 
 	store := &Store{
 		Plugins:  plugins,
@@ -155,6 +155,8 @@ func (*Store) Init(ctx context.Context, cmd *Command) error {
 				return fmt.Errorf("handshake with %q failed: %w", plugin.Manifest().Name, err)
 			}
 
+			slog.InfoContext(ctx, "plugin started", "plugin", plugin.Manifest().Name)
+
 			return nil
 		})
 	}
@@ -162,8 +164,6 @@ func (*Store) Init(ctx context.Context, cmd *Command) error {
 	if err := eg.Wait(); err != nil {
 		return fmt.Errorf("failed to init plugins: %w", err)
 	}
-
-	log.Debug(ctx, "plugins started")
 
 	return nil
 }
@@ -196,7 +196,13 @@ func (s *Store) Shutdown(ctx context.Context) error {
 
 	for _, plugin := range s.Plugins {
 		if !plugin.External() {
-			log.Trace(ctx, "shutting down built-in plugin", "no-op", true, "plugin", plugin.Manifest().Name)
+			slog.Log(
+				ctx,
+				slog.Level(logger.LevelTrace),
+				"nothing to shut down for built-in plugin",
+				"plugin",
+				plugin.Manifest().Name,
+			)
 
 			continue
 		}
@@ -211,7 +217,7 @@ func (s *Store) Shutdown(ctx context.Context) error {
 		}
 
 		if external.cmd == nil {
-			log.Trace(ctx, "skipping shutdown as process was not started", "plugin", external.manifest.Name)
+			slog.DebugContext(ctx, "skipping plugin shutdown as it was not started", "plugin", external.manifest.Name)
 
 			continue
 		}
@@ -249,8 +255,6 @@ func (s *Store) Shutdown(ctx context.Context) error {
 	if err := g.Wait(); err != nil {
 		return fmt.Errorf("failed to shut down plugins: %w", err)
 	}
-
-	log.Debug(ctx, "plugins shut down")
 
 	return nil
 }
@@ -310,7 +314,7 @@ func readAllSearchPaths(ctx context.Context, wd fspath.Path, paths []fspath.Path
 
 			path = path.Clean()
 
-			log.Trace(ctx, "checking plugin search path", "path", path)
+			slog.Log(ctx, slog.Level(logger.LevelTrace), "checking plugin search path", "path", path)
 
 			var ok bool
 
@@ -371,12 +375,12 @@ func readSearchPath(ctx context.Context, path fspath.Path) ([]Plugin, error) {
 		g.Go(func() error {
 			defer handlePanic()
 
-			log.Trace(ctx, "checking dir entry", "path", path, "name", dirEntry.Name())
+			slog.Log(ctx, slog.Level(logger.LevelTrace), "checking dir entry", "path", path, "name", dirEntry.Name())
 
 			if !dirEntry.IsDir() {
-				log.Warn(
+				slog.DebugContext(
 					ctx,
-					"dir entry in the plugins directory is not directory",
+					"skipping dir entry that is not a directory",
 					"path",
 					path,
 					"name",
@@ -389,7 +393,7 @@ func readSearchPath(ctx context.Context, path fspath.Path) ([]Plugin, error) {
 			// TODO: Possibly allow using other file formats.
 			manifestPath := path.Join(dirEntry.Name(), "manifest.json").Clean()
 
-			plugin, err := readExternalPlugin(ctx, manifestPath)
+			plugin, err := readExternalPlugin(manifestPath)
 			if err != nil {
 				return err
 			}
@@ -399,7 +403,15 @@ func readSearchPath(ctx context.Context, path fspath.Path) ([]Plugin, error) {
 
 			plugins = append(plugins, plugin)
 
-			log.Trace(ctx, "loaded external plugin", "plugin", plugin, "manifest", plugin.Manifest())
+			slog.Log(
+				ctx,
+				slog.Level(logger.LevelTrace),
+				"loaded external plugin manifest",
+				"plugin",
+				plugin,
+				"manifest",
+				plugin.Manifest(),
+			)
 
 			return nil
 		})
@@ -414,7 +426,7 @@ func readSearchPath(ctx context.Context, path fspath.Path) ([]Plugin, error) {
 
 // readExternalPlugin reads a plugin's manifest from path, decodes and validates
 // it, and returns an external plugin created from it.
-func readExternalPlugin(ctx context.Context, path fspath.Path) (*externalPlugin, error) {
+func readExternalPlugin(path fspath.Path) (*externalPlugin, error) {
 	data, err := os.ReadFile(string(path))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read %q: %w", path, err)
@@ -427,8 +439,6 @@ func readExternalPlugin(ctx context.Context, path fspath.Path) (*externalPlugin,
 	if err = d.Decode(&manifest); err != nil {
 		return nil, fmt.Errorf("failed to decode the manifest at %q: %w", path, err)
 	}
-
-	log.Trace(ctx, "manifest file decoded", "path", path, "manifest", manifest)
 
 	if manifest.Name == "" {
 		return nil, fmt.Errorf("%w: manifest at %q did not specify a name", errInvalidManifest, path)
@@ -472,8 +482,6 @@ func readExternalPlugin(ctx context.Context, path fspath.Path) (*externalPlugin,
 	}
 
 	manifest.Commands = manifest.Commands[:i]
-
-	log.Trace(ctx, "manifest for external plugin loaded", "path", path, "manifest", manifest)
 
 	return &externalPlugin{
 		conn:     nil,

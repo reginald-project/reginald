@@ -16,7 +16,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os"
 	"slices"
@@ -24,7 +23,6 @@ import (
 	"strings"
 
 	"github.com/reginald-project/reginald/internal/flags"
-	"github.com/reginald-project/reginald/internal/log"
 	"github.com/reginald-project/reginald/internal/plugin"
 	"github.com/reginald-project/reginald/internal/terminal"
 	"github.com/reginald-project/reginald/internal/text"
@@ -306,23 +304,15 @@ func printHelp(cmd *plugin.Command, flagSet *flags.FlagSet, store *plugin.Store)
 // runHelp runs the help command or flag by resolving the place of the command
 // or the flag in the arguments list. It prints the help message of the command
 // that was given before the flag.
-func runHelp(ctx context.Context, cmd *plugin.Command, store *plugin.Store) error {
-	log.Trace(ctx, "running help", "cmd", cmd)
-
+func runHelp(cmd *plugin.Command, store *plugin.Store) error {
 	root := rootCommand(cmd)
 	flagSet := newFlagSet()
-
-	log.Trace(ctx, "resolved root", "root", root)
 
 	var found *plugin.Command
 
 Loop:
 	for _, arg := range os.Args[1:] {
-		log.Trace(ctx, "checking arg", "arg", arg)
-
 		if arg == "-h" || arg == "--help" {
-			log.Trace(ctx, "found help flag")
-
 			break
 		}
 
@@ -343,8 +333,6 @@ Loop:
 		}
 
 		if root == nil {
-			log.Trace(ctx, "no command found and root is nil")
-
 			continue
 		}
 

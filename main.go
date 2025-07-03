@@ -34,7 +34,6 @@ import (
 
 	"github.com/chzyer/readline"
 	"github.com/reginald-project/reginald/internal/cli"
-	"github.com/reginald-project/reginald/internal/debugging"
 	"github.com/reginald-project/reginald/internal/panichandler"
 	"github.com/reginald-project/reginald/internal/terminal"
 	"github.com/reginald-project/reginald/internal/version"
@@ -76,6 +75,8 @@ func run() int {
 		cancel()
 	}()
 
+	// Discard logs until the config is parsed.
+	slog.SetDefault(slog.New(slog.DiscardHandler))
 	terminal.Set(terminal.New(ctx))
 
 	var wg sync.WaitGroup
@@ -98,11 +99,6 @@ func run() int {
 
 		cleanupCh <- nil
 	}()
-
-	// The logger is set to discard during checking if the debug mode is
-	// enabled.
-	slog.SetDefault(slog.New(slog.DiscardHandler))
-	debugging.Init(ctx)
 
 	exitCode := 0
 

@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -31,7 +32,7 @@ import (
 
 	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald/internal/fspath"
-	"github.com/reginald-project/reginald/internal/log"
+	"github.com/reginald-project/reginald/internal/logger"
 	"github.com/reginald-project/reginald/internal/panichandler"
 	"github.com/reginald-project/reginald/internal/terminal"
 )
@@ -188,7 +189,7 @@ func (e *externalPlugin) Manifest() *api.Manifest {
 // the method call is successful. Otherwise, it returns any error that occurred
 // or was returned in response.
 func (b *builtinPlugin) call(ctx context.Context, method string, _, result any) error {
-	log.Trace(ctx, "built-in method call", "plugin", b.manifest.Name, "method", method)
+	slog.Log(ctx, slog.Level(logger.LevelTrace), "call to built-in plugin", "plugin", b.manifest.Name, "method", method)
 
 	switch method {
 	case api.MethodHandshake:
@@ -213,14 +214,22 @@ func (b *builtinPlugin) call(ctx context.Context, method string, _, result any) 
 
 // notify sends a notification request to the plugin.
 func (b *builtinPlugin) notify(ctx context.Context, method string, _ any) error {
-	log.Trace(ctx, "built-in notfication", "plugin", b.manifest.Name, "method", method)
+	slog.Log(
+		ctx,
+		slog.Level(logger.LevelTrace),
+		"notification to built-in plugin",
+		"plugin",
+		b.manifest.Name,
+		"method",
+		method,
+	)
 
 	return nil
 }
 
 // start starts the execution of the plugin process.
 func (b *builtinPlugin) start(ctx context.Context) error {
-	log.Trace(ctx, "starting built-in plugin", "no-op", true, "plugin", b.manifest.Domain)
+	slog.Log(ctx, slog.Level(logger.LevelTrace), "nothing to start for built-in plugin", "plugin", b.manifest.Name)
 
 	return nil
 }
@@ -229,7 +238,7 @@ func (b *builtinPlugin) start(ctx context.Context) error {
 // the method call is successful. Otherwise, it returns any error that occurred
 // or was returned in response.
 func (e *externalPlugin) call(ctx context.Context, method string, params, result any) error {
-	id := e.lastID.Add(1) //nolint:varnamelen
+	id := e.lastID.Add(1)
 
 	rpcID, err := api.NewID(id)
 	if err != nil {
@@ -248,20 +257,7 @@ func (e *externalPlugin) call(ctx context.Context, method string, params, result
 		Params:  rawParams,
 	}
 
-	log.Trace(
-		ctx,
-		"calling method",
-		"plugin",
-		e.manifest.Name,
-		"method",
-		method,
-		"id",
-		id,
-		"rpcId",
-		*rpcID,
-		"params",
-		params,
-	)
+	slog.Log(ctx, slog.Level(logger.LevelTrace), "calling method", "plugin", e.manifest.Name, "req", req)
 	e.queue.add(rpcID)
 	defer e.queue.close(rpcID)
 
@@ -276,7 +272,7 @@ func (e *externalPlugin) call(ctx context.Context, method string, params, result
 			return fmt.Errorf("%w: plugin %q (method %q)", errNoResponse, e.manifest.Name, method)
 		}
 
-		log.Trace(ctx, "received response", "plugin", e.manifest.Name, "res", res)
+		slog.Log(ctx, slog.Level(logger.LevelTrace), "response received", "plugin", e.manifest.Name, "res", res)
 
 		if res.Error != nil {
 			return fmt.Errorf("plugin returned an error: %w", res.Error)
@@ -286,7 +282,15 @@ func (e *externalPlugin) call(ctx context.Context, method string, params, result
 			return fmt.Errorf("failed to unmarshal result: %w", err)
 		}
 
-		log.Trace(ctx, "method call successful", "plugin", e.manifest.Name, "method", method, "id", id)
+		slog.Log(
+			ctx,
+			slog.Level(logger.LevelTrace),
+			"method call successful",
+			"plugin",
+			e.manifest.Name,
+			"method",
+			method,
+		)
 	case <-ctx.Done():
 		return fmt.Errorf("method call halted: %w", ctx.Err())
 	}
@@ -297,7 +301,7 @@ func (e *externalPlugin) call(ctx context.Context, method string, params, result
 // kill kills the plugin process.
 func (e *externalPlugin) kill(ctx context.Context) error {
 	if e.cmd.Process != nil {
-		log.Warn(ctx, "killing plugin process", "plugin", e.manifest.Name)
+		slog.WarnContext(ctx, "killing process", "plugin", e.manifest.Name)
 
 		if err := e.cmd.Process.Kill(); err != nil {
 			return fmt.Errorf("failed to kill process for plugin %q: %w", e.manifest.Name, err)
@@ -342,7 +346,7 @@ func (e *externalPlugin) notify(ctx context.Context, method string, params any) 
 		Params:  rawParams,
 	}
 
-	log.Trace(ctx, "sending notification", "plugin", e.manifest.Name, "method", method, "params", params)
+	slog.Log(ctx, slog.Level(logger.LevelTrace), "sending notification", "plugin", e.manifest.Name, "req", req)
 
 	return write(ctx, e.conn, req)
 }
@@ -370,22 +374,13 @@ func (e *externalPlugin) read(ctx context.Context, handlePanic func()) {
 				return
 			}
 
-			log.Error(ctx, "error when reading from plugin", "plugin", e.manifest.Name, "err", err)
+			slog.ErrorContext(ctx, "error reading from plugin", "plugin", e.manifest.Name, "err", err)
 
 			return
 		}
 
 		if msg.JSONRCP != api.JSONRPCVersion {
-			log.Error(
-				ctx,
-				"invalid JSON-RPC version",
-				"plugin",
-				e.manifest.Name,
-				"want",
-				api.JSONRPCVersion,
-				"got",
-				msg.JSONRCP,
-			)
+			slog.ErrorContext(ctx, "invalid JSON-RPC version", "plugin", e.manifest.Name, "got", msg.JSONRCP)
 
 			return
 		}
@@ -393,15 +388,15 @@ func (e *externalPlugin) read(ctx context.Context, handlePanic func()) {
 		if msg.ID == nil || msg.ID.Null {
 			switch {
 			case msg.Method == "":
-				log.Error(ctx, "no method in notification", "plugin", e.manifest.Name, "msg", msg)
+				slog.ErrorContext(ctx, "no method in notification", "plugin", e.manifest.Name, "rpcMsg", msg)
 
 				return
 			case msg.Error != nil:
-				log.Error(ctx, "error in notification", "plugin", e.manifest.Name, "msg", msg)
+				slog.ErrorContext(ctx, "error in notification", "plugin", e.manifest.Name, "rpcMsg", msg)
 
 				return
 			case len(msg.Result) > 0:
-				log.Error(ctx, "result in notification", "plugin", e.manifest.Name, "msg", msg)
+				slog.ErrorContext(ctx, "result in notification", "plugin", e.manifest.Name, "rpcMsg", msg)
 
 				return
 			}
@@ -413,10 +408,10 @@ func (e *externalPlugin) read(ctx context.Context, handlePanic func()) {
 				Params:  msg.Params,
 			}
 
-			log.Trace(ctx, "received notification", "plugin", e.manifest.Name, "req", req)
+			slog.Log(ctx, slog.Level(logger.LevelTrace), "notification received", "plugin", e.manifest.Name, "req", req)
 
 			if err := e.notification(ctx, req); err != nil {
-				log.Error(ctx, "error when handling notification from plugin", "plugin", e.manifest.Name, "err", err)
+				slog.ErrorContext(ctx, "error handling notification", "plugin", e.manifest.Name, "err", err)
 
 				return
 			}
@@ -426,18 +421,18 @@ func (e *externalPlugin) read(ctx context.Context, handlePanic func()) {
 
 		switch {
 		case msg.Method != "":
-			log.Error(ctx, "method in response", "plugin", e.manifest.Name, "msg", msg)
+			slog.ErrorContext(ctx, "method in response", "plugin", e.manifest.Name, "rpcMsg", msg)
 
 			return
 		case msg.Params != nil:
-			log.Error(ctx, "params in response", "plugin", e.manifest.Name, "msg", msg)
+			slog.ErrorContext(ctx, "params in response", "plugin", e.manifest.Name, "rpcMsg", msg)
 
 			return
 		}
 
 		ch := e.queue.channel(msg.ID)
 		if ch == nil {
-			log.Error(ctx, "response with ID that is not waiting", "plugin", e.manifest.Name, "msg", msg)
+			slog.ErrorContext(ctx, "response with no corresponding ID", "plugin", e.manifest.Name, "rpcMsg", msg)
 
 			return
 		}
@@ -469,12 +464,12 @@ func (e *externalPlugin) readStderr(ctx context.Context, handlePanic func()) {
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		log.Warn(ctx, "plugin printed to stderr", "plugin", e.manifest.Name, "output", line)
+		slog.WarnContext(ctx, "plugin printed to stderr", "plugin", e.manifest.Name, "output", line)
 		terminal.Errorf("[%s] %s\n", e.manifest.Name, line)
 	}
 
 	if err := scanner.Err(); err != nil {
-		log.Error(ctx, "error reading plugin stderr", "plugin", e.manifest.Name, "err", err)
+		slog.WarnContext(ctx, "error reading plugin stderr", "plugin", e.manifest.Name, "err", err)
 	}
 }
 
@@ -667,7 +662,7 @@ func write(ctx context.Context, w io.Writer, req api.Request) error {
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	log.Trace(ctx, "writing data", "data", string(data))
+	slog.Log(ctx, slog.Level(logger.LevelTrace), "writing data", "data", string(data))
 
 	header := fmt.Sprintf("Content-Length: %d\r\n\r\n", len(data))
 	if _, err = w.Write([]byte(header)); err != nil {
