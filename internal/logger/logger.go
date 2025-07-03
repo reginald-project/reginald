@@ -44,15 +44,15 @@ var errInvalidFormat = errors.New("invalid log format")
 // Init initializes the proper logger of the program and sets it as the default
 // logger in [log/slog].
 func Init(cfg Config, debug bool) error {
+	opts := &slog.HandlerOptions{
+		AddSource:   false, // adding the source is done with the custom handler
+		Level:       cfg.Level,
+		ReplaceAttr: replaceAttr,
+	}
+
 	if debug {
-		slog.SetDefault(
-			slog.New(
-				slog.NewJSONHandler(
-					os.Stdout,
-					&slog.HandlerOptions{AddSource: true, Level: LevelTrace, ReplaceAttr: replaceAttr},
-				),
-			),
-		)
+		opts.Level = LevelTrace
+		slog.SetDefault(slog.New(newHandler(slog.NewJSONHandler(os.Stdout, opts))))
 
 		return nil
 	}
@@ -86,12 +86,6 @@ func Init(cfg Config, debug bool) error {
 		w = fw
 	}
 
-	opts := &slog.HandlerOptions{
-		AddSource:   true,
-		Level:       cfg.Level,
-		ReplaceAttr: replaceAttr,
-	}
-
 	var h slog.Handler
 
 	switch strings.ToLower(cfg.Format) {
@@ -103,7 +97,7 @@ func Init(cfg Config, debug bool) error {
 		return fmt.Errorf("%w: %s", errInvalidFormat, cfg.Format)
 	}
 
-	slog.SetDefault(slog.New(h))
+	slog.SetDefault(slog.New(newHandler(h)))
 
 	return nil
 }
