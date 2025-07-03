@@ -23,7 +23,6 @@ import (
 	"slices"
 
 	"github.com/reginald-project/reginald-sdk-go/api"
-	"github.com/reginald-project/reginald-sdk-go/logs"
 )
 
 // An RPCHandler is a handler for slog that can be used for logging in
@@ -71,7 +70,7 @@ func (h *RPCHandler) Handle(_ context.Context, r slog.Record) error {
 	var params api.LogParams
 
 	params.Time = r.Time
-	params.Level = logs.Level(r.Level)
+	params.Level = r.Level
 	params.Message = r.Message
 
 	if h.opts.AddSource {

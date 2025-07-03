@@ -19,7 +19,6 @@ package logconfig
 import (
 	"fmt"
 
-	"github.com/reginald-project/reginald-sdk-go/logs"
 	"github.com/reginald-project/reginald/internal/fspath"
 )
 
@@ -30,10 +29,10 @@ const (
 
 // Config contains the configuration options for the logger.
 type Config struct {
-	Format  string     `mapstructure:"format"`                    // format of the logs, "json" or "text"
-	Output  string     `mapstructure:"output"`                    // destination of the logs
-	Level   logs.Level `mapstructure:"level"`                     // logging level
-	Enabled bool       `flag:"log,no-log" mapstructure:"enabled"` // whether logging is enabled
+	Format  string `mapstructure:"format"`                    // format of the logs, "json" or "text"
+	Output  string `mapstructure:"output"`                    // destination of the logs
+	Level   Level  `mapstructure:"level"`                     // logging level
+	Enabled bool   `flag:"log,no-log" mapstructure:"enabled"` // whether logging is enabled
 }
 
 // Default returns the default logging configuration.
@@ -46,7 +45,7 @@ func Default() Config {
 	return Config{
 		Enabled: true,
 		Format:  "json",
-		Level:   logs.LevelInfo,
+		Level:   LevelInfo,
 		Output:  string(logOutput),
 	}
 }

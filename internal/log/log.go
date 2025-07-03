@@ -23,7 +23,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/reginald-project/reginald-sdk-go/logs"
+	"github.com/reginald-project/reginald/internal/log/logconfig"
 )
 
 // logCallerDepth is the depth of the stack trace to skip when logging.
@@ -37,33 +37,33 @@ var ignorePC = false //nolint:gochecknoglobals // can be set at compile time
 
 // Trace calls [log] with level set to trace on the default logger.
 func Trace(ctx context.Context, msg string, args ...any) {
-	log(ctx, slog.Default(), logs.LevelTrace, msg, args...)
+	log(ctx, slog.Default(), logconfig.LevelTrace, msg, args...)
 }
 
 // Debug calls [log] with level set to debug on the default logger.
 func Debug(ctx context.Context, msg string, args ...any) {
-	log(ctx, slog.Default(), logs.LevelDebug, msg, args...)
+	log(ctx, slog.Default(), logconfig.LevelDebug, msg, args...)
 }
 
 // Info calls [log] with level set to info on the default logger.
 func Info(ctx context.Context, msg string, args ...any) {
-	log(ctx, slog.Default(), logs.LevelInfo, msg, args...)
+	log(ctx, slog.Default(), logconfig.LevelInfo, msg, args...)
 }
 
 // Warn calls [log] with level set to warn on the default logger.
 func Warn(ctx context.Context, msg string, args ...any) {
-	log(ctx, slog.Default(), logs.LevelWarn, msg, args...)
+	log(ctx, slog.Default(), logconfig.LevelWarn, msg, args...)
 }
 
 // Error calls [log] with level set to error on the default logger.
 func Error(ctx context.Context, msg string, args ...any) {
-	log(ctx, slog.Default(), logs.LevelError, msg, args...)
+	log(ctx, slog.Default(), logconfig.LevelError, msg, args...)
 }
 
 // log is the low-level logging method for methods that take ...any. It must
 // always be called directly by an exported logging method or function, because
 // it uses a fixed call depth to obtain the pc.
-func log(ctx context.Context, l *slog.Logger, level logs.Level, msg string, args ...any) {
+func log(ctx context.Context, l *slog.Logger, level logconfig.Level, msg string, args ...any) {
 	if !l.Enabled(ctx, slog.Level(level)) {
 		return
 	}

@@ -28,7 +28,6 @@ import (
 	"sync/atomic"
 
 	"github.com/reginald-project/reginald-sdk-go/api"
-	"github.com/reginald-project/reginald-sdk-go/logs"
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/fsutil"
 	"github.com/reginald-project/reginald/internal/log"
@@ -74,12 +73,6 @@ func NewStore(ctx context.Context, builtin []*api.Manifest, wd fspath.Path, path
 	}
 
 	plugins = append(plugins, external...)
-
-	if slog.Default().Enabled(ctx, slog.Level(logs.LevelTrace)) {
-		for _, p := range plugins {
-			log.Trace(ctx, "loaded name-domain pair", "name", p.Manifest().Name, "domain", p.Manifest().Domain)
-		}
-	}
 
 	if err := validate(plugins); err != nil {
 		return nil, err

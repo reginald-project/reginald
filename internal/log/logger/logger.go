@@ -25,7 +25,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/reginald-project/reginald-sdk-go/logs"
 	"github.com/reginald-project/reginald/internal/debugging"
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/log/logconfig"
@@ -65,7 +64,7 @@ func InitBootstrap() error {
 			slog.New(
 				slog.NewJSONHandler(
 					logwriter.BootstrapWriter,
-					&slog.HandlerOptions{AddSource: true, Level: logs.LevelTrace, ReplaceAttr: replaceAttrFunc()},
+					&slog.HandlerOptions{AddSource: true, Level: logconfig.LevelTrace, ReplaceAttr: replaceAttrFunc()},
 				),
 			),
 		)
@@ -142,7 +141,7 @@ func Init(cfg logconfig.Config) error {
 func debugHandler() slog.Handler {
 	return slog.NewJSONHandler(
 		terminal.NewWriter(terminal.Default(), terminal.Stdout),
-		&slog.HandlerOptions{AddSource: true, Level: logs.LevelTrace, ReplaceAttr: replaceAttrFunc()},
+		&slog.HandlerOptions{AddSource: true, Level: logconfig.LevelTrace, ReplaceAttr: replaceAttrFunc()},
 	)
 }
 
@@ -163,7 +162,7 @@ func replaceAttrFunc() func([]string, slog.Attr) slog.Attr {
 				panic(fmt.Sprintf("failed to convert level value to slog.Level: %[1]v (%[1]T)", a.Value.Any()))
 			}
 
-			return slog.String(slog.LevelKey, logs.Level(level).String())
+			return slog.String(slog.LevelKey, logconfig.Level(level).String())
 		}
 
 		return a

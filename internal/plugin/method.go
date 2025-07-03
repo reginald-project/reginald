@@ -40,7 +40,7 @@ func exit(ctx context.Context, plugin Plugin) error {
 func handleLog(ctx context.Context, plugin Plugin, params *api.LogParams) error {
 	level := params.Level
 
-	if !slog.Default().Enabled(ctx, slog.Level(level)) {
+	if !slog.Default().Enabled(ctx, level) {
 		return nil
 	}
 
@@ -63,7 +63,7 @@ func handleLog(ctx context.Context, plugin Plugin, params *api.LogParams) error 
 
 	attrs = append(attrs, slog.String("plugin", plugin.Manifest().Name))
 	t := params.Time
-	r := slog.NewRecord(t, slog.Level(level), msg, 0)
+	r := slog.NewRecord(t, level, msg, 0)
 
 	r.AddAttrs(attrs...)
 
