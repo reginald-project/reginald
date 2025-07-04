@@ -34,6 +34,7 @@ import (
 	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/logger"
 	"github.com/reginald-project/reginald/internal/plugin"
+	"github.com/reginald-project/reginald/internal/system"
 	"github.com/reginald-project/reginald/internal/terminal"
 	"github.com/reginald-project/reginald/internal/typeconv"
 )
@@ -149,7 +150,7 @@ func ApplyPlugins(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 
 // NormalizeKeys checks the config value keys in the given raw config map and
 // changes them into the wanted format ("kebab-case") in case the config
-// contains something in "camel-case". This way the config file is able to
+// contains something in "camelCase". This way the config file is able to
 // support JSON and YAML while allowing those files to have the keys more
 // idiomatic for those formats.
 func NormalizeKeys(cfg map[string]any) {
@@ -706,6 +707,43 @@ func envValue(idents []string) string {
 	return os.Getenv(strings.ToUpper(key))
 }
 
+// fromOSDecodeHookFunc returns a decode hook for [mapstructure] that decodes
+// a possible OS map value into a single value for the config struct.
+func fromOSDecodeHookFunc() mapstructure.DecodeHookFuncType {
+	return func(f, t reflect.Type, data any) (any, error) {
+		ok := f.Kind() == reflect.Map && t.Kind() != reflect.Map && t.Kind() != reflect.Struct &&
+			t.Kind() != reflect.Interface
+		if !ok {
+			return data, nil
+		}
+
+		var m map[string]any
+
+		m, ok = data.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("%w: cannot convert OS map to a map: %+v", typeconv.ErrConv, data)
+		}
+
+		for k, v := range m {
+			if system.OS(k).Current() {
+				return v, nil
+			}
+		}
+
+		var def any
+
+		if def, ok = m["default"]; ok {
+			return def, nil
+		}
+
+		if def, ok = m["_"]; ok {
+			return def, nil
+		}
+
+		return nil, fmt.Errorf("has %w, got no config value for current platform", ErrInvalidConfig)
+	}
+}
+
 // initIdents sets the correct initial identifiers to the ApplyOptions and
 // checks that the initial identifiers are valid. It panics on errors.
 func initIdents(opts ApplyOptions) ApplyOptions {
@@ -822,7 +860,7 @@ func parseFile(dir fspath.Path, flagSet *flags.FlagSet, cfg *Config) error {
 	NormalizeKeys(rawCfg)
 
 	decoderConfig := &mapstructure.DecoderConfig{ //nolint:exhaustruct // use default values
-		DecodeHook: mapstructure.TextUnmarshallerHookFunc(),
+		DecodeHook: mapstructure.ComposeDecodeHookFunc(fromOSDecodeHookFunc(), mapstructure.TextUnmarshallerHookFunc()),
 		Result:     cfg,
 	}
 
