@@ -57,11 +57,30 @@ type Plugin interface {
 	start(ctx context.Context) error
 }
 
+// A Service is the service function a built-in plugin. The method calls that
+// would be done through JSON-RPC to external plugins are made using the service
+// function when the plugin in question is built in.
+type Service func(context.Context, ServiceInfo, string, any) error
+
+// A ServiceInfo contains the context on the current run for a service function.
+type ServiceInfo struct {
+	// Store is the plugin store for the current run.
+	Store *Store
+}
+
 // A builtinPlugin is a built-in plugin provided by Reginald. It is implemented
 // within the program and it must not use an external executable.
 type builtinPlugin struct {
 	// manifest is the manifest for this plugin.
 	manifest *api.Manifest
+
+	// store is the plugins store for this run. Pointer to it is stored in
+	// the built-in plugins as some of the built-ins need to use the data
+	// provided in the store (e.g. the "attend" command).
+	store *Store
+
+	// service is the service function for this built-in plugin.
+	service Service
 }
 
 // A connection handles the connection with the plugin client and the external
@@ -205,6 +224,18 @@ func (b *builtinPlugin) call(ctx context.Context, method string, _, result any) 
 				ProtocolVersion: 0,
 			},
 		}
+	case api.MethodRunCommand:
+		// err := service.RunCommand(ctx, &builtin.ServiceOptions{})
+		// if err != nil {
+		// 	return err
+		// }
+
+		runCmdResult, ok := result.(*struct{})
+		if !ok {
+			panic(fmt.Sprintf("invalid result type for method %q: %[2]T (%[2]v)", method, result))
+		}
+
+		*runCmdResult = struct{}{}
 	default:
 		panic("invalid method call: " + method)
 	}

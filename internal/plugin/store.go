@@ -78,6 +78,8 @@ func NewStore(ctx context.Context, builtin []*api.Manifest, wd fspath.Path, path
 	for _, m := range manifests {
 		plugins = append(plugins, &builtinPlugin{
 			manifest: m,
+			store:    nil,
+			service:  nil,
 		})
 	}
 
@@ -155,7 +157,21 @@ func (s *Store) Command(prev *Command, name string) *Command {
 // the command that should be run and the tasks to determine which plugins
 // should be loaded. It also resolves the execution order for the tasks, taking
 // the tasks that install the required runtimes into account.
-func (s *Store) Init(ctx context.Context, tasks []TaskConfig) error {
+func (s *Store) Init(ctx context.Context, serviceResolver func(string) Service, tasks []TaskConfig) error {
+	for _, plugin := range s.Plugins {
+		if plugin.External() {
+			continue
+		}
+
+		b, ok := plugin.(*builtinPlugin)
+		if !ok {
+			panic(fmt.Sprintf("built-in plugin %q cannot be cast to builtinPlugin", plugin.Manifest().Name))
+		}
+
+		b.store = s
+		b.service = serviceResolver(b.manifest.Name)
+	}
+
 	var (
 		err   error
 		graph taskGraph

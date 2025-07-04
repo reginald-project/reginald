@@ -28,6 +28,7 @@ import (
 	"github.com/reginald-project/reginald/internal/config"
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/plugin"
+	"github.com/reginald-project/reginald/internal/plugin/builtin"
 	"github.com/reginald-project/reginald/internal/plugin/runtimes"
 	"github.com/reginald-project/reginald/internal/terminal"
 	"github.com/reginald-project/reginald/internal/version"
@@ -86,7 +87,7 @@ func Execute(ctx context.Context) error {
 		}
 	}
 
-	if err = info.store.Init(ctx, info.cfg.Tasks); err != nil {
+	if err = info.store.Init(ctx, builtin.Service, info.cfg.Tasks); err != nil {
 		return &ExitError{
 			Code: 1,
 			err:  err,

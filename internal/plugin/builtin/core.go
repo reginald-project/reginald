@@ -15,7 +15,10 @@
 package builtin
 
 import (
+	"context"
+
 	"github.com/reginald-project/reginald-sdk-go/api"
+	"github.com/reginald-project/reginald/internal/plugin"
 	"github.com/reginald-project/reginald/internal/version"
 )
 
@@ -59,4 +62,9 @@ func coreManifest() *api.Manifest {
 		},
 		Tasks: nil,
 	}
+}
+
+// coreService is the service function for the "reginald-core" plugin.
+func coreService(_ context.Context, info plugin.ServiceInfo, method string, params any) error {
+	return nil
 }

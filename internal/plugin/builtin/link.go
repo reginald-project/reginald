@@ -15,7 +15,10 @@
 package builtin
 
 import (
+	"context"
+
 	"github.com/reginald-project/reginald-sdk-go/api"
+	"github.com/reginald-project/reginald/internal/plugin"
 	"github.com/reginald-project/reginald/internal/version"
 )
 
@@ -99,4 +102,8 @@ func linkManifest() *api.Manifest {
 			},
 		},
 	}
+}
+
+func linkService(_ context.Context, info plugin.ServiceInfo, method string, params any) error {
+	return nil
 }

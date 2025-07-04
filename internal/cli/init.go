@@ -22,11 +22,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/reginald-project/reginald/internal/builtin"
 	"github.com/reginald-project/reginald/internal/config"
 	"github.com/reginald-project/reginald/internal/flags"
 	"github.com/reginald-project/reginald/internal/logger"
 	"github.com/reginald-project/reginald/internal/plugin"
+	"github.com/reginald-project/reginald/internal/plugin/builtin"
 	"github.com/reginald-project/reginald/internal/system"
 	"github.com/reginald-project/reginald/internal/terminal"
 	"github.com/reginald-project/reginald/internal/version"
