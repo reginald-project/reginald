@@ -507,6 +507,23 @@ func applyPluginMap(
 		result = append(result, kv)
 	}
 
+	for k, v := range rawMap {
+		ok := slices.ContainsFunc(entries, func(e api.ConfigEntry) bool { return e.Key == k })
+		if ok {
+			continue
+		}
+
+		ok = slices.ContainsFunc(cmds, func(c *plugin.Command) bool { return c.Name == k })
+		if !ok {
+			return nil, fmt.Errorf("%w: unknown key %q in %q", ErrInvalidConfig, k, strings.Join(opts.idents[1:], "."))
+		}
+
+		_, ok = v.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("%w: unknown key %q in %q", ErrInvalidConfig, k, strings.Join(opts.idents[1:], "."))
+		}
+	}
+
 	return result, nil
 }
 
