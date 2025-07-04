@@ -104,6 +104,6 @@ func linkManifest() *api.Manifest {
 	}
 }
 
-func linkService(_ context.Context, info plugin.ServiceInfo, method string, params any) error {
+func linkService(_ context.Context, _ plugin.ServiceInfo, _ string, _ any) error {
 	return nil
 }

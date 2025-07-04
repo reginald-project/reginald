@@ -60,7 +60,7 @@ type Plugin interface {
 // A Service is the service function a built-in plugin. The method calls that
 // would be done through JSON-RPC to external plugins are made using the service
 // function when the plugin in question is built in.
-type Service func(context.Context, ServiceInfo, string, any) error
+type Service func(ctx context.Context, info ServiceInfo, method string, params any) error
 
 // A ServiceInfo contains the context on the current run for a service function.
 type ServiceInfo struct {
@@ -207,7 +207,7 @@ func (e *externalPlugin) Manifest() *api.Manifest {
 // call calls a method in the plugin. It unmarshals the result into result if
 // the method call is successful. Otherwise, it returns any error that occurred
 // or was returned in response.
-func (b *builtinPlugin) call(ctx context.Context, method string, _, result any) error {
+func (b *builtinPlugin) call(ctx context.Context, method string, params, result any) error {
 	slog.Log(ctx, slog.Level(logger.LevelTrace), "call to built-in plugin", "plugin", b.manifest.Name, "method", method)
 
 	switch method {
@@ -224,18 +224,18 @@ func (b *builtinPlugin) call(ctx context.Context, method string, _, result any) 
 				ProtocolVersion: 0,
 			},
 		}
-	case api.MethodRunCommand:
-		// err := service.RunCommand(ctx, &builtin.ServiceOptions{})
-		// if err != nil {
-		// 	return err
-		// }
+	case api.MethodRunCommand, api.MethodRunTask:
+		err := b.service(ctx, ServiceInfo{Store: b.store}, method, params)
+		if err != nil {
+			return fmt.Errorf("failed to run method %q from %q: %w", method, b.manifest.Name, err)
+		}
 
-		runCmdResult, ok := result.(*struct{})
+		runResult, ok := result.(*struct{})
 		if !ok {
 			panic(fmt.Sprintf("invalid result type for method %q: %[2]T (%[2]v)", method, result))
 		}
 
-		*runCmdResult = struct{}{}
+		*runResult = struct{}{}
 	default:
 		panic("invalid method call: " + method)
 	}

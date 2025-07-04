@@ -37,9 +37,10 @@ var errNoUnionMatch = errors.New("union value does not match")
 type TaskApplyOptions struct {
 	// Store contains the discovered plugin. It should not be set when applying
 	// the built-in config values
-	Store    *plugin.Store
-	Defaults plugin.TaskDefaults // default options for the task types
-	Dir      fspath.Path         // base directory for the program operations
+	Store           *plugin.Store
+	Defaults        plugin.TaskDefaults // default options for the task types
+	currentDefaults map[string]any      // default options for the currently-parsed task
+	Dir             fspath.Path         // base directory for the program operations
 }
 
 // ApplyTasks applies the default values for tasks from the given defaults,
@@ -95,6 +96,15 @@ func ApplyTasks(ctx context.Context, rawCfg []map[string]any, opts TaskApplyOpti
 
 			continue
 		}
+
+		var defaults map[string]any
+
+		defaults, ok = opts.Defaults[ttName]
+		if !ok {
+			defaults = map[string]any{}
+		}
+
+		opts.currentDefaults = defaults
 
 		c.Config, err = resolveTaskConfigs(task, c.ID, rawEntry, opts)
 		if err != nil {
@@ -198,8 +208,8 @@ func parseTaskConfigValue(entry api.ConfigValue, rawMap map[string]any, opts Tas
 		}
 	}
 
-	if opts.Defaults != nil {
-		defaultsValue, ok := opts.Defaults[entry.Key]
+	if len(opts.currentDefaults) > 0 {
+		defaultsValue, ok := opts.currentDefaults[entry.Key]
 		if ok {
 			raw = defaultsValue
 		}
