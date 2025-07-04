@@ -60,7 +60,7 @@ type TaskConfig struct {
 	Config api.KeyValues
 
 	// Requires contains the task IDs or types that this task depends on.
-	Requires TaskRequirements
+	Requires []string
 
 	// Platforms contains the operating systems to run the task on. Empty slice
 	// means that the task is run on every operating system.
@@ -72,9 +72,6 @@ type TaskConfig struct {
 
 // TaskDefaults is the type for the default config values set for the tasks.
 type TaskDefaults map[string]map[string]any
-
-// TaskRequirements is list of tasks a task depends on.
-type TaskRequirements []string
 
 // taskGraph is a graph of TaskNodes that can be sorted topographically
 // to determine the execution order of the task instances.
@@ -96,25 +93,6 @@ type visitState int
 
 // logTasks is a helper type for logging a slice of tasks.
 type logTasks []*Task
-
-// UnmarshalText implements [encoding.TextUnmarshaler]. It decodes a single
-// string into TaskRequirements.
-func (r *TaskRequirements) UnmarshalText(data []byte) error { //nolint:unparam // implements interface
-	if len(data) == 0 {
-		*r = make(TaskRequirements, 0)
-
-		return nil
-	}
-
-	parts := strings.Split(string(data), ",")
-	out := make(TaskRequirements, len(parts))
-
-	copy(out, parts)
-
-	*r = out
-
-	return nil
-}
 
 // LogValue implements [slog.LogValuer] for logTasks. It formats the slice of
 // tasks as a group correctly for the different types of [slog.Handler] in use.

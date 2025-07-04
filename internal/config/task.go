@@ -164,23 +164,9 @@ func newTaskConfig(task *plugin.Task, rawEntry map[string]any, counts map[string
 		platforms[i] = system.OS(s)
 	}
 
-	var requires []string
-
-	rawRequires, ok := rawEntry["requires"]
-	if ok {
-		r, ok := rawRequires.(string)
-		if ok {
-			requires = append(requires, r)
-		} else {
-			requires, ok = rawRequires.([]string)
-			if !ok {
-				return plugin.TaskConfig{}, fmt.Errorf(
-					"%w: requires for task %q is not a list of strings",
-					ErrInvalidConfig,
-					taskID,
-				)
-			}
-		}
+	requires, err := resolveTaskRequirements(rawEntry["requires"], false)
+	if err != nil {
+		return plugin.TaskConfig{}, fmt.Errorf("failed to parse %q: %w", taskID, err)
 	}
 
 	return plugin.TaskConfig{
@@ -611,6 +597,59 @@ func resolveTaskConfigs(
 	}
 
 	return cfgs, nil
+}
+
+// resolveTaskRequirements resolves the requirements for a task instance from
+// a string or slice or a map that contains different values for different OSes.
+func resolveTaskRequirements(raw any, second bool) ([]string, error) {
+	if raw == nil {
+		return nil, nil
+	}
+
+	if r, ok := raw.(string); ok {
+		if r == "" {
+			return nil, nil
+		}
+
+		return []string{r}, nil
+	}
+
+	if r, ok := raw.([]string); ok {
+		return r, nil
+	}
+
+	if second {
+		return nil, fmt.Errorf("%w: requires is not a list of strings", ErrInvalidConfig)
+	}
+
+	var (
+		m  map[string]any
+		ok bool
+	)
+
+	if m, ok = raw.(map[string]any); !ok {
+		return nil, fmt.Errorf("%w: requires is not a list of strings", ErrInvalidConfig)
+	}
+
+	for k, v := range m {
+		if system.OS(k).Current() {
+			return resolveTaskRequirements(v, true)
+		}
+	}
+
+	var def any
+
+	if def, ok = m["default"]; ok {
+		return resolveTaskRequirements(def, true)
+	}
+
+	if def, ok = m["_"]; ok {
+		return resolveTaskRequirements(def, true)
+	}
+
+	// If the current platform is not found, we should assume that the task has
+	// no dependencies on that platform.
+	return nil, nil
 }
 
 // resolveTaskOSValue resolves the raw config value for a task config entry from
