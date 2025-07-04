@@ -58,6 +58,9 @@ type Store struct {
 	// Tasks is the list of tasks that are defined in the plugins.
 	Tasks []*Task
 
+	// TaskConfigs contains the task configs for the current run.
+	TaskConfigs []TaskConfig
+
 	// sortedTasks contains the tasks sorted into the correct execution order.
 	// Each member slice of the slice contains tasks that can be executed in
 	// parallel after the tasks in the slice before them are executed.
@@ -120,6 +123,7 @@ func NewStore(ctx context.Context, builtin []*api.Manifest, wd fspath.Path, path
 		Plugins:        plugins,
 		Commands:       commands,
 		Tasks:          tasks,
+		TaskConfigs:    nil,
 		pluginRuntimes: nil,
 		providers:      nil,
 		sortedTasks:    nil,
@@ -199,6 +203,8 @@ func (s *Store) Init(ctx context.Context, serviceResolver func(string) Service, 
 
 		slog.Log(ctx, slog.Level(logger.LevelTrace), "task stage", "n", i+1, "id", ids)
 	}
+
+	s.TaskConfigs = tasks
 
 	return nil
 }
@@ -625,7 +631,7 @@ func shutdown(ctx context.Context, plugin Plugin) error {
 	if !ok {
 		return fmt.Errorf(
 			"%w: plugin %q cannot be converted to *externalPlugin",
-			errInvalidCast,
+			ErrInvalidCast,
 			plugin.Manifest().Name,
 		)
 	}

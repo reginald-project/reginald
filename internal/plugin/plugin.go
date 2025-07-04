@@ -60,13 +60,7 @@ type Plugin interface {
 // A Service is the service function a built-in plugin. The method calls that
 // would be done through JSON-RPC to external plugins are made using the service
 // function when the plugin in question is built in.
-type Service func(ctx context.Context, info ServiceInfo, method string, params any) error
-
-// A ServiceInfo contains the context on the current run for a service function.
-type ServiceInfo struct {
-	// Store is the plugin store for the current run.
-	Store *Store
-}
+type Service func(ctx context.Context, store *Store, method string, params any) error
 
 // A builtinPlugin is a built-in plugin provided by Reginald. It is implemented
 // within the program and it must not use an external executable.
@@ -225,7 +219,7 @@ func (b *builtinPlugin) call(ctx context.Context, method string, params, result 
 			},
 		}
 	case api.MethodRunCommand, api.MethodRunTask:
-		err := b.service(ctx, ServiceInfo{Store: b.store}, method, params)
+		err := b.service(ctx, b.store, method, params)
 		if err != nil {
 			return fmt.Errorf("failed to run method %q from %q: %w", method, b.manifest.Name, err)
 		}

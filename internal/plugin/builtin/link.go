@@ -16,11 +16,15 @@ package builtin
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 
 	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald/internal/plugin"
 	"github.com/reginald-project/reginald/internal/version"
 )
+
+const linkName = "reginald-link"
 
 // linkManifest returns the manifest for the link plugin.
 func linkManifest() *api.Manifest {
@@ -37,7 +41,7 @@ func linkManifest() *api.Manifest {
 	}
 
 	return &api.Manifest{
-		Name:        "reginald-link",
+		Name:        linkName,
 		Version:     version.Version().String(),
 		Domain:      "link",
 		Description: "The \"reginald-link\" plugin contains the tasks for creating links with Reginald.",
@@ -104,6 +108,14 @@ func linkManifest() *api.Manifest {
 	}
 }
 
-func linkService(_ context.Context, _ plugin.ServiceInfo, _ string, _ any) error {
-	return nil
+// linkService is the service function for the "reginald-link" plugin.
+func linkService(ctx context.Context, _ *plugin.Store, method string, _ any) error {
+	switch method {
+	case api.MethodRunTask:
+		slog.InfoContext(ctx, "running task")
+
+		return nil
+	default:
+		panic(fmt.Sprintf("invalid method call to %q: %s", linkName, method))
+	}
 }

@@ -22,9 +22,9 @@ import (
 
 // Errors returned when a plugin is invalid.
 var (
+	ErrInvalidCast     = errors.New("cannot convert type")
 	ErrInvalidConfig   = errors.New("invalid plugin config")
 	errHandshake       = errors.New("plugin provided incompatible response")
-	errInvalidCast     = errors.New("cannot convert type")
 	errInvalidResponse = errors.New("invalid response")
 	errInvalidLength   = errors.New("number of bytes read does not match")
 	errInvalidManifest = errors.New("invalid plugin manifest")

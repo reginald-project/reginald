@@ -16,16 +16,19 @@ package builtin
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald/internal/plugin"
 	"github.com/reginald-project/reginald/internal/version"
 )
 
+const coreName = "reginald-core"
+
 // coreManifest returns the manifest for the core plugin.
 func coreManifest() *api.Manifest {
 	return &api.Manifest{
-		Name:    "reginald-core",
+		Name:    coreName,
 		Version: version.Version().String(),
 		Domain:  "core",
 		//nolint:lll
@@ -65,6 +68,16 @@ func coreManifest() *api.Manifest {
 }
 
 // coreService is the service function for the "reginald-core" plugin.
-func coreService(_ context.Context, _ plugin.ServiceInfo, _ string, _ any) error {
-	return nil
+func coreService(_ context.Context, _ *plugin.Store, method string, params any) error {
+	switch method {
+	case api.MethodRunCommand:
+		_, ok := params.(api.RunCommandParams)
+		if !ok {
+			return fmt.Errorf("%w: params are not RunCommandParams", plugin.ErrInvalidCast)
+		}
+
+		return nil
+	default:
+		panic(fmt.Sprintf("invalid method call to %q: %s", coreName, method))
+	}
 }
