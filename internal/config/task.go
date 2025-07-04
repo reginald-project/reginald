@@ -220,6 +220,10 @@ func parseTaskConfigValue(entry api.ConfigValue, rawMap map[string]any, opts Tas
 		raw = fileValue
 	}
 
+	if raw, err = resolveTaskOSValue(raw, entry); err != nil && !errors.Is(err, errNoOSMap) {
+		return api.KeyVal{}, err
+	}
+
 	switch entry.Type {
 	case api.BoolListValue:
 		if raw == nil {
@@ -607,6 +611,41 @@ func resolveTaskConfigs(
 	}
 
 	return cfgs, nil
+}
+
+// resolveTaskOSValue resolves the raw config value for a task config entry from
+// a map that contains different values for different OSes. It return errNoOSMap
+// if the plugin value is not given as an OS map.
+func resolveTaskOSValue(raw any, entry api.ConfigValue) (any, error) {
+	var (
+		m  map[string]any
+		ok bool
+	)
+
+	// Maps are not allowed for config values so a simple test if the given
+	// value is a map should be sufficient for checking if the user has given
+	// different values for different OSes.
+	if m, ok = raw.(map[string]any); !ok {
+		return raw, errNoOSMap
+	}
+
+	for k, v := range m {
+		if system.OS(k).Current() {
+			return v, nil
+		}
+	}
+
+	var def any
+
+	if def, ok = m["default"]; ok {
+		return def, nil
+	}
+
+	if def, ok = m["_"]; ok {
+		return def, nil
+	}
+
+	return nil, fmt.Errorf("%w: %q has no config value for current platform", ErrInvalidConfig, entry.Key)
 }
 
 // resolveUnionValue resolves a single alternative in a UnionValue. If
