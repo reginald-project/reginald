@@ -100,7 +100,7 @@ func Execute(ctx context.Context) error {
 			return
 		}
 
-		if err = info.store.Shutdown(ctx); err != nil {
+		if err = info.store.ShutdownAll(ctx); err != nil {
 			fmt.Fprintf(os.Stderr, "Error when shutting down plugins: %v\n", err)
 		}
 
@@ -193,7 +193,7 @@ func run(ctx context.Context, info *runInfo) error {
 		names = names[1:]
 	}
 
-	if err = info.cmd.Run(ctx, cfgs, pluginCfg); err != nil {
+	if err = info.cmd.Run(ctx, info.store, cfgs, pluginCfg, info.cfg.Tasks); err != nil {
 		return fmt.Errorf("running command %q failed: %w", strings.Join(info.cmd.Names(), " "), err)
 	}
 

@@ -25,13 +25,130 @@ import (
 	"github.com/reginald-project/reginald/internal/logger"
 )
 
-// exit sends the "exit" notification to the given plugin.
-func exit(ctx context.Context, plugin Plugin) error {
+// callExit sends the "exit" notification to the given plugin.
+func callExit(ctx context.Context, plugin Plugin) error {
 	if err := plugin.notify(ctx, api.MethodExit, nil); err != nil {
 		return err
 	}
 
 	slog.Log(ctx, slog.Level(logger.LevelTrace), "exit notification successful", "plugin", plugin.Manifest().Name)
+
+	return nil
+}
+
+// callHandshake performs the "handshake" method call with the given plugin.
+func callHandshake(ctx context.Context, plugin Plugin) error {
+	params := api.DefaultHandshakeParams()
+
+	var result api.HandshakeResult
+
+	if err := plugin.call(ctx, api.MethodHandshake, params, &result); err != nil {
+		return err
+	}
+
+	switch {
+	case params.Protocol != result.Protocol:
+		return fmt.Errorf("%w: wrong protocol, want %q, got %q", errHandshake, params.Protocol, result.Protocol)
+	case params.ProtocolVersion != result.ProtocolVersion:
+		return fmt.Errorf(
+			"%w: wrong protocol version, want %q, got %q",
+			errHandshake,
+			params.ProtocolVersion,
+			result.ProtocolVersion,
+		)
+	case plugin.Manifest().Name != result.Name:
+		return fmt.Errorf(
+			"%w: mismatching plugin name, want %q, got %q",
+			errHandshake,
+			plugin.Manifest().Name,
+			result.Name,
+		)
+	}
+
+	slog.Log(
+		ctx,
+		slog.Level(logger.LevelTrace),
+		"handshake successful",
+		"plugin",
+		plugin.Manifest().Name,
+		"result",
+		result,
+	)
+
+	return nil
+}
+
+// callRunCommand makes a "runCommand" call to the given plugin.
+func callRunCommand(ctx context.Context, plugin Plugin, name string, cfg, pluginCfg api.KeyValues) error {
+	params := api.RunCommandParams{
+		Cmd:          name,
+		Config:       cfg,
+		PluginConfig: pluginCfg,
+	}
+
+	var result struct{}
+	if err := plugin.call(ctx, api.MethodRunCommand, params, &result); err != nil {
+		return err
+	}
+
+	slog.Log(
+		ctx,
+		slog.Level(logger.LevelTrace),
+		"runCommand successful",
+		"plugin",
+		plugin.Manifest().Name,
+		"result",
+		result,
+	)
+
+	return nil
+}
+
+// callRunTask makes a "runTask" call to the given plugin.
+func callRunTask(ctx context.Context, plugin Plugin, tt string, cfg TaskConfig) error {
+	params := api.RunTaskParams{
+		TaskType: tt,
+		Config:   cfg.Config,
+	}
+
+	var result struct{}
+	if err := plugin.call(ctx, api.MethodRunTask, params, &result); err != nil {
+		return err
+	}
+
+	slog.Log(
+		ctx,
+		slog.Level(logger.LevelTrace),
+		"runTask successful",
+		"plugin",
+		plugin.Manifest().Name,
+		"result",
+		result,
+	)
+
+	return nil
+}
+
+// callShutdown makes a "shutdown" call to the given plugin.
+func callShutdown(ctx context.Context, plugin Plugin) error {
+	var result bool
+	if err := plugin.call(ctx, api.MethodShutdown, nil, &result); err != nil {
+		return err
+	}
+
+	if !result {
+		return fmt.Errorf("%w: shutdown returned \"%t\"", errInvalidResponse, result)
+	}
+
+	slog.Log(
+		ctx,
+		slog.Level(logger.LevelTrace),
+		"shutdown call successful",
+		"plugin",
+		plugin.Manifest().Name,
+		"result",
+		result,
+	)
 
 	return nil
 }
@@ -74,98 +191,8 @@ func handleLog(ctx context.Context, plugin Plugin, params *api.LogParams) error 
 	return nil
 }
 
-// handshake performs the "handshake" method call with the given plugin.
-func handshake(ctx context.Context, plugin Plugin) error {
-	params := api.DefaultHandshakeParams()
-
-	var result api.HandshakeResult
-
-	if err := plugin.call(ctx, api.MethodHandshake, params, &result); err != nil {
-		return err
-	}
-
-	switch {
-	case params.Protocol != result.Protocol:
-		return fmt.Errorf("%w: wrong protocol, want %q, got %q", errHandshake, params.Protocol, result.Protocol)
-	case params.ProtocolVersion != result.ProtocolVersion:
-		return fmt.Errorf(
-			"%w: wrong protocol version, want %q, got %q",
-			errHandshake,
-			params.ProtocolVersion,
-			result.ProtocolVersion,
-		)
-	case plugin.Manifest().Name != result.Name:
-		return fmt.Errorf(
-			"%w: mismatching plugin name, want %q, got %q",
-			errHandshake,
-			plugin.Manifest().Name,
-			result.Name,
-		)
-	}
-
-	slog.Log(
-		ctx,
-		slog.Level(logger.LevelTrace),
-		"handshake successful",
-		"plugin",
-		plugin.Manifest().Name,
-		"result",
-		result,
-	)
-
-	return nil
-}
-
-// runCommand makes a "runCommand" call to the given plugin.
-func runCommand(ctx context.Context, plugin Plugin, name string, cfg, pluginCfg api.KeyValues) error {
-	params := api.RunCommandParams{
-		Cmd:          name,
-		Config:       cfg,
-		PluginConfig: pluginCfg,
-	}
-
-	var result struct{}
-	if err := plugin.call(ctx, api.MethodRunCommand, params, &result); err != nil {
-		return err
-	}
-
-	slog.Log(
-		ctx,
-		slog.Level(logger.LevelTrace),
-		"runCommand successful",
-		"plugin",
-		plugin.Manifest().Name,
-		"result",
-		result,
-	)
-
-	return nil
-}
-
-// shutdown makes a "shutdown" call to the given plugin.
-func shutdown(ctx context.Context, plugin Plugin) error {
-	var result bool
-	if err := plugin.call(ctx, api.MethodShutdown, nil, &result); err != nil {
-		return err
-	}
-
-	if !result {
-		return fmt.Errorf("%w: shutdown returned \"%t\"", errInvalidResponse, result)
-	}
-
-	slog.Log(
-		ctx,
-		slog.Level(logger.LevelTrace),
-		"shutdown call successful",
-		"plugin",
-		plugin.Manifest().Name,
-		"result",
-		result,
-	)
-
-	return nil
-}
-
+// unmarshalAttr unmarshals a log attribute that was received from a plugin and
+// returns it as [slog.Attr].
 func unmarshalAttr(attr api.LogAttr) (slog.Attr, error) {
 	var val any
 	if err := json.Unmarshal(attr.Value, &val); err != nil {

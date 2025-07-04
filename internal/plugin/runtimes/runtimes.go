@@ -28,6 +28,7 @@ import (
 	"github.com/anttikivi/semver"
 	"github.com/reginald-project/reginald-sdk-go/api"
 	"github.com/reginald-project/reginald/internal/config"
+	"github.com/reginald-project/reginald/internal/fspath"
 	"github.com/reginald-project/reginald/internal/logger"
 	"github.com/reginald-project/reginald/internal/plugin"
 	"github.com/reginald-project/reginald/internal/terminal"
@@ -45,7 +46,8 @@ var runtimes map[string]*runtime //nolint:gochecknoglobals // single runtime ins
 
 // A runtime represents a runtime that can run plugins.
 type runtime struct {
-	name     string
+	n        string            // name of the runtime
+	exe      fspath.Path       // resolved executable
 	versions []*semver.Version // all of the requested versions
 	aliases  []string          // other names for the runtime, e.g. "python3" for python
 	found    bool              // whether the runtime was found on the system
@@ -64,11 +66,7 @@ func Resolve(ctx context.Context, store *plugin.Store, cfg *config.Config) error
 		if apiRuntime == nil || apiRuntime.Name == "" {
 			slog.Log(ctx, slog.Level(logger.LevelTrace), "plugin has no runtime, skipping", "plugin", p.Manifest().Name)
 
-			continue
-		}
-
-		if detect(apiRuntime) {
-			slog.Log(ctx, slog.Level(logger.LevelTrace), "plugin runtime already present", "plugin", p.Manifest().Name)
+			store.RegisterPluginRuntime(nil, p)
 
 			continue
 		}
@@ -76,6 +74,14 @@ func Resolve(ctx context.Context, store *plugin.Store, cfg *config.Config) error
 		rt := fromAPI(apiRuntime)
 		if rt == nil {
 			panic("nil runtime for already accessed one")
+		}
+
+		store.RegisterPluginRuntime(rt, p)
+
+		if rt.Present() {
+			slog.Log(ctx, slog.Level(logger.LevelTrace), "plugin runtime already present", "plugin", p.Manifest().Name)
+
+			continue
 		}
 
 		if err := pluginProvider(ctx, rt, p, store, cfg); err != nil {
@@ -86,6 +92,32 @@ func Resolve(ctx context.Context, store *plugin.Store, cfg *config.Config) error
 	slog.InfoContext(ctx, "resolved all runtimes")
 
 	return nil
+}
+
+// Executable is the resolved executable path of this runtime on the system.
+func (r *runtime) Executable() fspath.Path {
+	return r.exe
+}
+
+// Name returns the name of the runtime.
+func (r *runtime) Name() string {
+	return r.n
+}
+
+// Present reports whether the runtime is found on the system.
+func (r *runtime) Present() bool {
+	if r.found {
+		return true
+	}
+
+	_, err := exec.LookPath(r.n)
+	if err != nil {
+		return false
+	}
+
+	r.found = true
+
+	return true
 }
 
 // addProviderTask creates and adds a task instance of the task type that
@@ -125,28 +157,6 @@ func addProviderTask(ctx context.Context, taskType string, store *plugin.Store, 
 	return cfgs[0].ID, nil
 }
 
-// detect reports whether a runtime matching the given API runtime specification
-// is found on the system.
-func detect(apiRuntime *api.Runtime) bool {
-	if apiRuntime == nil {
-		panic("nil API runtime in fromAPI")
-	}
-
-	r := fromAPI(apiRuntime)
-	if r.found {
-		return true
-	}
-
-	_, err := exec.LookPath(r.name)
-	if err != nil {
-		return false
-	}
-
-	r.found = true
-
-	return true
-}
-
 // findProviderTypes finds task types that can provide the given runtime.
 func findProviderTypes(tasks []*plugin.Task, rt *runtime) []*plugin.Task {
 	if len(tasks) == 0 {
@@ -156,7 +166,7 @@ func findProviderTypes(tasks []*plugin.Task, rt *runtime) []*plugin.Task {
 	var ts []*plugin.Task
 
 	for _, t := range tasks {
-		if rt.name == normalizeName(t.Provides) {
+		if rt.n == normalizeName(t.Provides) {
 			ts = append(ts, t)
 		}
 	}
@@ -176,7 +186,7 @@ func fromAPI(apiRuntime *api.Runtime) *runtime {
 	r := runtimes[name]
 	if r == nil {
 		r = &runtime{
-			name:     name,
+			n:        name,
 			versions: nil,
 			aliases:  []string{name},
 			found:    false,
@@ -220,7 +230,7 @@ func pluginProvider(ctx context.Context, rt *runtime, p plugin.Plugin, store *pl
 			panic("no task for type " + taskCfg.TaskType)
 		}
 
-		if normalizeName(task.Provides) != rt.name {
+		if normalizeName(task.Provides) != rt.n {
 			continue
 		}
 
@@ -228,25 +238,25 @@ func pluginProvider(ctx context.Context, rt *runtime, p plugin.Plugin, store *pl
 	}
 
 	if len(providers) > 1 {
-		return fmt.Errorf("%w: %s for %s", errManyProviders, strings.Join(providers, " "), rt.name)
+		return fmt.Errorf("%w: %s for %s", errManyProviders, strings.Join(providers, " "), rt.n)
 	}
 
 	if len(providers) == 1 {
-		store.AddProvider(providers[0], p)
+		store.RegisterProvider(providers[0], rt)
 
 		return nil
 	}
 
 	if !cfg.Interactive {
-		return fmt.Errorf("%w: %s for %s", errNoProvider, rt.name, p.Manifest().Name)
+		return fmt.Errorf("%w: %s for %s", errNoProvider, rt.n, p.Manifest().Name)
 	}
 
 	ts := findProviderTypes(store.Tasks, rt)
 	if len(ts) == 0 {
-		return fmt.Errorf("%w: %s", errNoProvider, rt.name)
+		return fmt.Errorf("%w: %s", errNoProvider, rt.n)
 	}
 
-	terminal.Printf("Found multiple provider tasks for runtime %q required by %s\n", rt.name, p.Manifest().Name)
+	terminal.Printf("Found multiple provider tasks for runtime %q required by %s\n", rt.n, p.Manifest().Name)
 
 	var (
 		list    string
@@ -277,7 +287,7 @@ func pluginProvider(ctx context.Context, rt *runtime, p plugin.Plugin, store *pl
 			return fmt.Errorf(
 				"%w: failed to ask for provider for %s for %q: %w",
 				errNoProvider,
-				rt.name,
+				rt.n,
 				p.Manifest().Name,
 				err,
 			)
@@ -306,7 +316,7 @@ func pluginProvider(ctx context.Context, rt *runtime, p plugin.Plugin, store *pl
 		return err
 	}
 
-	store.AddProvider(id, p)
+	store.RegisterProvider(id, rt)
 
 	return nil
 }

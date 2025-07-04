@@ -38,26 +38,29 @@ import (
 // A Store stores the plugins, provides information on them, and has functions
 // for using the plugins within the program.
 type Store struct {
-	// providers contains the resolved and required provider tasks for
-	// the plugins for this run. The keys of the map are the plugin names and
-	// the values are the task IDs that provide the runtimes for those plugins.
+	// pluginRuntimes contains the resolved runtimes for the plugins. The keys
+	// of the map are the plugin names, and a value is the runtime the plugin
+	// requires. All plugins should be registered to this map and if a plugin
+	// does not need a runtime, its value here should be nil.
+	pluginRuntimes map[string]runtime
+
+	// providers contains the resolved provider tasks for the runtimes for this
+	// run. The keys of the map are the runtime names and the values are the
+	// task IDs that provide those runtimes.
 	providers map[string]string
 
 	// Plugins is the list of plugins.
 	Plugins []Plugin
+
+	// current contains the plugins that are resolved to be required during
+	// the current run.
+	current []Plugin
 
 	// Commands is the list of commands that are defined in the plugins.
 	Commands []*Command
 
 	// Tasks is the list of tasks that are defined in the plugins.
 	Tasks []*Task
-
-	// runtimes contains the registered runtimes for the plugins.
-	runtimes []runtime
-
-	// deferredStart is a list of plugin names whose startup should be postponed
-	// due to a missing runtime.
-	deferredStart []string
 
 	// sortedTasks contains the tasks sorted into the correct execution order.
 	// Each member slice of the slice contains tasks that can be executed in
@@ -116,13 +119,13 @@ func NewStore(ctx context.Context, builtin []*api.Manifest, wd fspath.Path, path
 	slog.Log(ctx, slog.Level(logger.LevelTrace), "created tasks", "tasks", logTasks(tasks))
 
 	store := &Store{
-		Plugins:       plugins,
-		Commands:      commands,
-		Tasks:         tasks,
-		deferredStart: nil,
-		providers:     nil,
-		runtimes:      nil,
-		sortedTasks:   nil,
+		Plugins:        plugins,
+		Commands:       commands,
+		Tasks:          tasks,
+		current:        nil,
+		pluginRuntimes: nil,
+		providers:      nil,
+		sortedTasks:    nil,
 	}
 
 	if len(pathErrs) > 0 {
@@ -130,20 +133,6 @@ func NewStore(ctx context.Context, builtin []*api.Manifest, wd fspath.Path, path
 	}
 
 	return store, nil
-}
-
-// AddProvider registers a provider task for the given plugin.
-func (s *Store) AddProvider(taskID string, plugin Plugin) {
-	if s.providers == nil {
-		s.providers = make(map[string]string)
-	}
-
-	if _, ok := s.providers[plugin.Manifest().Name]; ok {
-		panic("provider already registered for " + plugin.Manifest().Name)
-	}
-
-	s.providers[plugin.Manifest().Name] = taskID
-	s.deferStart(plugin)
 }
 
 // Command returns the command with the given name from the store. If prev is
@@ -172,81 +161,42 @@ func (s *Store) Command(prev *Command, name string) *Command {
 // should be loaded. It also resolves the execution order for the tasks, taking
 // the tasks that install the required runtimes into account.
 func (s *Store) Init(ctx context.Context, cmd *Command, tasks []TaskConfig) error {
-	plugins := []Plugin{cmd.Plugin}
+	s.current = []Plugin{cmd.Plugin}
 
 	// TODO: This is a hack, there might be a better way.
 	if cmd.Name == "attend" && cmd.Plugin.Manifest().Domain == "core" {
-		for _, tcfg := range tasks {
-			task := s.Task(tcfg.TaskType)
+		for _, cfg := range tasks {
+			task := s.Task(cfg.TaskType)
 			if task == nil {
-				panic("task config has non-existent task type: " + tcfg.TaskType)
+				panic("task config has non-existent task type: " + cfg.TaskType)
 			}
 
 			plugin := task.Plugin
-			if !slices.ContainsFunc(
-				plugins,
+
+			ok := slices.ContainsFunc(
+				s.current,
 				func(p Plugin) bool { return plugin.Manifest().Name == p.Manifest().Name },
-			) {
-				plugins = append(plugins, plugin)
+			)
+			if !ok {
+				s.current = append(s.current, plugin)
 			}
 		}
 	}
 
 	// The provider tasks must also be started.
-	plugins = append(plugins, s.neededForProvider(plugins, tasks)...)
+	s.current = append(s.current, s.neededForProvider(s.current, tasks)...)
 
-	g, gctx := errgroup.WithContext(ctx)
-
-	var err error
-
-	defer func() {
-		if err == nil {
-			return
-		}
-
-		slog.ErrorContext(ctx, "error when initializing the store, shutting down plugins")
-
-		if err = s.Shutdown(ctx); err != nil {
-			fmt.Fprintf(os.Stderr, "Error when shutting down plugins: %v\n", err)
-		}
-	}()
-
-	for _, plugin := range plugins {
-		if slices.Contains(s.deferredStart, plugin.Manifest().Name) {
-			slog.DebugContext(ctx, "plugin startup deferred", "plugin", plugin.Manifest().Name)
-
-			continue
-		}
-
-		handlePanic := panichandler.WithStackTrace()
-
-		g.Go(func() error {
-			defer handlePanic()
-
-			if err2 := plugin.start(ctx); err2 != nil {
-				return fmt.Errorf("failed to start %q: %w", plugin.Manifest().Name, err2)
-			}
-
-			if err2 := handshake(gctx, plugin); err2 != nil {
-				return fmt.Errorf("handshake with %q failed: %w", plugin.Manifest().Name, err2)
-			}
-
-			slog.InfoContext(gctx, "plugin started", "plugin", plugin.Manifest().Name)
-
-			return nil
-		})
-	}
-
-	if err = g.Wait(); err != nil {
-		return fmt.Errorf("failed to init plugins: %w", err)
-	}
-
-	var graph taskGraph
+	var (
+		err   error
+		graph taskGraph
+	)
 
 	if graph, err = newTaskGraph(tasks); err != nil {
 		return err
 	}
 
+	// TODO: Should the task order take the required provider tasks into
+	// account?
 	if s.sortedTasks, err = graph.sorted(); err != nil {
 		return err
 	}
@@ -287,67 +237,55 @@ func (s *Store) LogValue() slog.Value {
 	return slog.GroupValue(attrs...)
 }
 
-// Shutdown requests all of the started plugins to shut down and notfies them to
-// exit. It will ultimately kill the processes for the plugins that fail to shut
-// down gracefully.
-func (s *Store) Shutdown(ctx context.Context) error {
+// RegisterPluginRuntime registers a runtime for the given plugin. It panics if
+// the plugin already has a runtime registered for it.
+func (s *Store) RegisterPluginRuntime(rt runtime, plugin Plugin) {
+	if s.pluginRuntimes == nil {
+		s.pluginRuntimes = make(map[string]runtime)
+	}
+
+	if _, ok := s.pluginRuntimes[plugin.Manifest().Name]; ok {
+		panic("runtime already registered for " + plugin.Manifest().Name)
+	}
+
+	if rt == nil {
+		s.pluginRuntimes[plugin.Manifest().Name] = nil
+	} else {
+		s.pluginRuntimes[plugin.Manifest().Name] = rt
+	}
+}
+
+// RegisterProvider registers a provider task for the given runtime.
+func (s *Store) RegisterProvider(taskID string, runtime runtime) {
+	if runtime == nil {
+		return
+	}
+
+	if s.providers == nil {
+		s.providers = make(map[string]string)
+	}
+
+	// TODO: I think is definitely not what we want.
+	if _, ok := s.providers[runtime.Name()]; ok {
+		panic("provider already registered for " + runtime.Name())
+	}
+
+	s.providers[runtime.Name()] = taskID
+}
+
+// ShutdownAll requests all of the started plugins to shut down and notfies them
+// to exit. It will ultimately kill the processes for the plugins that fail to
+// shut down gracefully.
+func (s *Store) ShutdownAll(ctx context.Context) error {
 	g, gctx := errgroup.WithContext(ctx)
 
 	for _, plugin := range s.Plugins {
-		if !plugin.External() {
-			slog.Log(
-				ctx,
-				slog.Level(logger.LevelTrace),
-				"nothing to shut down for built-in plugin",
-				"plugin",
-				plugin.Manifest().Name,
-			)
-
-			continue
-		}
-
-		external, ok := plugin.(*externalPlugin)
-		if !ok {
-			return fmt.Errorf(
-				"%w: plugin %q cannot be converted to *externalPlugin",
-				errInvalidCast,
-				plugin.Manifest().Name,
-			)
-		}
-
-		if external.cmd == nil {
-			slog.DebugContext(ctx, "skipping plugin shutdown as it was never started", "plugin", external.manifest.Name)
-
-			continue
-		}
-
 		handlePanic := panichandler.WithStackTrace()
 
 		g.Go(func() error {
 			defer handlePanic()
 
-			if err := shutdown(gctx, external); err != nil {
-				return err
-			}
-
-			if err := exit(ctx, external); err != nil {
-				return err
-			}
-
-			select {
-			case err := <-external.doneCh:
-				if err != nil {
-					return fmt.Errorf("process for plugin %q returned error: %w", external.manifest.Name, err)
-				}
-			case <-ctx.Done():
-				if err := external.kill(ctx); err != nil {
-					return fmt.Errorf("failed to kill plugin %q: %w", external.manifest.Name, err)
-				}
-
-				return fmt.Errorf("shutting down plugin %q halted: %w", external.manifest.Name, ctx.Err())
-			}
-
-			return nil
+			return shutdown(gctx, plugin)
 		})
 	}
 
@@ -371,14 +309,6 @@ func (s *Store) Task(tt string) *Task {
 	return nil
 }
 
-// deferStart marks a plugin to be started later because it requires a runtime
-// that is not present.
-func (s *Store) deferStart(plugin Plugin) {
-	if !slices.Contains(s.deferredStart, plugin.Manifest().Name) {
-		s.deferredStart = append(s.deferredStart, plugin.Manifest().Name)
-	}
-}
-
 // neededForProvider returns the list plugins that are required by the given
 // plugins for providers. The return value only includes the newly resolved
 // plugins and not the ones that were passed in.
@@ -386,7 +316,18 @@ func (s *Store) neededForProvider(plugins []Plugin, tasks []TaskConfig) []Plugin
 	var result []Plugin //nolint:prealloc // we don't know the size
 
 	for _, plugin := range plugins {
-		tID, ok := s.providers[plugin.Manifest().Name]
+		rt, ok := s.pluginRuntimes[plugin.Manifest().Name]
+		if !ok {
+			panic(fmt.Sprintf("plugin %q not registered into the runtimes map", plugin.Manifest().Name))
+		}
+
+		if rt == nil {
+			continue
+		}
+
+		var tID string
+
+		tID, ok = s.providers[rt.Name()]
 		if !ok {
 			continue
 		}
@@ -429,6 +370,99 @@ func (s *Store) neededForProvider(plugins []Plugin, tasks []TaskConfig) []Plugin
 	}
 
 	return result
+}
+
+// resolveRuntime resolves a missing runtime by finding the providing task and
+// installing the runtime using it.
+func (s *Store) resolveRuntime(ctx context.Context, rt runtime, tasks []TaskConfig) error {
+	if rt == nil {
+		return nil
+	}
+
+	tID, ok := s.providers[rt.Name()]
+	if !ok {
+		return fmt.Errorf("%w: %s", errNoProvider, rt.Name())
+	}
+
+	var cfg TaskConfig
+
+	ok = false
+
+	for _, tcfg := range tasks {
+		if tcfg.ID == tID {
+			cfg = tcfg
+			ok = true
+
+			break
+		}
+	}
+
+	if !ok {
+		return fmt.Errorf("%w: %s with task ID %s", errNoProvider, rt.Name(), tID)
+	}
+
+	task := s.Task(cfg.TaskType)
+	if task == nil {
+		return fmt.Errorf("%w: %s with task ID %s", errNoProvider, rt.Name(), tID)
+	}
+
+	return RunTask(ctx, s, cfg, tasks)
+}
+
+// start resolves the runtime for the given plugin, starts its process, and
+// performs the handshake with it.
+func (s *Store) start(ctx context.Context, plugin Plugin, tasks []TaskConfig) error {
+	slog.InfoContext(ctx, "starting plugin", "plugin", plugin.Manifest().Name)
+
+	if e, ok := plugin.(*externalPlugin); ok && e.cmd != nil {
+		// TODO: This might leave some cases where starting the executable does
+		// not succeed but those cases might anyway return errors so there might
+		// be no point in trying again.
+		slog.DebugContext(ctx, "external plugin already started", "plugin", plugin.Manifest().Name)
+
+		return nil
+	}
+
+	var (
+		err error
+		ok  bool
+		rt  runtime
+	)
+
+	rt, ok = s.pluginRuntimes[plugin.Manifest().Name]
+	if !ok {
+		panic("runtime not registered for " + plugin.Manifest().Name)
+	}
+
+	if rt != nil && !rt.Present() {
+		if err = s.resolveRuntime(ctx, rt, tasks); err != nil {
+			return err
+		}
+	}
+
+	defer func() {
+		if err == nil {
+			return
+		}
+
+		slog.ErrorContext(ctx, "error when initializing the store, shutting down plugins")
+
+		if err = shutdown(ctx, plugin); err != nil {
+			fmt.Fprintf(os.Stderr, "Error when shutting down plugins: %v\n", err)
+		}
+	}()
+
+	if err = plugin.start(ctx); err != nil {
+		return fmt.Errorf("failed to start %q: %w", plugin.Manifest().Name, err)
+	}
+
+	if err = callHandshake(ctx, plugin); err != nil {
+		return fmt.Errorf("handshake with %q failed: %w", plugin.Manifest().Name, err)
+	}
+
+	slog.InfoContext(ctx, "plugin started", "plugin", plugin.Manifest().Name)
+
+	return nil
 }
 
 // readAllSearchPaths loads plugins from all of the given search paths.
@@ -645,6 +679,61 @@ func readExternalPlugin(path fspath.Path) (*externalPlugin, error) {
 			mu: sync.Mutex{},
 		},
 	}, nil
+}
+
+// shutdown requests the given plugin to shut down and notifies it to exit. It
+// will ultimately kill the process if the plugin fails to shut down gracefully
+// and the context is canceled.
+func shutdown(ctx context.Context, plugin Plugin) error {
+	if !plugin.External() {
+		slog.Log(
+			ctx,
+			slog.Level(logger.LevelTrace),
+			"nothing to shut down for built-in plugin",
+			"plugin",
+			plugin.Manifest().Name,
+		)
+
+		return nil
+	}
+
+	external, ok := plugin.(*externalPlugin)
+	if !ok {
+		return fmt.Errorf(
+			"%w: plugin %q cannot be converted to *externalPlugin",
+			errInvalidCast,
+			plugin.Manifest().Name,
+		)
+	}
+
+	if external.cmd == nil {
+		slog.DebugContext(ctx, "skipping plugin shutdown as it was never started", "plugin", external.manifest.Name)
+
+		return nil
+	}
+
+	if err := callShutdown(ctx, external); err != nil {
+		return err
+	}
+
+	if err := callExit(ctx, external); err != nil {
+		return err
+	}
+
+	select {
+	case err := <-external.doneCh:
+		if err != nil {
+			return fmt.Errorf("process for plugin %q returned error: %w", external.manifest.Name, err)
+		}
+	case <-ctx.Done():
+		if err := external.kill(ctx); err != nil {
+			return fmt.Errorf("failed to kill plugin %q: %w", external.manifest.Name, err)
+		}
+
+		return fmt.Errorf("shutting down plugin %q halted: %w", external.manifest.Name, ctx.Err())
+	}
+
+	return nil
 }
 
 // validate checks the created plugins for conflicts. Specifically, the plugins

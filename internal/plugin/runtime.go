@@ -14,6 +14,17 @@
 
 package plugin
 
+import "github.com/reginald-project/reginald/internal/fspath"
+
 // A runtime is a plugin runtime. The implementations for the runtimes are
 // provided by the [runtimes] package.
-type runtime any
+type runtime interface {
+	// Executable is the resolved executable path of this runtime on the system.
+	Executable() fspath.Path
+
+	// Name returns the name of this runtime.
+	Name() string
+
+	// Present reports whether this runtime is present on the system.
+	Present() bool
+}

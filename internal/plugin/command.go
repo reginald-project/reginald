@@ -77,13 +77,17 @@ func (c *Command) Names() []string {
 }
 
 // Run runs the command by calling the correct plugin.
-func (c *Command) Run(ctx context.Context, cfg, pluginCfg api.KeyValues) error {
+func (c *Command) Run(ctx context.Context, store *Store, cfg, pluginCfg api.KeyValues, tasks []TaskConfig) error {
 	if c == nil {
 		panic("calling Run on nil command")
 	}
 
 	if c.Plugin == nil {
 		panic(fmt.Sprintf("command %q has nil plugin", c.Name))
+	}
+
+	if err := store.start(ctx, c.Plugin, tasks); err != nil {
+		return err
 	}
 
 	names := c.Names()
@@ -94,7 +98,7 @@ func (c *Command) Run(ctx context.Context, cfg, pluginCfg api.KeyValues) error {
 
 	name := strings.Join(names, ".")
 
-	return runCommand(ctx, c.Plugin, name, cfg, pluginCfg)
+	return callRunCommand(ctx, c.Plugin, name, cfg, pluginCfg)
 }
 
 // LogValue implements [slog.LogValuer] for logCmds. It formats the slice of

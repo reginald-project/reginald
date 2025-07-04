@@ -15,6 +15,7 @@
 package plugin
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -135,6 +136,35 @@ func (t *Task) LogValue() slog.Value {
 	}
 
 	return slog.GroupValue(slog.String("type", t.TaskType), slog.String("description", t.Description))
+}
+
+// RunTask runs a task by calling the correct plugin.
+func RunTask(ctx context.Context, store *Store, cfg TaskConfig, tasks []TaskConfig) error {
+	if store == nil {
+		panic("calling RunTask with nil store")
+	}
+
+	task := store.Task(cfg.TaskType)
+	if task == nil {
+		panic("calling Run on nil task")
+	}
+
+	if task.Plugin == nil {
+		panic(fmt.Sprintf("task %q has nil plugin", task.TaskType))
+	}
+
+	if err := store.start(ctx, task.Plugin, tasks); err != nil {
+		return err
+	}
+
+	i := strings.IndexByte(task.TaskType, '/')
+	if i == -1 {
+		panic("invalid task type: " + task.TaskType)
+	}
+
+	tt := task.TaskType[i+1:]
+
+	return callRunTask(ctx, task.Plugin, tt, cfg)
 }
 
 // newCycleError formats and returns an error for circular dependencies.

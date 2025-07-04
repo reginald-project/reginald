@@ -28,6 +28,7 @@ var (
 	errInvalidResponse = errors.New("invalid response")
 	errInvalidLength   = errors.New("number of bytes read does not match")
 	errInvalidManifest = errors.New("invalid plugin manifest")
+	errNoProvider      = errors.New("no provider for runtime")
 	errNoResponse      = errors.New("no response")
 	errUnknownMethod   = errors.New("unknown method")
 	errZeroLength      = errors.New("Content-Length is zero")
