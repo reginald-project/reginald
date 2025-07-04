@@ -44,6 +44,7 @@ var (
 	ErrInvalidConfig = errors.New("invalid config")
 	errNilFlag       = errors.New("no flag found")
 	errNilPlugins    = errors.New("no plugins found")
+	errNoOSMap       = errors.New("no OS map")
 )
 
 // textUnmarshalerType is a helper variable for checking if types of fields in
@@ -1024,11 +1025,56 @@ func pluginFlagName(idents []string, entry *api.ConfigEntry) string {
 	return FlagName(key)
 }
 
+// resolvePluginOSValue resolves the raw config value for a plugin config entry
+// from a map that contains different values for different OSes. It return
+// errNoOSMap if the plugin value is not given as an OS map.
+func resolvePluginOSValue(raw any, entry *api.ConfigEntry) (any, error) {
+	var (
+		m  map[string]any
+		ok bool
+	)
+
+	// Maps are not allowed for config values so a simple test if the given
+	// value is a map should be sufficient for checking if the user has given
+	// different values for different OSes.
+	if m, ok = raw.(map[string]any); !ok {
+		return raw, errNoOSMap
+	}
+
+	for k, v := range m {
+		if system.OS(k).Current() {
+			return v, nil
+		}
+	}
+
+	var def any
+
+	if def, ok = m["default"]; ok {
+		return def, nil
+	}
+
+	if def, ok = m["_"]; ok {
+		return def, nil
+	}
+
+	return nil, fmt.Errorf("%w: %q has no config value for current platform", ErrInvalidConfig, entry.Key)
+}
+
 // resolvePluginValue resolves the value of the given ConfigEntry and returns
 // the parsed KeyVal.
 //
-//nolint:cyclop,funlen,gocognit,maintidx // need to check all of the types
+//nolint:cyclop,gocyclo,funlen,gocognit,maintidx // need to check all of the types
 func resolvePluginValue(raw any, entry *api.ConfigEntry, opts ApplyOptions) (api.KeyVal, error) {
+	var err error
+
+	if raw, err = resolvePluginOSValue(raw, entry); err != nil && !errors.Is(err, errNoOSMap) {
+		return api.KeyVal{}, fmt.Errorf(
+			"cannot parse config for %q: %w",
+			strings.Join(opts.idents[1:len(opts.idents)-1], "."),
+			err,
+		)
+	}
+
 	switch entry.Type {
 	case api.BoolListValue:
 		a, ok := raw.([]any)
