@@ -135,12 +135,14 @@ func ApplyPlugins(ctx context.Context, cfg *Config, opts ApplyOptions) error {
 			return err
 		}
 
-		slog.Log(ctx, slog.Level(logger.LevelTrace), "values parsed", "domain", domain)
+		slog.Log(ctx, slog.Level(logger.LevelTrace), "plugin values parsed", "domain", domain, "values", values)
 
 		cfgs = append(cfgs, api.KeyVal{
 			Value: api.Value{Val: values, Type: api.ConfigSliceValue},
 			Key:   domain,
 		})
+
+		slog.Log(ctx, slog.Level(logger.LevelTrace), "plugin parsed", "domain", domain, "cfg", cfgs[len(cfgs)-1])
 	}
 
 	cfg.Plugins = cfgs
@@ -404,7 +406,7 @@ func applyPluginCommands(
 	cmds []*plugin.Command,
 	opts ApplyOptions,
 ) (api.KeyValues, error) {
-	result := make(api.KeyValues, len(cmds))
+	result := make(api.KeyValues, 0, len(cmds))
 
 	for _, cmd := range cmds {
 		name := cmd.Name
@@ -467,6 +469,8 @@ func applyPluginMap(
 	result = append(result, values...)
 
 	for _, entry := range entries {
+		slog.Log(ctx, slog.Level(logger.LevelTrace), "parsing plugin value", "plugin", parent, "entry", entry)
+
 		raw, ok := rawMap[entry.Key]
 		if ok && entry.FlagOnly {
 			return nil, fmt.Errorf(
@@ -503,6 +507,8 @@ func applyPluginMap(
 		if err != nil {
 			return nil, err
 		}
+
+		slog.Log(ctx, slog.Level(logger.LevelTrace), "plugin value parsed", "plugin", parent, "kv", kv)
 
 		result = append(result, kv)
 	}
