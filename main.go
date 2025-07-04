@@ -39,7 +39,7 @@ import (
 	"github.com/reginald-project/reginald/internal/version"
 )
 
-//go:embed version
+//go:embed VERSION
 var versionFile string
 
 func init() { //nolint:gochecknoinits // initializes the version information
