@@ -105,7 +105,7 @@ func callRunCommand(ctx context.Context, plugin Plugin, name string, cfg, plugin
 }
 
 // callRunTask makes a "runTask" call to the given plugin.
-func callRunTask(ctx context.Context, plugin Plugin, tt string, cfg TaskConfig) error {
+func callRunTask(ctx context.Context, plugin Plugin, tt string, cfg *TaskConfig) error {
 	params := api.RunTaskParams{
 		TaskType: tt,
 		Config:   cfg.Config,

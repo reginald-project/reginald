@@ -52,10 +52,6 @@ type Store struct {
 	// Plugins is the list of plugins.
 	Plugins []Plugin
 
-	// current contains the plugins that are resolved to be required during
-	// the current run.
-	current []Plugin
-
 	// Commands is the list of commands that are defined in the plugins.
 	Commands []*Command
 
@@ -122,7 +118,6 @@ func NewStore(ctx context.Context, builtin []*api.Manifest, wd fspath.Path, path
 		Plugins:        plugins,
 		Commands:       commands,
 		Tasks:          tasks,
-		current:        nil,
 		pluginRuntimes: nil,
 		providers:      nil,
 		sortedTasks:    nil,
@@ -160,32 +155,7 @@ func (s *Store) Command(prev *Command, name string) *Command {
 // the command that should be run and the tasks to determine which plugins
 // should be loaded. It also resolves the execution order for the tasks, taking
 // the tasks that install the required runtimes into account.
-func (s *Store) Init(ctx context.Context, cmd *Command, tasks []TaskConfig) error {
-	s.current = []Plugin{cmd.Plugin}
-
-	// TODO: This is a hack, there might be a better way.
-	if cmd.Name == "attend" && cmd.Plugin.Manifest().Domain == "core" {
-		for _, cfg := range tasks {
-			task := s.Task(cfg.TaskType)
-			if task == nil {
-				panic("task config has non-existent task type: " + cfg.TaskType)
-			}
-
-			plugin := task.Plugin
-
-			ok := slices.ContainsFunc(
-				s.current,
-				func(p Plugin) bool { return plugin.Manifest().Name == p.Manifest().Name },
-			)
-			if !ok {
-				s.current = append(s.current, plugin)
-			}
-		}
-	}
-
-	// The provider tasks must also be started.
-	s.current = append(s.current, s.neededForProvider(s.current, tasks)...)
-
+func (s *Store) Init(ctx context.Context, tasks []TaskConfig) error {
 	var (
 		err   error
 		graph taskGraph
@@ -309,69 +279,6 @@ func (s *Store) Task(tt string) *Task {
 	return nil
 }
 
-// neededForProvider returns the list plugins that are required by the given
-// plugins for providers. The return value only includes the newly resolved
-// plugins and not the ones that were passed in.
-func (s *Store) neededForProvider(plugins []Plugin, tasks []TaskConfig) []Plugin {
-	var result []Plugin //nolint:prealloc // we don't know the size
-
-	for _, plugin := range plugins {
-		rt, ok := s.pluginRuntimes[plugin.Manifest().Name]
-		if !ok {
-			panic(fmt.Sprintf("plugin %q not registered into the runtimes map", plugin.Manifest().Name))
-		}
-
-		if rt == nil {
-			continue
-		}
-
-		var tID string
-
-		tID, ok = s.providers[rt.Name()]
-		if !ok {
-			continue
-		}
-
-		var tt string
-
-		for _, cfg := range tasks {
-			if cfg.ID == tID {
-				tt = cfg.TaskType
-
-				break
-			}
-		}
-
-		if tt == "" {
-			panic(fmt.Sprintf("provider task %q with no corresponding config", tID))
-		}
-
-		task := s.Task(tt)
-		p := task.Plugin
-
-		ok = slices.ContainsFunc(
-			append(plugins, result...),
-			func(o Plugin) bool { return o.Manifest().Name == p.Manifest().Name },
-		)
-		if ok {
-			continue
-		}
-
-		result = append(result, p)
-	}
-
-	if len(result) == 0 {
-		return nil
-	}
-
-	next := s.neededForProvider(result, tasks)
-	if len(next) > 0 {
-		result = append(result, next...)
-	}
-
-	return result
-}
-
 // resolveRuntime resolves a missing runtime by finding the providing task and
 // installing the runtime using it.
 func (s *Store) resolveRuntime(ctx context.Context, rt runtime, tasks []TaskConfig) error {
@@ -406,7 +313,7 @@ func (s *Store) resolveRuntime(ctx context.Context, rt runtime, tasks []TaskConf
 		return fmt.Errorf("%w: %s with task ID %s", errNoProvider, rt.Name(), tID)
 	}
 
-	return RunTask(ctx, s, cfg, tasks)
+	return RunTask(ctx, s, &cfg, tasks)
 }
 
 // start resolves the runtime for the given plugin, starts its process, and
@@ -424,9 +331,8 @@ func (s *Store) start(ctx context.Context, plugin Plugin, tasks []TaskConfig) er
 	}
 
 	var (
-		err error
-		ok  bool
-		rt  runtime
+		ok bool
+		rt runtime
 	)
 
 	rt, ok = s.pluginRuntimes[plugin.Manifest().Name]
@@ -435,10 +341,12 @@ func (s *Store) start(ctx context.Context, plugin Plugin, tasks []TaskConfig) er
 	}
 
 	if rt != nil && !rt.Present() {
-		if err = s.resolveRuntime(ctx, rt, tasks); err != nil {
+		if err := s.resolveRuntime(ctx, rt, tasks); err != nil {
 			return err
 		}
 	}
+
+	var err error
 
 	defer func() {
 		if err == nil {

@@ -187,6 +187,7 @@ func fromAPI(apiRuntime *api.Runtime) *runtime {
 	if r == nil {
 		r = &runtime{
 			n:        name,
+			exe:      "",
 			versions: nil,
 			aliases:  []string{name},
 			found:    false,

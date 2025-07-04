@@ -139,7 +139,7 @@ func (t *Task) LogValue() slog.Value {
 }
 
 // RunTask runs a task by calling the correct plugin.
-func RunTask(ctx context.Context, store *Store, cfg TaskConfig, tasks []TaskConfig) error {
+func RunTask(ctx context.Context, store *Store, cfg *TaskConfig, tasks []TaskConfig) error {
 	if store == nil {
 		panic("calling RunTask with nil store")
 	}
