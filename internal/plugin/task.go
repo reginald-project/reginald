@@ -65,6 +65,9 @@ type TaskConfig struct {
 	// Platforms contains the operating systems to run the task on. Empty slice
 	// means that the task is run on every operating system.
 	Platforms system.OSes
+
+	// run tells whether this task instance is already run.
+	run bool
 }
 
 // TaskDefaults is the type for the default config values set for the tasks.
@@ -144,6 +147,12 @@ func RunTask(ctx context.Context, store *Store, cfg *TaskConfig, tasks []TaskCon
 		panic("calling RunTask with nil store")
 	}
 
+	if cfg.run {
+		slog.DebugContext(ctx, "task already run", "task", cfg.ID)
+
+		return nil
+	}
+
 	task := store.Task(cfg.TaskType)
 	if task == nil {
 		panic("calling Run on nil task")
@@ -164,7 +173,13 @@ func RunTask(ctx context.Context, store *Store, cfg *TaskConfig, tasks []TaskCon
 
 	tt := task.TaskType[i+1:]
 
-	return callRunTask(ctx, task.Plugin, tt, cfg)
+	if err := callRunTask(ctx, task.Plugin, tt, cfg); err != nil {
+		return err
+	}
+
+	cfg.run = true
+
+	return nil
 }
 
 // newCycleError formats and returns an error for circular dependencies.
