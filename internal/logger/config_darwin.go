@@ -16,6 +16,7 @@ package logger
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/reginald-project/reginald/internal/fspath"
 )
@@ -30,7 +31,42 @@ func defaultOSLogFile() (fspath.Path, error) {
 		return path, nil
 	}
 
-	path, err = fspath.NewAbs("%LOCALAPPDATA%", defaultPrefix, defaultLogFileName)
+	var home string
+
+	home, err = os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get the user home directory: %w", err)
+	}
+
+	// This might be a stupid default but use the same default on macOS as on
+	// Linux if it exists. ~/.local/state is not _really_ a macOS thing so this
+	// default is kinda opt-in by design.
+	path, err = fspath.NewAbs(home, ".local", "state", defaultPrefix, defaultLogFileName)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert log output to absolute path: %w", err)
+	}
+
+	var ok bool
+
+	ok, err = path.IsFile()
+	if err != nil {
+		return "", fmt.Errorf("failed to check if %q is a file: %w", path, err)
+	}
+
+	if ok {
+		return path, nil
+	}
+
+	ok, err = path.Dir().IsDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to check if %q is a directory: %w", path.Dir(), err)
+	}
+
+	if ok {
+		return path, nil
+	}
+
+	path, err = fspath.NewAbs(home, "Application Support", defaultPrefix)
 	if err != nil {
 		return "", fmt.Errorf("failed to convert log output to absolute path: %w", err)
 	}

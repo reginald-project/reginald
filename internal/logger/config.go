@@ -16,6 +16,7 @@ package logger
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/reginald-project/reginald/internal/fspath"
 )
@@ -50,9 +51,25 @@ func DefaultConfig() Config {
 
 // DefaultLogOutput returns the default logging output file to use.
 func DefaultLogOutput() (fspath.Path, error) {
-	path, err := defaultPlatformLogFile()
+	path, err := defaultOSLogFile()
 	if err != nil {
 		return "", err
+	}
+
+	return path, nil
+}
+
+// xdgLogPath returns the default log output resolved from "XDG_STATE_HOME"
+// variable if it is set. Otherwise, it returns an empty string.
+func xdgLogPath() (fspath.Path, error) {
+	env := os.Getenv("XDG_STATE_HOME")
+	if env == "" {
+		return "", nil
+	}
+
+	path, err := fspath.NewAbs(env, defaultPrefix, defaultLogFileName)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert log file to absolute path: %w", err)
 	}
 
 	return path, nil
