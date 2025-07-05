@@ -88,16 +88,6 @@ func linkManifest() *api.Manifest {
 										},
 										Description: "The file that the created link points to. If omitted, it will be resolved from the path given as the key for this table entry as described in the task's documentation.",
 									},
-									{
-										KeyVal: api.KeyVal{
-											Value: api.Value{
-												Val:  false,
-												Type: "bool",
-											},
-											Key: "contents",
-										},
-										Description: "If the resolved `src` file is a directory, create the links for each file in the directory into the destination directory instead of creating a link of the directory.",
-									},
 								},
 							},
 						},

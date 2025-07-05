@@ -20,12 +20,75 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 
 	"github.com/reginald-project/reginald/internal/fspath"
 )
 
 // ErrConv is returned when a type conversion is invalid.
 var ErrConv = errors.New("cannot convert type")
+
+// AnyToBoolSlice converts a variable of type any to []bool if possible.
+func AnyToBoolSlice(a any) ([]bool, error) {
+	if as, ok := a.([]any); ok {
+		return ToBoolSlice(as)
+	}
+
+	b, ok := a.([]bool)
+	if !ok {
+		return nil, fmt.Errorf("%w: %[2]v (%[2]T) to %T", ErrConv, a, b)
+	}
+
+	return slices.Clip(b), nil
+}
+
+// AnyToIntSlice converts a variable of type any to []int if possible.
+func AnyToIntSlice(a any) ([]int, error) {
+	if as, ok := a.([]any); ok {
+		return ToIntSlice(as)
+	}
+
+	i, ok := a.([]int)
+	if !ok {
+		return nil, fmt.Errorf("%w: %[2]v (%[2]T) to %T", ErrConv, a, i)
+	}
+
+	return slices.Clip(i), nil
+}
+
+// AnyToPathSlice converts a variable of type any to []fspath.Path if possible.
+func AnyToPathSlice(a any) ([]fspath.Path, error) {
+	if as, ok := a.([]any); ok {
+		return ToPathSlice(as)
+	}
+
+	ss, ok := a.([]string)
+	if !ok {
+		return nil, fmt.Errorf("%w: %[2]v (%[2]T) to %T", ErrConv, a, ss)
+	}
+
+	out := make([]fspath.Path, len(ss))
+
+	for i, s := range ss {
+		out[i] = fspath.Path(s)
+	}
+
+	return slices.Clip(out), nil
+}
+
+// AnyToStringSlice converts a variable of type any to []string if possible.
+func AnyToStringSlice(a any) ([]string, error) {
+	if as, ok := a.([]any); ok {
+		return ToStringSlice(as)
+	}
+
+	s, ok := a.([]string)
+	if !ok {
+		return nil, fmt.Errorf("%w: %[2]v (%[2]T) to %T", ErrConv, a, s)
+	}
+
+	return slices.Clip(s), nil
+}
 
 // ToBoolSlice converts a slice with elements of type any to []bool.
 func ToBoolSlice(a []any) ([]bool, error) {

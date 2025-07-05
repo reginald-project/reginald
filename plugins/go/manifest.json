@@ -26,5 +26,28 @@
       "usage": "versions [options]",
       "description": "TODO"
     }
+  ],
+  "tasks": [
+    {
+      "taskType": "install",
+      "description": "Install the given version of Go.",
+      "provides": "go",
+      "config": [
+        {
+          "alternatives": [
+            { "key": "u1", "type": "stringList", "value": [] },
+            { "key": "u2", "type": "int", "value": 123 },
+            {
+              "key": "u3",
+              "keyType": "string",
+              "values": [
+                { "key": "inner", "type": "int", "value": 321 },
+                { "key": "innerBool", "type": "bool", "value": true }
+              ]
+            }
+          ]
+        }
+      ]
+    }
   ]
 }

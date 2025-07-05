@@ -111,6 +111,10 @@ func ApplyTasks(ctx context.Context, rawCfg []map[string]any, opts TaskApplyOpti
 			return nil, err
 		}
 
+		if err = validateTaskConfigValues(rawEntry, c.Config, opts.Dir); err != nil {
+			return nil, fmt.Errorf("failed to parse config for %q: %w", c.ID, err)
+		}
+
 		slog.Log(ctx, slog.Level(logger.LevelTrace), "task config parsed", "cfg", c)
 
 		result = append(result, c)
@@ -220,16 +224,9 @@ func parseTaskConfigValue(entry api.ConfigValue, rawMap map[string]any, opts Tas
 			raw = []bool{}
 		}
 
-		var a []any
-
-		a, ok = raw.([]any)
-		if !ok {
-			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to []any", typeconv.ErrConv, raw, entry.Key)
-		}
-
 		var x []bool
 
-		x, err = typeconv.ToBoolSlice(a)
+		x, err = typeconv.AnyToBoolSlice(raw)
 		if err != nil {
 			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
 		}
@@ -247,7 +244,7 @@ func parseTaskConfigValue(entry api.ConfigValue, rawMap map[string]any, opts Tas
 
 		x, ok = raw.(bool)
 		if !ok {
-			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to bool", typeconv.ErrConv, raw, entry.Key)
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v (%[2]T) in %q to bool", typeconv.ErrConv, raw, entry.Key)
 		}
 
 		return api.KeyVal{
@@ -261,16 +258,9 @@ func parseTaskConfigValue(entry api.ConfigValue, rawMap map[string]any, opts Tas
 			raw = []int{}
 		}
 
-		var a []any
-
-		a, ok = raw.([]any)
-		if !ok {
-			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to []any", typeconv.ErrConv, raw, entry.Key)
-		}
-
 		var x []int
 
-		x, err = typeconv.ToIntSlice(a)
+		x, err = typeconv.AnyToIntSlice(raw)
 		if err != nil {
 			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
 		}
@@ -300,16 +290,9 @@ func parseTaskConfigValue(entry api.ConfigValue, rawMap map[string]any, opts Tas
 			raw = []string{}
 		}
 
-		var a []any
-
-		a, ok = raw.([]any)
-		if !ok {
-			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to []any", typeconv.ErrConv, raw, entry.Key)
-		}
-
 		var paths []fspath.Path
 
-		paths, err = typeconv.ToPathSlice(a)
+		paths, err = typeconv.AnyToPathSlice(raw)
 		if err != nil {
 			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
 		}
@@ -342,7 +325,7 @@ func parseTaskConfigValue(entry api.ConfigValue, rawMap map[string]any, opts Tas
 
 		s, ok = raw.(string)
 		if !ok {
-			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to string", typeconv.ErrConv, raw, entry.Key)
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v (%[2]T) in %q to string", typeconv.ErrConv, raw, entry.Key)
 		}
 
 		x := fspath.Path(s)
@@ -365,16 +348,9 @@ func parseTaskConfigValue(entry api.ConfigValue, rawMap map[string]any, opts Tas
 			raw = []string{}
 		}
 
-		var a []any
-
-		a, ok = raw.([]any)
-		if !ok {
-			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to []any", typeconv.ErrConv, raw, entry.Key)
-		}
-
 		var x []string
 
-		x, err = typeconv.ToStringSlice(a)
+		x, err = typeconv.AnyToStringSlice(raw)
 		if err != nil {
 			return api.KeyVal{}, fmt.Errorf("failed to convert type for %q: %w", entry.Key, err)
 		}
@@ -392,7 +368,7 @@ func parseTaskConfigValue(entry api.ConfigValue, rawMap map[string]any, opts Tas
 
 		x, ok = raw.(string)
 		if !ok {
-			return api.KeyVal{}, fmt.Errorf("%w: %[2]v in %q to string", typeconv.ErrConv, raw, entry.Key)
+			return api.KeyVal{}, fmt.Errorf("%w: %[2]v (%[2]T) in %q to string", typeconv.ErrConv, raw, entry.Key)
 		}
 
 		return api.KeyVal{
@@ -762,6 +738,89 @@ func validateTasks(tasks []plugin.TaskConfig) error {
 			if _, ok := seenIDs[r]; !ok {
 				return fmt.Errorf("%w: task %q requires an unknown task %q", ErrInvalidConfig, task.ID, r)
 			}
+		}
+	}
+
+	return nil
+}
+
+// validateTaskConfigValues validates the config values parsed from the file and
+// check that the file contains no unknown values.
+func validateTaskConfigValues(rawTask map[string]any, cfg api.KeyValues, dir fspath.Path) error {
+	for key, value := range rawTask {
+		if key == "id" || key == "requires" || key == "type" {
+			continue
+		}
+
+		kv, ok := cfg.Get(key)
+		if !ok {
+			return fmt.Errorf("%w: unknown key %q", ErrInvalidConfig, key)
+		}
+
+		var u map[string]any
+
+		if u, ok = value.(map[string]any); !ok {
+			continue
+		}
+
+		if err := validateTaskMappedValue(kv, u, dir); err != nil {
+			return fmt.Errorf("check of %q failed: %w", key, err)
+		}
+	}
+
+	return nil
+}
+
+// validateTaskMappedValue validates a mapped value during the validation of
+// the task configs.
+func validateTaskMappedValue(kv api.KeyVal, raw map[string]any, dir fspath.Path) error {
+	cfgs, err := kv.Configs()
+	if err != nil {
+		return fmt.Errorf("not a map: %w", err)
+	}
+
+	for _, c := range cfgs {
+		var mappedKV api.KeyValues
+
+		mappedKV, err = c.Configs()
+		if err != nil {
+			return fmt.Errorf("not a config map: %w", err)
+		}
+
+		a, ok := raw[c.Key]
+		if !ok {
+			for k, v := range raw {
+				path := fspath.Path(k)
+
+				path, err = path.Expand()
+				if err != nil {
+					return fmt.Errorf("failed to expand %q: %w", k, err)
+				}
+
+				if !path.IsAbs() {
+					path = fspath.Join(dir, path)
+				}
+
+				if string(path) != c.Key {
+					continue
+				}
+
+				a = v
+
+				break
+			}
+		}
+
+		var m map[string]any
+
+		m, ok = a.(map[string]any)
+		if !ok {
+			return fmt.Errorf("%w: %q is not a map", ErrInvalidConfig, c.Key)
+		}
+
+		err = validateTaskConfigValues(m, mappedKV, dir)
+		if err != nil {
+			return err
 		}
 	}
 
