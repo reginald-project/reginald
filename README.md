@@ -51,14 +51,19 @@ This builds Reginald as `./reginald` at the root of the repository.
 
 ## License
 
+Copyright (c) 2025 The Reginald Authors
+
 Reginald is licensed under the Apache-2.0 license. See the [LICENSE](LICENSE)
 file for more information.
 
-Reginald the gopher valet is based on the Go gopher. Reginald the gopher valet
-is licensed under the
-[Creative Commons Attribution 4.0 International license](https://creativecommons.org/licenses/by/4.0/).
-The Go gopher is designed by Renee French and licensed under the
-[Creative Commons 3.0 Attributions license](https://creativecommons.org/licenses/by/3.0/deed.en).
-The [vector data](https://github.com/golang-samples/gopher-vector) used for the
-Go gopher is by Takuya Ueda and licensed under the
-[Creative Commons 3.0 Attributions license](https://creativecommons.org/licenses/by/3.0/deed.en).
+Reginald the gopher valet is licensed under the Creative Commons Attribution 4.0
+International license. See the [CC-BY-4.0.txt](CC-BY-4.0.txt) file for more
+information.
+
+Reginald the gopher valet is based on the Go gopher. The Go gopher is designed
+by Renee French and licensed under the Creative Commons 4.0 Attribution license.
+The vector data used for the Go gopher is by Takuya Ueda and licensed under the
+Creative Commons 3.0 Attributions license.
+
+Please see the [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES) for full attribution
+and license information.
