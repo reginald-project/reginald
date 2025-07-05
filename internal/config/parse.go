@@ -872,13 +872,13 @@ func parseFile(dir fspath.Path, flagSet *flags.FlagSet, cfg *Config) error {
 
 	data, err := os.ReadFile(string(configFile.Clean()))
 	if err != nil {
-		return fmt.Errorf("failed to read config file: %w", err)
+		return fmt.Errorf("failed to read config file at %q: %w", configFile, err)
 	}
 
 	rawCfg := make(map[string]any)
 
 	if err = toml.Unmarshal(data, &rawCfg); err != nil {
-		return fmt.Errorf("failed to decode the config file: %w", err)
+		return fmt.Errorf("failed to decode the config file at %q: %w", configFile, err)
 	}
 
 	NormalizeKeys(rawCfg)
