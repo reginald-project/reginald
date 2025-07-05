@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !windows
-
 package config
 
 import (
@@ -23,22 +21,24 @@ import (
 	"github.com/reginald-project/reginald/internal/fspath"
 )
 
-func defaultPlatformPluginPaths() ([]fspath.Path, error) {
-	if env := os.Getenv("XDG_DATA_HOME"); env != "" {
-		path, err := fspath.NewAbs(env, defaultPrefix, "plugins")
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert plugins directory to absolute path: %w", err)
-		}
+func defaultOSPluginPaths() ([]fspath.Path, error) {
+	path, err := xdgPluginPath()
+	if err != nil {
+		return nil, err
+	}
 
+	if path != "" {
 		return []fspath.Path{path}, nil
 	}
 
-	home, err := os.UserHomeDir()
+	var home string
+
+	home, err = os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get the user home directory: %w", err)
 	}
 
-	path, err := fspath.NewAbs(home, ".local", "share", defaultPrefix, "plugins")
+	path, err = fspath.NewAbs(home, ".local", "share", defaultPrefix, "plugins")
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert plugins directory to absolute path: %w", err)
 	}

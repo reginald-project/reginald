@@ -864,7 +864,7 @@ func parseFile(dir fspath.Path, flagSet *flags.FlagSet, cfg *Config) error {
 		return err
 	}
 
-	cfg.sourceFile = configFile
+	cfg.configFile = configFile
 
 	if configFile == "" {
 		return nil

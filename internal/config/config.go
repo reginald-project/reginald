@@ -44,8 +44,8 @@ const (
 // After the parsing, Config should not be written to and, thus, the lock should
 // no longer be used.
 type Config struct {
-	// sourceFile is path to the config file that was found and parsed.
-	sourceFile fspath.Path
+	// configFile is path to the config file that was found and parsed.
+	configFile fspath.Path
 
 	// Directory is the "dotfiles" directory option. If it is set, Reginald
 	// looks for all of the relative filenames from this directory. Most
@@ -112,7 +112,7 @@ func DefaultConfig() *Config {
 	}
 
 	return &Config{
-		sourceFile:  "",
+		configFile:  "",
 		Color:       terminal.ColorAuto,
 		Debug:       false,
 		Defaults:    plugin.TaskDefaults{},
@@ -132,32 +132,17 @@ func DefaultConfig() *Config {
 
 // File returns path to the config file that was used to parse the config.
 func (c *Config) File() fspath.Path {
-	return c.sourceFile
+	return c.configFile
 }
 
 // HasFile reports whether the config was parsed from a file.
 func (c *Config) HasFile() bool {
-	return c.sourceFile != ""
-}
-
-// DefaultDir returns the default working directory for Reginald.
-func DefaultDir() (fspath.Path, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to get the user home directory: %w", err)
-	}
-
-	path, err := fspath.NewAbs(home, ".dotfiles")
-	if err != nil {
-		return "", fmt.Errorf("failed to convert directory to absolute path: %w", err)
-	}
-
-	return path, nil
+	return c.configFile != ""
 }
 
 // DefaultPluginPaths returns the default plugins directory to use.
 func DefaultPluginPaths() ([]fspath.Path, error) {
-	paths, err := defaultPlatformPluginPaths()
+	paths, err := defaultOSPluginPaths()
 	if err != nil {
 		return nil, fmt.Errorf("%w", err)
 	}
@@ -409,4 +394,20 @@ func resolveFile(dir fspath.Path, flagSet *flags.FlagSet) (fspath.Path, error) {
 	}
 
 	return "", &FileError{""}
+}
+
+// xdgPluginPath returns the plugin directory resolved from "XDG_DATA_HOME"
+// variable if it is set. Otherwise, it returns an empty string.
+func xdgPluginPath() (fspath.Path, error) {
+	env := os.Getenv("XDG_DATA_HOME")
+	if env == "" {
+		return "", nil
+	}
+
+	path, err := fspath.NewAbs(env, defaultPrefix, "plugins")
+	if err != nil {
+		return "", fmt.Errorf("failed to convert plugins directory to absolute path: %w", err)
+	}
+
+	return path, nil
 }

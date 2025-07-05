@@ -16,6 +16,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/reginald-project/reginald/internal/fspath"
 )
@@ -30,7 +31,33 @@ func defaultOSPluginPaths() ([]fspath.Path, error) {
 		return []fspath.Path{path}, nil
 	}
 
-	path, err = fspath.NewAbs("%LOCALAPPDATA%", defaultPrefix, "plugins")
+	var home string
+
+	home, err = os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get the user home directory: %w", err)
+	}
+
+	// This might be a stupid default but use the same default on macOS as on
+	// Linux if it exists. ~/.local/share is not _really_ a macOS thing so this
+	// default is kinda opt-in by design.
+	path, err = fspath.NewAbs(home, ".local", "share", defaultPrefix, "plugins")
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert plugins directory to absolute path: %w", err)
+	}
+
+	var ok bool
+
+	ok, err = path.IsDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to check if %q is a directory: %w", path, err)
+	}
+
+	if ok {
+		return []fspath.Path{path}, nil
+	}
+
+	path, err = fspath.NewAbs(home, "Application Support", defaultPrefix, "plugins")
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert plugins directory to absolute path: %w", err)
 	}
