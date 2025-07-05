@@ -116,6 +116,10 @@ func ApplyTasks(ctx context.Context, rawCfg []map[string]any, opts TaskApplyOpti
 		result = append(result, c)
 	}
 
+	if err := validateTasks(result); err != nil {
+		return nil, err
+	}
+
 	return result, nil
 }
 
@@ -735,4 +739,31 @@ func resolveUnionValue(alternative api.ConfigType, rawMap map[string]any, opts T
 			alternative,
 		)
 	}
+}
+
+// validateTasks does a basic validation of the task configs. It checks that
+// the IDs are unique and that the requirements point to existing tasks. More
+// validations are added when needed.
+func validateTasks(tasks []plugin.TaskConfig) error {
+	seenIDs := make(map[string]struct{})
+
+	for _, task := range tasks {
+		if _, ok := seenIDs[task.ID]; ok {
+			return fmt.Errorf("%w: duplicate task ID %q", ErrInvalidConfig, task.ID)
+		}
+
+		seenIDs[task.ID] = struct{}{}
+	}
+
+	// Loop twice rather than using nested loops as it is much faster and scales
+	// better if the user has a big config file.
+	for _, task := range tasks {
+		for _, r := range task.Requires {
+			if _, ok := seenIDs[r]; !ok {
+				return fmt.Errorf("%w: task %q requires an unknown task %q", ErrInvalidConfig, task.ID, r)
+			}
+		}
+	}
+
+	return nil
 }
