@@ -289,7 +289,7 @@ func initialize(ctx context.Context) (*runInfo, error) {
 	info.cfg.Tasks = taskCfgs
 	info.cfg.RawTasks = nil
 
-	slog.DebugContext(ctx, "config parsed", "cfg", info.cfg, "args", info.args)
+	slog.DebugContext(ctx, "config parsed", "file", info.cfg.File(), "cfg", info.cfg, "args", info.args)
 
 	return info, nil
 }

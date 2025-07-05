@@ -20,6 +20,15 @@ import (
 	"github.com/reginald-project/reginald/internal/fspath"
 )
 
+func defaultOSConfigs() ([]fspath.Path, error) {
+	appData, err := fspath.NewAbs("%APPDATA%", filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create absolute AppData path: %w", err)
+	}
+
+	return []fspath.Path{appData.Join(filename), appData.Join(secondaryConfigName)}, nil
+}
+
 func defaultOSPluginPaths() ([]fspath.Path, error) {
 	path, err := xdgPluginPath()
 	if err != nil {
@@ -30,7 +39,7 @@ func defaultOSPluginPaths() ([]fspath.Path, error) {
 		return []fspath.Path{path}, nil
 	}
 
-	path, err = fspath.NewAbs("%LOCALAPPDATA%", defaultPrefix, "plugins")
+	path, err = fspath.NewAbs("%LOCALAPPDATA%", filename, "plugins")
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert plugins directory to absolute path: %w", err)
 	}

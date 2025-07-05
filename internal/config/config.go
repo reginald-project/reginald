@@ -32,10 +32,16 @@ import (
 	"github.com/reginald-project/reginald/internal/terminal"
 )
 
+// Path constants.
 const (
-	defaultPrefix      = "reginald"
-	defaultLogFileName = defaultPrefix + ".log"
+	filename            = "reginald" // directories and default config files
+	secondaryConfigName = "config"   // alternative config file name for some paths
 )
+
+// configExtensions contains the possible file extensions for the config file.
+// All of the default config paths are tested against all of the file
+// extensions.
+var configExtensions = []string{".toml", ""} //nolint:gochecknoglobals // used like a constant
 
 // Config is the parsed configuration of the program run. There should be only
 // one effective Config per run.
@@ -300,6 +306,66 @@ func genFlagName(s string, invert bool) string {
 	return strings.ToLower(flagName)
 }
 
+// resolveDefaultFiles check for the config file from the default locations for
+// the current platform.
+func resolveDefaultFiles(dir fspath.Path) (fspath.Path, error) {
+	var (
+		err error
+		ok  bool
+	)
+
+	// Prioritize the working directory over the other default lookup paths.
+	for _, e := range configExtensions {
+		f := dir.Join("reginald" + e)
+
+		if ok, err = f.IsFile(); err != nil {
+			return "", fmt.Errorf("failed to check if %q is a file: %w", f, err)
+		} else if ok {
+			return f, nil
+		}
+	}
+
+	// If user is using the "XDG_*" variables, Reginald should honor them
+	// regardless of the platform.
+	var paths []fspath.Path
+
+	paths, err = xdgConfigPaths()
+	if err != nil {
+		return "", err
+	}
+
+	for _, f := range paths {
+		for _, e := range configExtensions {
+			f += fspath.Path(e)
+
+			if ok, err = f.IsFile(); err != nil {
+				return "", fmt.Errorf("failed to check if %q is a file: %w", f, err)
+			} else if ok {
+				return f, nil
+			}
+		}
+	}
+
+	paths, err = defaultOSConfigs()
+	if err != nil {
+		return "", err
+	}
+
+	for _, f := range paths {
+		for _, e := range configExtensions {
+			f += fspath.Path(e)
+
+			if ok, err = f.IsFile(); err != nil {
+				return "", fmt.Errorf("failed to check if %q is a file: %w", f, err)
+			} else if ok {
+				return f, nil
+			}
+		}
+	}
+
+	return "", &FileError{""}
+}
+
 // resolveFile looks up the possible paths for the configuration file and
 // returns the first one that contains a file with a valid name. The returned
 // path is absolute. If no configuration file is found, the function returns an
@@ -310,7 +376,7 @@ func resolveFile(dir fspath.Path, flagSet *flags.FlagSet) (fspath.Path, error) {
 		fileValue string
 	)
 
-	if env := os.Getenv(strings.ToUpper(defaultPrefix + "_CONFIG_FILE")); env != "" {
+	if env := os.Getenv(strings.ToUpper(filename + "_CONFIG_FILE")); env != "" {
 		fileValue = env
 	}
 
@@ -322,6 +388,11 @@ func resolveFile(dir fspath.Path, flagSet *flags.FlagSet) (fspath.Path, error) {
 	}
 
 	file := fspath.Path(fileValue)
+
+	file, err = file.Expand()
+	if err != nil {
+		return "", fmt.Errorf("failed to expand config path: %w", err)
+	}
 
 	if file.IsAbs() {
 		var ok bool
@@ -335,7 +406,7 @@ func resolveFile(dir fspath.Path, flagSet *flags.FlagSet) (fspath.Path, error) {
 
 	wd := dir
 
-	if env := os.Getenv(strings.ToUpper(defaultPrefix + "_DIRECTORY")); env != "" {
+	if env := os.Getenv(strings.ToUpper(filename + "_DIRECTORY")); env != "" {
 		wd = fspath.Path(env)
 	}
 
@@ -351,9 +422,23 @@ func resolveFile(dir fspath.Path, flagSet *flags.FlagSet) (fspath.Path, error) {
 		}
 	}
 
+	wd, err = wd.Expand()
+	if err != nil {
+		return "", fmt.Errorf("failed to expand working directory: %w", err)
+	}
+
+	if !wd.IsAbs() {
+		wd, err = wd.Abs()
+		if err != nil {
+			return "", fmt.Errorf("failed to make working directory path absolute: %w", err)
+		}
+	}
+
 	file = wd.Join(string(file))
 
-	if ok, err := file.IsFile(); err != nil {
+	var ok bool
+
+	if ok, err = file.IsFile(); err != nil {
 		return "", fmt.Errorf("failed to check if %q is a file: %w", file, err)
 	} else if ok {
 		return file, nil
@@ -365,35 +450,29 @@ func resolveFile(dir fspath.Path, flagSet *flags.FlagSet) (fspath.Path, error) {
 		return "", &FileError{file: file}
 	}
 
-	// TODO: Add more locations, at least the default location in the user home
-	// directory.
-	configDirs := []fspath.Path{
-		wd,
-	}
-	configNames := []string{
-		strings.ToLower(defaultPrefix),
-		"." + strings.ToLower(defaultPrefix),
-	}
-	extensions := []string{
-		"toml",
+	file, err = resolveDefaultFiles(wd)
+	if err != nil {
+		return "", err
 	}
 
-	// This is crazy.
-	for _, d := range configDirs {
-		for _, n := range configNames {
-			for _, e := range extensions {
-				file = d.Join(fmt.Sprintf("%s.%s", n, e))
+	return file, nil
+}
 
-				if ok, err := file.IsFile(); err != nil {
-					return "", fmt.Errorf("failed to check if %q is a file: %w", file, err)
-				} else if ok {
-					return file, nil
-				}
-			}
-		}
+// xdgConfigPaths returns the possible config file combinations to check
+// resolved from "XDG_CONFIG_HOME" variable if it is set. Otherwise, it returns
+// nil.
+func xdgConfigPaths() ([]fspath.Path, error) {
+	env := os.Getenv("XDG_DATA_HOME")
+	if env == "" {
+		return nil, nil
 	}
 
-	return "", &FileError{""}
+	path, err := fspath.NewAbs(env, filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert config file to absolute path: %w", err)
+	}
+
+	return []fspath.Path{path.Join("reginald"), path.Join("config"), path}, nil
 }
 
 // xdgPluginPath returns the plugin directory resolved from "XDG_DATA_HOME"
@@ -404,7 +483,7 @@ func xdgPluginPath() (fspath.Path, error) {
 		return "", nil
 	}
 
-	path, err := fspath.NewAbs(env, defaultPrefix, "plugins")
+	path, err := fspath.NewAbs(env, filename, "plugins")
 	if err != nil {
 		return "", fmt.Errorf("failed to convert plugins directory to absolute path: %w", err)
 	}

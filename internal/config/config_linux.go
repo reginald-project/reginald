@@ -21,6 +21,28 @@ import (
 	"github.com/reginald-project/reginald/internal/fspath"
 )
 
+func defaultOSConfigs() ([]fspath.Path, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get the user home directory: %w", err)
+	}
+
+	var cfgPath fspath.Path
+
+	cfgPath, err = fspath.NewAbs(home, ".config", filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create absolute ~/.config path: %w", err)
+	}
+
+	return []fspath.Path{
+		cfgPath.Join(filename),
+		cfgPath.Join(secondaryConfigName),
+		cfgPath,
+		fspath.New(home, filename),
+		fspath.New(home, "."+filename),
+	}, nil
+}
+
 func defaultOSPluginPaths() ([]fspath.Path, error) {
 	path, err := xdgPluginPath()
 	if err != nil {
@@ -38,7 +60,7 @@ func defaultOSPluginPaths() ([]fspath.Path, error) {
 		return nil, fmt.Errorf("failed to get the user home directory: %w", err)
 	}
 
-	path, err = fspath.NewAbs(home, ".local", "share", defaultPrefix, "plugins")
+	path, err = fspath.NewAbs(home, ".local", "share", filename, "plugins")
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert plugins directory to absolute path: %w", err)
 	}

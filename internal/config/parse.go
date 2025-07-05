@@ -772,14 +772,14 @@ func fromOSDecodeHookFunc() mapstructure.DecodeHookFuncType {
 // checks that the initial identifiers are valid. It panics on errors.
 func initIdents(opts ApplyOptions) ApplyOptions {
 	if len(opts.idents) == 0 {
-		opts.idents = []string{defaultPrefix}
+		opts.idents = []string{filename}
 	}
 
-	if opts.idents[0] != defaultPrefix {
+	if opts.idents[0] != filename {
 		panic(
 			fmt.Sprintf(
 				"Apply must be called with no config identifiers or with the global prefix for the environment variables as the first identifier: %q", //nolint:lll
-				defaultPrefix,
+				filename,
 			),
 		)
 	}
@@ -1002,7 +1002,7 @@ func pluginEnvValue(idents []string, entry *api.ConfigEntry) string {
 		return envValue(idents)
 	}
 
-	return os.Getenv(strings.ToUpper(defaultPrefix + "_" + entry.EnvOverride))
+	return os.Getenv(strings.ToUpper(filename + "_" + entry.EnvOverride))
 }
 
 // pluginFlagName returns the name of the command-line flag for the given config
