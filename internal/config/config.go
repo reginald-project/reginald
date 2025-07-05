@@ -41,7 +41,7 @@ const (
 // configExtensions contains the possible file extensions for the config file.
 // All of the default config paths are tested against all of the file
 // extensions.
-var configExtensions = []string{".toml", ""} //nolint:gochecknoglobals // used like a constant
+var configExtensions = []string{".toml"} //nolint:gochecknoglobals // used like a constant
 
 // Config is the parsed configuration of the program run. There should be only
 // one effective Config per run.
